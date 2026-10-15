@@ -1,6 +1,6 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Anthropic prompt-cache TTL manager for OpenCode V2: 5m / 1h / hybrid modes with an interactive TUI picker modal",
   "type": "module",
   "license": "MIT",

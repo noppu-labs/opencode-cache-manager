@@ -75,9 +75,12 @@ afterAll(() => {
 });
 
 describe("npm package manifest", () => {
-  test("publishes under the scoped name at 0.1.0, MIT, public access", () => {
+  test("publishes under the scoped name, MIT, public access", () => {
     expect(manifest.name).toBe("@noppu-labs/opencode-cache-manager");
-    expect(manifest.version).toBe("0.1.0");
+    // Release-time consistency (tag == vX.Y.Z of package.json) is enforced by
+    // the release workflow's gate; here the version only needs to be
+    // well-formed.
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/);
     expect(manifest.license).toBe("MIT");
     expect(manifest.publishConfig?.access).toBe("public");
   });
