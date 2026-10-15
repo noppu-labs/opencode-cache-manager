@@ -1,12 +1,59 @@
 {
-  "name": "opencode-cache-manager",
+  "name": "@noppu-labs/opencode-cache-manager",
   "version": "0.1.0",
   "description": "Anthropic prompt-cache TTL manager for OpenCode V2: 5m / 1h / hybrid modes with an interactive TUI picker modal",
   "type": "module",
-  "scripts": {
-    "test": "bun test tests/"
+  "license": "MIT",
+  "author": "cris005",
+  "homepage": "https://github.com/noppu-labs/opencode-cache-manager",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noppu-labs/opencode-cache-manager.git"
   },
-  "dependencies": {
-    "@opencode/plugin": "2.0.22"
+  "bugs": {
+    "url": "https://github.com/noppu-labs/opencode-cache-manager/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": "./server.ts",
+    "./server": "./server.ts",
+    "./tui": "./tui.ts",
+    "./rpc": "./rpc.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "server.ts",
+    "tui.ts",
+    "shared.ts",
+    "rpc.ts"
+  ],
+  "scripts": {
+    "test": "bun test tests/",
+    "typecheck": "tsc -p ."
+  },
+  "engines": {
+    "bun": ">=1.3.0",
+    "opencode": ">=2.0.22 <3"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.0.22 <3"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "anthropic",
+    "claude",
+    "prompt-caching",
+    "cache-ttl",
+    "tui",
+    "typescript",
+    "bun"
+  ],
+  "devDependencies": {
+    "typescript": "^7.0.2"
   }
 }

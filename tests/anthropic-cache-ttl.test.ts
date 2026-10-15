@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import plugin from "../plugins/anthropic-cache-ttl/index.ts";
+import plugin from "../server.ts";
 import {
   EXTENDED_CACHE_BETA,
   SENTINEL_HEADER,
@@ -11,7 +11,7 @@ import {
   parseModeArg,
   rewriteAnthropicCacheTtl,
   transformHttpRequest,
-} from "../plugins/anthropic-cache-ttl/shared.ts";
+} from "../shared.ts";
 
 // `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
 // `solid-js` peer that is only present in the live TUI host. `define` is an
@@ -20,7 +20,7 @@ import {
 mock.module("@opencode/plugin/tui", () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
-const { default: tuiPlugin } = await import("../plugins/anthropic-cache-ttl/tui.ts");
+const { default: tuiPlugin } = await import("../tui.ts");
 
 // ---------------------------------------------------------------------------
 // Fixtures

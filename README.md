@@ -4,6 +4,11 @@ An [OpenCode](https://opencode.ai) plugin that controls the Anthropic prompt-cac
 
 OpenCode marks cache breakpoints automatically (tools, system prompt, the last message) but always sends the default `ttl: "5m"`. There is no config knob for it. This plugin rewrites the outgoing request after OpenCode's own cache policy runs, so the TTL can be changed per session without forking the provider package.
 
+Published to npm under two names with identical contents:
+
+- `@noppu-labs/opencode-cache-manager`
+- `opencode-cache-manager`
+
 ## The three modes
 
 | Mode | Tools + system | Messages | Write cost |
@@ -18,17 +23,28 @@ Requests in `1h` or `hybrid` mode also get the `anthropic-beta: extended-cache-t
 
 ## Install
 
-Copy (or symlink) the plugin directory into your OpenCode plugins folder:
+Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. OpenCode installs it automatically at startup (no manual npm install):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    "@noppu-labs/opencode-cache-manager@^0.1.0"
+    // or: "opencode-cache-manager@^0.1.0" -- same package, unscoped name
+  ]
+}
+```
+
+### Local checkout instead
+
+If you prefer running from a clone (or while hacking on it), symlink the repo into the plugins directory. OpenCode resolves `server.ts` / `tui.ts` / `rpc.ts` from the directory:
 
 ```sh
 git clone https://github.com/noppu-labs/opencode-cache-manager.git
-ln -s "$(pwd)/opencode-cache-manager/plugins/anthropic-cache-ttl" \
-  ~/.config/opencode/plugins/anthropic-cache-ttl
+ln -s "$(pwd)/opencode-cache-manager" ~/.config/opencode/plugins/anthropic-cache-ttl
 ```
 
-OpenCode discovers the plugin from `~/.config/opencode/plugins/`. It needs `@opencode/plugin` installed there (`bun add @opencode/plugin` in `~/.config/opencode/`).
-
-The plugin rewrites requests for any Anthropic-compatible provider. `opencode.jsonc` at this repo's root is a sample with an `omniroute-anthropic` provider pointing at an Anthropic-compatible gateway.
+Do not keep both the npm spec and a local copy installed at the same time, or the plugin loads twice.
 
 ## Usage
 
@@ -57,29 +73,31 @@ Model variants can force a TTL regardless of the stored mode, via the `x-cache-t
 ]
 ```
 
-The plugin reads the header before the request goes out, applies that TTL, and strips the header. The sample `opencode.jsonc` ships a full set of `-1h` variants for four Claude models.
+The plugin reads the header before the request goes out, applies that TTL, and strips the header. `opencode.jsonc` at this repo's root is a full sample provider config with a complete set of `-1h` variants for four Claude models.
 
 ## Development
 
 ```sh
 bun install
-bun test        # 67 tests
+bun test        # 74 tests: logic, RPC, TUI command paths, package tarball
+bun run typecheck
 ```
-
-`tests/anthropic-cache-ttl.test.ts` covers the pure rewrite logic, the RPC handlers, the TUI command paths, and the sample config's `-1h` variants.
 
 Layout:
 
 ```
-plugins/anthropic-cache-ttl/
-  index.ts    # server: command, http.request hook, RPC handlers, storage
-  tui.ts      # TUI: palette + slash command, picker modal, toasts
-  shared.ts    # pure logic, imported by both sides
-  rpc.ts      # the RPC contract (getMode / setMode / mode.updated)
+server.ts    # server entry: command, http.request hook, RPC handlers, storage
+tui.ts       # TUI entry: palette + slash command, picker modal, toasts
+shared.ts    # pure logic, imported by both sides
+rpc.ts       # the RPC contract (getMode / setMode / mode.updated)
 tests/
-docs/         # the design notes from the original build
+docs/        # design notes from the original build
 ```
+
+The suite includes a package smoke test: it runs `npm pack`, then replays the exact entrypoint resolution OpenCode performs for a configured npm plugin (`Bun.resolveSync("<name>/server" | "<name>/tui" | "<name>/rpc")` against the extracted tarball) and checks the shipped files are byte-identical to the tested sources.
+
+Releases are cut by pushing a `v*` tag; the release workflow tests, packs, publishes both npm names via OIDC trusted publishing (no npm token is stored), and opens a GitHub Release.
 
 ## License
 
-None yet.
+MIT -- see [LICENSE](LICENSE).
