@@ -3,7 +3,10 @@ name: release
 # Pushing a `v*` tag tests and packs the ship set, then publishes it to npm
 # via OIDC trusted publishing -- no npm token is stored anywhere -- under
 # both package names, then creates a GitHub Release. Manual dispatch
-# retries an existing tag without moving it.
+# retries an existing tag without moving it. Re-runs are idempotent:
+# name@version pairs already on npm are skipped (no 409s on re-tagged or
+# re-dispatched releases), and an existing GitHub Release only gets its
+# checksum asset refreshed.
 #
 # Prerequisites (configure once each, outside this repo):
 #   - npm trusted publishers for BOTH package names, each pointing at
@@ -169,25 +172,46 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       # Publish the exact verified artifact under the scoped name, then
-      # the same artifact under the unscoped name.
+      # the same artifact under the unscoped name. Each name is guarded:
+      # if it already has this version on npm (a re-run of a finished
+      # release, or a partial failure being retried), the publish for
+      # that name is skipped instead of dying with E409.
       - name: Publish to npm (both names)
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
           set -- artifacts/*.tgz
           [ "$#" -eq 1 ]
-          npm publish "./$1" --provenance --access public --tag latest
+          if npm view "@noppu-labs/opencode-cache-manager@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::@noppu-labs/opencode-cache-manager@$VERSION is already on npm; skipping scoped publish"
+          else
+            npm publish "./$1" --provenance --access public --tag latest
+          fi
           rm -rf publish-dir && mkdir publish-dir
           tar -xzf "$1" -C publish-dir --strip-components=1
-          (
-            cd publish-dir
-            npm pkg set name=opencode-cache-manager
-            npm publish . --provenance --access public --tag latest
-          )
+          if npm view "opencode-cache-manager@$VERSION" version >/dev/null 2>&1; then
+            echo "::notice::opencode-cache-manager@$VERSION is already on npm; skipping unscoped publish"
+          else
+            (
+              cd publish-dir
+              npm pkg set name=opencode-cache-manager
+              npm publish . --provenance --access public --tag latest
+            )
+          fi
 
+      # Also idempotent: on a re-run the release already exists, so only
+      # the checksum asset is refreshed.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
         run: |
-          tag="${{ needs.build.outputs.tag }}"
-          gh release create "$tag" --title "$tag" --target main --generate-notes
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::$tag release already exists; refreshing checksums only"
+          else
+            gh release create "$tag" --title "$tag" --target main --generate-notes
+          fi
           gh release upload "$tag" artifacts/checksums-sha256.txt --clobber
