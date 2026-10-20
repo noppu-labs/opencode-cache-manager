@@ -63,6 +63,7 @@ function extract(): string {
 const SHIP_FILES = [
   "LICENSE",
   "README.md",
+  "keepalive.ts",
   "package.json",
   "rpc.ts",
   "server.ts",
@@ -99,6 +100,7 @@ describe("npm package manifest", () => {
     expect([...(manifest.files ?? [])].sort()).toEqual([
       "LICENSE",
       "README.md",
+      "keepalive.ts",
       "rpc.ts",
       "server.ts",
       "settings.ts",

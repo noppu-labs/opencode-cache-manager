@@ -31,7 +31,8 @@
     "shared.ts",
     "settings.ts",
     "rpc.ts",
-    "usage.ts"
+    "usage.ts",
+    "keepalive.ts"
   ],
   "scripts": {
     "test": "bun test tests/",
