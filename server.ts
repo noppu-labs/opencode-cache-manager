@@ -57,8 +57,11 @@ export default Plugin.define({
 
     // TEMPORARY PROBE (removed in the next task): checks that a transient
     // `session.generate` reads the cached prefix of the session.
-    const lastUsage = new Map<string, { kind: string; usage: CacheUsage }>();
-    const pendingGenerate = new Map<string, Promise<CacheUsage | undefined>>();
+    type Observed = { kind: string; model: string; usage: CacheUsage };
+    // Baseline is the last primary response only: title/compaction/generate
+    // responses are small or differently prefixed and would give a false HIT.
+    const lastPrimary = new Map<string, Observed>();
+    const pendingGenerate = new Map<string, Promise<Observed | undefined>>();
 
     await ctx.session.hook("http.response", async (evt) => {
       if (!isAnthropicMessagesRequest(evt.request)) return;
@@ -66,11 +69,14 @@ export default Plugin.define({
       evt.response = observed.response;
       const sessionID: string = evt.sessionID;
       const kind: string = evt.kind;
-      const usage = observed.usage.then((u) => {
-        if (u) lastUsage.set(sessionID, { kind, usage: u });
-        return u;
+      const model = `${evt.model.providerID}/${evt.model.id}`;
+      const result = observed.usage.then((usage) => {
+        if (!usage) return undefined;
+        const entry: Observed = { kind, model, usage };
+        if (kind === "primary") lastPrimary.set(sessionID, entry);
+        return entry;
       });
-      if (kind === "generate") pendingGenerate.set(sessionID, usage);
+      if (kind === "generate") pendingGenerate.set(sessionID, result);
     });
 
     await ctx.command.transform((editor) => {
@@ -79,7 +85,7 @@ export default Plugin.define({
         description: "Temporary: check that a transient generate reads the session's cache",
         async execute(input) {
           const sessionID: string = input.sessionID;
-          const before = lastUsage.get(sessionID);
+          const before = lastPrimary.get(sessionID);
           pendingGenerate.delete(sessionID);
           await ctx.session.generate({
             sessionID: input.sessionID,
@@ -87,15 +93,16 @@ export default Plugin.define({
           });
           const ping = await pendingGenerate.get(sessionID);
 
-          const describe = (label: string, kind: string | undefined, u: CacheUsage | undefined) =>
-            u
-              ? `${label}: kind=${kind} inputTokens=${u.inputTokens} cacheReadTokens=${u.cacheReadTokens} ` +
-                `cacheWriteTokens=${u.cacheWriteTokens} write5mTokens=${u.write5mTokens} ` +
-                `write1hTokens=${u.write1hTokens} contextTokens=${contextTokens(u)}`
+          const describe = (label: string, o: Observed | undefined) =>
+            o
+              ? `${label}: kind=${o.kind} model=${o.model} inputTokens=${o.usage.inputTokens} ` +
+                `cacheReadTokens=${o.usage.cacheReadTokens} cacheWriteTokens=${o.usage.cacheWriteTokens} ` +
+                `write5mTokens=${o.usage.write5mTokens} write1hTokens=${o.usage.write1hTokens} ` +
+                `contextTokens=${contextTokens(o.usage)}`
               : `${label}: no usage captured`;
           const verdict =
             before && ping
-              ? ping.cacheReadTokens >= 0.9 * contextTokens(before.usage)
+              ? ping.usage.cacheReadTokens >= 0.9 * contextTokens(before.usage)
                 ? "HIT"
                 : "MISS"
               : "UNKNOWN";
@@ -104,8 +111,8 @@ export default Plugin.define({
             sessionID: input.sessionID,
             resume: false,
             text: [
-              describe("before", before?.kind, before?.usage),
-              describe("ping", "generate", ping),
+              describe("before", before),
+              describe("ping", ping),
               verdict,
             ].join("\n"),
           });
