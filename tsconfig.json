@@ -6,7 +6,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "target": "esnext",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid",
+    "types": ["bun"]
   },
-  "include": ["server.ts", "tui.ts", "shared.ts", "rpc.ts"]
+  "include": ["src", "tests"]
 }

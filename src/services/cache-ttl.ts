@@ -1,70 +1,15 @@
-/**
- * Anthropic prompt-cache TTL modes.
- *
- * - `"5m"`     — default 5-minute ephemeral caching (no `ttl`, no extended beta).
- * - `"1h"`     — 1-hour ephemeral caching on every breakpoint.
- * - `"hybrid"` — 1h on the `tools` + `system` prefix and 5m on `messages`, which
- *                satisfies Anthropic's requirement that longer-lived (1h)
- *                breakpoints precede shorter-lived (5m) ones.
- */
-export type CacheTtlMode = "5m" | "1h" | "hybrid";
+import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
+import { isCacheTtlMode, type CacheTtlMode, type Ttl } from "../models/cache.ts";
 
-/** Anthropic beta flag that unlocks the 1-hour cache TTL. */
-export const EXTENDED_CACHE_BETA = "extended-cache-ttl-2025-04-11";
-
-/** Internal sentinel header used by model variants to override the active mode. */
-export const SENTINEL_HEADER = "x-cache-ttl";
-
-/** Returns true when `value` is one of the three valid cache TTL modes. */
-export function isCacheTtlMode(value: unknown): value is CacheTtlMode {
-  return value === "5m" || value === "1h" || value === "hybrid";
+/** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
+export function ttlForMode(mode: CacheTtlMode): Ttl {
+  return mode === "1h" ? "1h" : "5m";
 }
 
-/** Extracts a plain string from the various shapes a slash-command argument may take. */
-function extractRawText(raw: unknown): string {
-  if (typeof raw === "string") return raw;
-
-  if (
-    raw &&
-    typeof raw === "object" &&
-    "text" in raw &&
-    typeof (raw as { text: unknown }).text === "string"
-  ) {
-    return (raw as { text: string }).text;
-  }
-
-  if (Array.isArray(raw)) {
-    return raw
-      .map((item) => {
-        if (
-          item &&
-          typeof item === "object" &&
-          "text" in item &&
-          typeof (item as { text: unknown }).text === "string"
-        ) {
-          return (item as { text: string }).text;
-        }
-        return "";
-      })
-      .filter((part) => part.length > 0)
-      .join(" ");
-  }
-
-  return "";
-}
-
-/**
- * Parses a slash-command argument into an action. Accepts a raw string, a
- * `PromptInput.Prompt`-shaped object, or an array of `{ text }` parts.
- */
-export function parseModeArg(
-  raw: unknown,
-): CacheTtlMode | "toggle" | "status" | "invalid" {
-  const text = extractRawText(raw).trim().toLowerCase();
-  if (text === "" || text === "toggle") return "toggle";
-  if (text === "status") return "status";
-  if (isCacheTtlMode(text)) return text;
-  return "invalid";
+/** The mode a request runs at: a valid `x-cache-ttl` header, else `fallback`. */
+export function resolveActiveMode(request: Request, fallback: CacheTtlMode): CacheTtlMode {
+  const normalized = (request.headers.get(SENTINEL_HEADER) ?? "").trim().toLowerCase();
+  return isCacheTtlMode(normalized) ? normalized : fallback;
 }
 
 /**
@@ -216,10 +161,8 @@ export async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
 ): Promise<Request> {
-  const rawSentinel = request.headers.get(SENTINEL_HEADER);
   const hadSentinel = request.headers.has(SENTINEL_HEADER);
-  const normalized = (rawSentinel ?? "").trim().toLowerCase();
-  const activeMode: CacheTtlMode = isCacheTtlMode(normalized) ? normalized : fallbackMode;
+  const activeMode = resolveActiveMode(request, fallbackMode);
 
   const headers = new Headers(request.headers);
   headers.delete(SENTINEL_HEADER);
@@ -228,7 +171,7 @@ export async function transformHttpRequest(
 
   if (!request.body) {
     return hadSentinel
-      ? new Request(request.url, { method: request.method, headers })
+      ? new Request(request.url, { method: request.method, headers, signal: request.signal })
       : request;
   }
 
@@ -248,7 +191,7 @@ export async function transformHttpRequest(
   ) {
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
-    return new Request(request.url, { method: request.method, headers, body: buffer });
+    return new Request(request.url, { method: request.method, headers, body: buffer, signal: request.signal });
   }
 
   rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
@@ -262,5 +205,6 @@ export async function transformHttpRequest(
     method: request.method,
     headers,
     body: JSON.stringify(parsed),
+    signal: request.signal,
   });
 }

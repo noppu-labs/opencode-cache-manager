@@ -1,10 +1,28 @@
 // Sample opencode.jsonc for the anthropic-cache-ttl plugin (opencode-cache-manager).
 //
-// This fixture is also used by the test suite (tests/anthropic-cache-ttl.test.ts).
+// This fixture is also used by the test suite (tests/opencode-config.test.ts).
 // To use the plugin with your own setup, copy the "omniroute-anthropic" provider
 // below into your ~/.config/opencode/opencode.jsonc, or point it at any
 // Anthropic-compatible endpoint. The authToken is an env-var reference, so
 // there are no secrets in this file.
+//
+// Plugin options (keepalive and the default TTL mode) go in the plugin entry of
+// your own opencode.jsonc, not in this file. Every value is optional and the
+// ones shown are the defaults, except defaultMode, which defaults to "5m":
+//
+//   "plugins": [
+//     {
+//       "package": "@noppu-labs/opencode-cache-manager",
+//       "options": {
+//         "defaultMode": "1h",
+//         "keepalive": {
+//           "enabled": true,
+//           "maxPings": 5,
+//           "minContextTokens": 50000
+//         }
+//       }
+//     }
+//   ]
 {
   "$schema": "https://opencode.ai/config.json",
   "providers": {

@@ -1,7 +1,7 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
-  "version": "0.1.1",
-  "description": "Anthropic prompt-cache TTL manager for OpenCode V2: 5m / 1h / hybrid modes with an interactive TUI picker modal",
+  "version": "0.2.0",
+  "description": "Anthropic prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL, keepalive pings for idle sessions, and a sidebar cache status",
   "type": "module",
   "license": "MIT",
   "author": "cris005",
@@ -17,19 +17,16 @@
     "access": "public"
   },
   "exports": {
-    ".": "./server.ts",
-    "./server": "./server.ts",
-    "./tui": "./tui.ts",
-    "./rpc": "./rpc.ts",
+    ".": "./src/server.ts",
+    "./server": "./src/server.ts",
+    "./tui": "./src/tui.ts",
+    "./rpc": "./src/rpc.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "LICENSE",
     "README.md",
-    "server.ts",
-    "tui.ts",
-    "shared.ts",
-    "rpc.ts"
+    "src"
   ],
   "scripts": {
     "test": "bun test tests/",
@@ -40,7 +37,21 @@
     "opencode": ">=2.0.22 <3"
   },
   "peerDependencies": {
-    "@opencode/plugin": ">=2.0.22 <3"
+    "@opencode/plugin": ">=2.0.22 <3",
+    "@opentui/core": ">=0.5.14",
+    "@opentui/solid": ">=0.5.14",
+    "solid-js": ">=1.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
   },
   "keywords": [
     "opencode",
@@ -49,11 +60,18 @@
     "claude",
     "prompt-caching",
     "cache-ttl",
+    "cache-keepalive",
+    "keepalive",
     "tui",
     "typescript",
     "bun"
   ],
   "devDependencies": {
+    "@opencode/theme": "2.0.22",
+    "@opentui/core": "0.5.14",
+    "@opentui/solid": "0.5.14",
+    "@types/bun": "^1.4.3",
+    "solid-js": "1.9.15",
     "typescript": "^7.0.2"
   }
 }
