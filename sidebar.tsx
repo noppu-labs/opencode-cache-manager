@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode/plugin/tui";
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
-import { sidebarLines, type Tone } from "./display.ts";
+import { LABEL_WIDTH, sidebarLines, type Tone } from "./display.ts";
 import type { KeepaliveSnapshot } from "./keepalive.ts";
 
 function toneColor(theme: Plugin.Context["theme"], tone: Tone) {
@@ -41,10 +41,11 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
               </text>
             }
           >
-            <box flexDirection="row" justifyContent="space-between">
-              <text fg={toneColor(theme(), line().tone)}>{line().text}</text>
-              <text fg={toneColor(theme(), line().rightTone ?? "muted")}>{line().right}</text>
-            </box>
+            <text>
+              <span style={{ fg: toneColor(theme(), line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
+              <span style={{ fg: toneColor(theme(), line().tone) }}>{line().text.padEnd(LABEL_WIDTH)}</span>
+              <span style={{ fg: toneColor(theme(), line().rightTone ?? "muted") }}>{line().right}</span>
+            </text>
           </Show>
         )}
       </Index>

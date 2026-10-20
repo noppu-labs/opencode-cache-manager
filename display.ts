@@ -5,10 +5,15 @@ export interface SidebarLine {
   text: string;
   tone: Tone;
   bold?: boolean;
-  /** Second column, rendered right-aligned; muted unless `rightTone` is set. */
+  /** Prefix the row with a bullet in this tone; other rows are indented to match. */
+  bullet?: Tone;
+  /** Value column, left-aligned after the padded label; muted unless `rightTone` is set. */
   right?: string;
   rightTone?: Tone;
 }
+
+/** Width of the label column, so values line up across rows. */
+export const LABEL_WIDTH = 12;
 
 const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
 
@@ -43,15 +48,17 @@ export function sidebarLines(
   if (s.expiresAt === null) return [HEADER, ttl];
 
   if (now >= s.expiresAt) {
-    return [HEADER, { text: "• expired", tone: "error", right: `${formatRemaining(now - s.expiresAt)} ago` }, ttl];
+    return [
+      HEADER,
+      { text: "status", tone: "base", bullet: "error", right: "expired" },
+      { text: "expired", tone: "base", right: `${formatRemaining(now - s.expiresAt)} ago` },
+      ttl,
+    ];
   }
   const lines: SidebarLine[] = [
     HEADER,
-    {
-      text: "• warm",
-      tone: s.skipReason === "exhausted" ? "warning" : "success",
-      right: `expires ${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
-    },
+    { text: "status", tone: "base", bullet: s.skipReason === "exhausted" ? "warning" : "success", right: "warm" },
+    { text: "expires", tone: "base", right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})` },
     ttl,
   ];
 

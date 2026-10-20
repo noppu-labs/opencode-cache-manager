@@ -27,9 +27,12 @@ function snap(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot {
 const lines = (s: KeepaliveSnapshot | undefined): SidebarLine[] => sidebarLines(s, NOW, clock);
 
 const TITLE: SidebarLine = { text: "Cache", tone: "base", bold: true };
-const WARM: SidebarLine = { text: "• warm", tone: "success", right: "expires HH:MM (4m)" };
+const WARM: SidebarLine[] = [
+  { text: "status", tone: "base", bullet: "success", right: "warm" },
+  { text: "expires", tone: "base", right: "HH:MM (4m)" },
+];
 const TTL: SidebarLine = { text: "ttl", tone: "base", right: "5m (detected)" };
-const HEADER: SidebarLine[] = [TITLE, WARM, TTL];
+const HEADER: SidebarLine[] = [TITLE, ...WARM, TTL];
 const noResponse = {
   ttl: null,
   ttlSource: null,
@@ -75,9 +78,9 @@ describe("sidebarLines", () => {
   });
 
   test("status row comes first, then the ttl row", () => {
-    expect(lines(snap({ ttl: "1h", ttlSource: "requested" })).slice(0, 3)).toEqual([
+    expect(lines(snap({ ttl: "1h", ttlSource: "requested" })).slice(0, 4)).toEqual([
       TITLE,
-      WARM,
+      ...WARM,
       { text: "ttl", tone: "base", right: "1h (requested)" },
     ]);
   });
@@ -85,10 +88,11 @@ describe("sidebarLines", () => {
   test("an expired cache shows an error status and the ttl row only", () => {
     expect(lines(snap({ expiresAt: NOW - 5 * MIN, skipReason: "missed", nextPingAt: NOW + 1 }))).toEqual([
       TITLE,
-      { text: "• expired", tone: "error", right: "5m ago" },
+      { text: "status", tone: "base", bullet: "error", right: "expired" },
+      { text: "expired", tone: "base", right: "5m ago" },
       TTL,
     ]);
-    expect(lines(snap({ expiresAt: NOW }))[1]).toEqual({ text: "• expired", tone: "error", right: "0s ago" });
+    expect(lines(snap({ expiresAt: NOW }))[2]).toEqual({ text: "expired", tone: "base", right: "0s ago" });
   });
 
   test("warm with a scheduled ping", () => {
@@ -101,9 +105,9 @@ describe("sidebarLines", () => {
 
   test("pings row ticks on a hit, and flags a miss or failure", () => {
     const base = { nextPingAt: NOW + MIN, pingsUsed: 2 };
-    expect(lines(snap({ ...base, lastPing: "hit" }))[4]).toEqual({ text: "pings", tone: "base", right: "2/5 ✓ hit", rightTone: "success" });
-    expect(lines(snap({ ...base, lastPing: "miss" }))[4]).toEqual({ text: "pings", tone: "base", right: "2/5 ✗ miss", rightTone: "error" });
-    expect(lines(snap({ ...base, lastPing: "failed" }))[4]).toEqual({ text: "pings", tone: "base", right: "2/5 ✗ failed", rightTone: "error" });
+    expect(lines(snap({ ...base, lastPing: "hit" }))[5]).toEqual({ text: "pings", tone: "base", right: "2/5 ✓ hit", rightTone: "success" });
+    expect(lines(snap({ ...base, lastPing: "miss" }))[5]).toEqual({ text: "pings", tone: "base", right: "2/5 ✗ miss", rightTone: "error" });
+    expect(lines(snap({ ...base, lastPing: "failed" }))[5]).toEqual({ text: "pings", tone: "base", right: "2/5 ✗ failed", rightTone: "error" });
   });
 
   test("a failed ping with nothing scheduled still shows the pings row", () => {
@@ -116,7 +120,8 @@ describe("sidebarLines", () => {
   test("exhausted pings turn the status to a warning and show next ping none", () => {
     expect(lines(snap({ skipReason: "exhausted", pingsUsed: 5, lastPing: "hit" }))).toEqual([
       TITLE,
-      { ...WARM, tone: "warning" },
+      { ...WARM[0], bullet: "warning" },
+      WARM[1],
       TTL,
       { text: "next ping", tone: "base", right: "none" },
       { text: "pings", tone: "base", right: "5/5 ✓ hit", rightTone: "success" },
@@ -131,7 +136,7 @@ describe("sidebarLines", () => {
   });
 
   test("small context rounds thousands to the nearest k", () => {
-    expect(lines(snap({ skipReason: "small-context", contextTokens: 30_600, minContextTokens: 49_600 }))[3]!.right).toBe(
+    expect(lines(snap({ skipReason: "small-context", contextTokens: 30_600, minContextTokens: 49_600 }))[4]!.right).toBe(
       "off · 31k < 50k",
     );
   });
@@ -165,6 +170,6 @@ describe("sidebarLines", () => {
 
   test("default clock renders local 24h HH:MM", () => {
     const out = sidebarLines(snap(), NOW);
-    expect(out[1]!.right).toMatch(/^expires \d{2}:\d{2} \(4m\)$/);
+    expect(out[2]!.right).toMatch(/^\d{2}:\d{2} \(4m\)$/);
   });
 });
