@@ -19,5 +19,6 @@ dist/
 # Tooling / agent caches
 .opencode/
 .superpowers/
+docs/superpowers/
 .gitnexus/
 .codegraph/
