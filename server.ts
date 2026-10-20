@@ -7,6 +7,12 @@ import {
   transformHttpRequest,
   type CacheTtlMode,
 } from "./shared.ts";
+import {
+  contextTokens,
+  isAnthropicMessagesRequest,
+  observeResponseUsage,
+  type CacheUsage,
+} from "./usage.ts";
 
 /**
  * Server entrypoint for the Anthropic prompt-cache TTL plugin.
@@ -48,6 +54,64 @@ export default Plugin.define({
     } catch {
       // RPC is optional (older hosts / headless runs): keep command + hook.
     }
+
+    // TEMPORARY PROBE (removed in the next task): checks that a transient
+    // `session.generate` reads the cached prefix of the session.
+    const lastUsage = new Map<string, { kind: string; usage: CacheUsage }>();
+    const pendingGenerate = new Map<string, Promise<CacheUsage | undefined>>();
+
+    await ctx.session.hook("http.response", async (evt) => {
+      if (!isAnthropicMessagesRequest(evt.request)) return;
+      const observed = observeResponseUsage(evt.response);
+      evt.response = observed.response;
+      const sessionID: string = evt.sessionID;
+      const kind: string = evt.kind;
+      const usage = observed.usage.then((u) => {
+        if (u) lastUsage.set(sessionID, { kind, usage: u });
+        return u;
+      });
+      if (kind === "generate") pendingGenerate.set(sessionID, usage);
+    });
+
+    await ctx.command.transform((editor) => {
+      editor.add({
+        name: "cache-manager-probe",
+        description: "Temporary: check that a transient generate reads the session's cache",
+        async execute(input) {
+          const sessionID: string = input.sessionID;
+          const before = lastUsage.get(sessionID);
+          pendingGenerate.delete(sessionID);
+          await ctx.session.generate({
+            sessionID: input.sessionID,
+            prompt: "Do not perform any work and do not use tools. Reply with exactly: OK",
+          });
+          const ping = await pendingGenerate.get(sessionID);
+
+          const describe = (label: string, kind: string | undefined, u: CacheUsage | undefined) =>
+            u
+              ? `${label}: kind=${kind} inputTokens=${u.inputTokens} cacheReadTokens=${u.cacheReadTokens} ` +
+                `cacheWriteTokens=${u.cacheWriteTokens} write5mTokens=${u.write5mTokens} ` +
+                `write1hTokens=${u.write1hTokens} contextTokens=${contextTokens(u)}`
+              : `${label}: no usage captured`;
+          const verdict =
+            before && ping
+              ? ping.cacheReadTokens >= 0.9 * contextTokens(before.usage)
+                ? "HIT"
+                : "MISS"
+              : "UNKNOWN";
+
+          await ctx.session.synthetic({
+            sessionID: input.sessionID,
+            resume: false,
+            text: [
+              describe("before", before?.kind, before?.usage),
+              describe("ping", "generate", ping),
+              verdict,
+            ].join("\n"),
+          });
+        },
+      });
+    });
 
     await ctx.command.transform((editor) => {
       editor.add({
