@@ -68,6 +68,7 @@ const SHIP_FILES = [
   "server.ts",
   "shared.ts",
   "tui.ts",
+  "usage.ts",
 ];
 
 afterAll(() => {
@@ -101,6 +102,7 @@ describe("npm package manifest", () => {
       "server.ts",
       "shared.ts",
       "tui.ts",
+      "usage.ts",
     ]);
   });
 });

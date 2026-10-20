@@ -29,7 +29,8 @@
     "server.ts",
     "tui.ts",
     "shared.ts",
-    "rpc.ts"
+    "rpc.ts",
+    "usage.ts"
   ],
   "scripts": {
     "test": "bun test tests/",

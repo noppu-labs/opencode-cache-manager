@@ -8,5 +8,5 @@
     "target": "esnext",
     "allowImportingTsExtensions": true
   },
-  "include": ["server.ts", "tui.ts", "shared.ts", "rpc.ts"]
+  "include": ["server.ts", "tui.ts", "shared.ts", "rpc.ts", "usage.ts"]
 }
