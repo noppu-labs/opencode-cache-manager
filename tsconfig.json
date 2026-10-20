@@ -6,7 +6,9 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "target": "esnext",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
   },
-  "include": ["server.ts", "tui.ts", "shared.ts", "settings.ts", "rpc.ts", "usage.ts", "keepalive.ts"]
+  "include": ["server.ts", "tui.ts", "shared.ts", "settings.ts", "rpc.ts", "usage.ts", "keepalive.ts", "display.ts", "sidebar.tsx"]
 }

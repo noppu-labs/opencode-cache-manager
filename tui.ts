@@ -2,6 +2,8 @@ import { Plugin } from "@opencode/plugin/tui";
 import { CacheTtlRpc } from "./rpc.ts";
 import { parseCommandArg, type CacheTtlMode } from "./shared.ts";
 import { mergeSettings, type Settings, type SettingsPatch } from "./settings.ts";
+import type { KeepaliveSnapshot } from "./keepalive.ts";
+import { registerSidebar } from "./sidebar.tsx";
 
 /**
  * Interactive metadata for each cache TTL mode, shown in the picker modal.
@@ -51,11 +53,12 @@ type RpcClient = {
   setGlobal(input: { patch: SettingsPatch }): Promise<unknown>;
   setSession(input: { sessionID: string; patch: SettingsPatch }): Promise<unknown>;
   resetSession(input: { sessionID: string }): Promise<unknown>;
+  getKeepalive(input: { sessionID: string }): Promise<KeepaliveSnapshot>;
   events: {
     subscribe(
-      name: "settings.updated",
+      name: "keepalive.updated",
       options?: { signal?: AbortSignal },
-    ): AsyncIterable<unknown>;
+    ): AsyncIterable<{ data: KeepaliveSnapshot }>;
   };
 };
 
@@ -285,6 +288,64 @@ export default Plugin.define({
       ],
     }));
 
-    return () => {};
+    const [sidebar, updateSidebar] = ctx.storage.memory("keepalive", {
+      initial: {
+        snapshots: {} as Record<string, KeepaliveSnapshot>,
+        minContext: {} as Record<string, number>,
+      },
+    });
+
+    const refreshMinContext = async (sessionID: string): Promise<void> => {
+      try {
+        const { global, session } = await rpc.getSettings({ sessionID });
+        const { minContextTokens } = mergeSettings(global, session ?? {});
+        updateSidebar((draft) => {
+          draft.minContext[sessionID] = minContextTokens;
+        });
+      } catch {
+        // The sidebar falls back to copy without the threshold.
+      }
+    };
+
+    const applySnapshot = (snapshot: KeepaliveSnapshot): void => {
+      updateSidebar((draft) => {
+        draft.snapshots[snapshot.sessionID] = snapshot;
+      });
+      if (snapshot.skipReason === "small-context") void refreshMinContext(snapshot.sessionID);
+    };
+
+    const requested = new Set<string>();
+    const loadSnapshot = (sessionID: string): void => {
+      if (requested.has(sessionID)) return;
+      requested.add(sessionID);
+      rpc.getKeepalive({ sessionID }).then(
+        (snapshot) => {
+          if (sidebar.snapshots[sessionID] === undefined) applySnapshot(snapshot);
+        },
+        () => requested.delete(sessionID),
+      );
+    };
+
+    const abort = new AbortController();
+    void (async () => {
+      try {
+        for await (const event of rpc.events.subscribe("keepalive.updated", { signal: abort.signal })) {
+          applySnapshot(event.data);
+        }
+      } catch {
+        // Aborted on cleanup, or the stream closed; the sidebar keeps its last snapshots.
+      }
+    })();
+
+    const disposeSidebar = registerSidebar(
+      ctx,
+      () => new Map(Object.entries(sidebar.snapshots)),
+      { load: loadSnapshot, minContext: (sessionID) => sidebar.minContext[sessionID] },
+    );
+
+    return () => {
+      abort.abort();
+      disposeSidebar();
+    };
   },
 });

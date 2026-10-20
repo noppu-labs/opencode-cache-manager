@@ -1,0 +1,74 @@
+import type { KeepaliveSnapshot } from "./keepalive.ts";
+
+export type Tone = "base" | "muted" | "success" | "warning" | "error";
+export interface SidebarLine {
+  text: string;
+  tone: Tone;
+}
+
+const defaultClock = (ms: number): string =>
+  new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+/** "52m", "3m", "45s"; "1h 05m" at 60 minutes and above. */
+export function formatRemaining(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  return `${Math.floor(totalMinutes / 60)}h ${String(totalMinutes % 60).padStart(2, "0")}m`;
+}
+
+const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
+
+/**
+ * Lines for the sidebar cache section; an empty array means render nothing.
+ * `minContextTokens` is the keepalive threshold, which the snapshot does not carry.
+ */
+export function sidebarLines(
+  s: KeepaliveSnapshot | undefined,
+  now: number,
+  formatClock: (ms: number) => string = defaultClock,
+  minContextTokens?: number,
+): SidebarLine[] {
+  if (s === undefined || s.lastRequestAt === null || s.skipReason === "child") return [];
+  if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
+  if (s.ttl === null) return [{ text: "Cache · waiting for first response", tone: "muted" }];
+
+  const lines: SidebarLine[] = [{ text: `Cache ${s.ttl} · ${s.ttlSource}`, tone: "base" }];
+  if (s.expiresAt === null) return lines;
+
+  if (now >= s.expiresAt) {
+    lines.push({ text: `○ expired ${formatRemaining(now - s.expiresAt)} ago`, tone: "error" });
+    return lines;
+  }
+  lines.push({
+    text: `● warm, expires ${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
+    tone: s.skipReason === "exhausted" ? "warning" : "success",
+  });
+
+  if (s.skipReason === "missed") {
+    lines.push({ text: "  keepalive stopped · last ping missed", tone: "error" });
+  } else if (s.skipReason === "small-context") {
+    const used = thousands(s.contextTokens ?? 0);
+    const detail = minContextTokens === undefined ? `${used} context` : `${used} < ${thousands(minContextTokens)}`;
+    lines.push({ text: `  keepalive   off · ${detail}`, tone: "muted" });
+  } else if (s.skipReason === "disabled") {
+    lines.push({ text: "  keepalive   off · disabled", tone: "muted" });
+  } else {
+    if (s.nextPingAt !== null) {
+      lines.push({
+        text: `  next ping   ${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
+        tone: "muted",
+      });
+    } else if (s.skipReason === "exhausted") {
+      lines.push({ text: "  next ping   none", tone: "muted" });
+    }
+    const outcome =
+      s.lastPing === "hit" ? " ✓ hit" : s.lastPing === "miss" ? " ✗ miss" : s.lastPing === "failed" ? " ✗ failed" : "";
+    lines.push({
+      text: `  pings       ${s.pingsUsed}/${s.maxPings}${outcome}`,
+      tone: s.lastPing === "hit" ? "success" : s.lastPing === null ? "muted" : "error",
+    });
+  }
+  return lines;
+}

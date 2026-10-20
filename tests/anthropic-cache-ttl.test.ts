@@ -24,6 +24,23 @@ import {
 mock.module("@opencode/plugin/tui", () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
+// `sidebar.tsx` is Solid JSX that only the live TUI host can compile; stub it and
+// capture what `tui.ts` hands to `registerSidebar`.
+type SidebarCall = {
+  snapshots: () => ReadonlyMap<string, any>;
+  hooks: { load?: (sessionID: string) => void; minContext?: (sessionID: string) => number | undefined };
+  disposed: boolean;
+};
+const sidebarCalls: SidebarCall[] = [];
+mock.module("../sidebar.tsx", () => ({
+  registerSidebar: (_ctx: unknown, snapshots: SidebarCall["snapshots"], hooks: SidebarCall["hooks"] = {}) => {
+    const call: SidebarCall = { snapshots, hooks, disposed: false };
+    sidebarCalls.push(call);
+    return () => {
+      call.disposed = true;
+    };
+  },
+}));
 const { default: tuiPlugin } = await import("../tui.ts");
 
 // ---------------------------------------------------------------------------
@@ -1666,6 +1683,7 @@ type TuiMockOptions = {
   selects?: unknown[];
   prompts?: unknown[];
   setSessionImpl?: (input: any) => Promise<unknown>;
+  keepalive?: Record<string, any>;
 };
 
 type TuiMock = {
@@ -1676,6 +1694,10 @@ type TuiMock = {
   setSessionCalls: any[];
   setGlobalCalls: any[];
   resetCalls: any[];
+  getKeepaliveCalls: any[];
+  subscriptions: { name: string; signal: AbortSignal | undefined }[];
+  emitKeepalive: (snapshot: any) => Promise<void>;
+  cleanup?: () => void;
   layer: () => any;
   run: (input?: string) => Promise<void>;
 };
@@ -1688,6 +1710,9 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   const setSessionCalls: any[] = [];
   const setGlobalCalls: any[] = [];
   const resetCalls: any[] = [];
+  const getKeepaliveCalls: any[] = [];
+  const subscriptions: { name: string; signal: AbortSignal | undefined }[] = [];
+  const listeners = new Set<(event: any) => void>();
   const selects = [...(options.selects ?? [])];
   const prompts = [...(options.prompts ?? [])];
   const route = options.route ?? { type: "session", sessionID: "ses_tui" };
@@ -1710,11 +1735,40 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
           resetCalls.push(input);
           return {};
         },
+        getKeepalive: async (input: any) => {
+          getKeepaliveCalls.push(input);
+          return options.keepalive?.[input.sessionID];
+        },
         events: {
-          // eslint-disable-next-line require-yield
-          subscribe: async function* () {},
+          subscribe: (name: string, opts?: { signal?: AbortSignal }) => {
+            subscriptions.push({ name, signal: opts?.signal });
+            return (async function* () {
+              const queue: any[] = [];
+              let wake: (() => void) | undefined;
+              const push = (event: any) => {
+                queue.push(event);
+                wake?.();
+              };
+              listeners.add(push);
+              opts?.signal?.addEventListener("abort", () => wake?.());
+              try {
+                while (!opts?.signal?.aborted) {
+                  if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
+                  while (queue.length > 0) yield queue.shift();
+                }
+              } finally {
+                listeners.delete(push);
+              }
+            })();
+          },
         },
       }),
+    },
+    storage: {
+      memory: (_key: string, { initial }: { initial: object }) => {
+        const state = structuredClone(initial);
+        return [state, (mutation: (draft: any) => void) => mutation(state)];
+      },
     },
     ui: {
       dialog: {
@@ -1751,6 +1805,12 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     setSessionCalls,
     setGlobalCalls,
     resetCalls,
+    getKeepaliveCalls,
+    subscriptions,
+    emitKeepalive: async (snapshot: any) => {
+      for (const listener of listeners) listener({ type: "rpc.anthropic-cache-ttl.keepalive.updated", data: snapshot });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
     layer: () => layer,
     run: (input?: string) => layer.commands[0].run(input),
   };
@@ -1758,7 +1818,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
 
 async function setupTui(options: TuiMockOptions = {}): Promise<TuiMock> {
   const mock = createTuiCtx(options);
-  await (tuiPlugin as any).setup(mock.ctx);
+  mock.cleanup = await (tuiPlugin as any).setup(mock.ctx);
   return mock;
 }
 
@@ -2044,5 +2104,88 @@ describe("cache-manager TUI plugin", () => {
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("error");
     expect(mock.toasts[0].message).toContain("rpc down");
+  });
+
+  describe("sidebar", () => {
+    const snapshot = (sessionID: string, extra: Record<string, unknown> = {}) => ({
+      sessionID,
+      ttl: "5m",
+      ttlSource: "detected",
+      lastRequestAt: 1,
+      expiresAt: 2,
+      nextPingAt: null,
+      pingsUsed: 0,
+      maxPings: 5,
+      lastPing: null,
+      skipReason: null,
+      contextTokens: 80_000,
+      ...extra,
+    });
+    const lastSidebar = () => sidebarCalls[sidebarCalls.length - 1]!;
+
+    test("registers the sidebar slot with an initially empty snapshot map", async () => {
+      sidebarCalls.length = 0;
+      await setupTui();
+
+      expect(sidebarCalls).toHaveLength(1);
+      expect(lastSidebar().snapshots().size).toBe(0);
+    });
+
+    test("keepalive.updated events populate the snapshot map", async () => {
+      const mock = await setupTui();
+
+      await mock.emitKeepalive(snapshot("ses_a"));
+      await mock.emitKeepalive(snapshot("ses_b", { pingsUsed: 2 }));
+      await mock.emitKeepalive(snapshot("ses_a", { pingsUsed: 1 }));
+
+      expect(mock.subscriptions.map((s) => s.name)).toEqual(["keepalive.updated"]);
+      const map = lastSidebar().snapshots();
+      expect([...map.keys()].sort()).toEqual(["ses_a", "ses_b"]);
+      expect(map.get("ses_a")!.pingsUsed).toBe(1);
+      expect(map.get("ses_b")!.pingsUsed).toBe(2);
+    });
+
+    test("fetches getKeepalive once per session when its sidebar first renders", async () => {
+      const mock = await setupTui({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 3 }) } });
+
+      lastSidebar().hooks.load!("ses_a");
+      lastSidebar().hooks.load!("ses_a");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mock.getKeepaliveCalls).toEqual([{ sessionID: "ses_a" }]);
+      expect(lastSidebar().snapshots().get("ses_a")!.pingsUsed).toBe(3);
+    });
+
+    test("a fetched snapshot does not overwrite one already received by event", async () => {
+      const mock = await setupTui({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 0 }) } });
+
+      await mock.emitKeepalive(snapshot("ses_a", { pingsUsed: 4 }));
+      lastSidebar().hooks.load!("ses_a");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(lastSidebar().snapshots().get("ses_a")!.pingsUsed).toBe(4);
+    });
+
+    test("a small-context snapshot makes the session's min context threshold available", async () => {
+      const mock = await setupTui({ global: { minContextTokens: 50_000 }, session: { minContextTokens: 40_000 } });
+
+      expect(lastSidebar().hooks.minContext!("ses_a")).toBeUndefined();
+      await mock.emitKeepalive(snapshot("ses_a", { skipReason: "small-context", contextTokens: 31_000 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(lastSidebar().hooks.minContext!("ses_a")).toBe(40_000);
+    });
+
+    test("cleanup disposes the slot and aborts the subscription", async () => {
+      const mock = await setupTui();
+      const sub = mock.subscriptions[0]!;
+      expect(sub.signal?.aborted).toBe(false);
+      expect(lastSidebar().disposed).toBe(false);
+
+      mock.cleanup!();
+
+      expect(sub.signal?.aborted).toBe(true);
+      expect(lastSidebar().disposed).toBe(true);
+    });
   });
 });
