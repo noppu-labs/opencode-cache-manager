@@ -12,6 +12,8 @@ bun run typecheck    # tsc -p . (noEmit, strict), covers src/ and tests/ with Bu
 
 Runtime is Bun (>= 1.3). There is no build step: the `.ts` sources ship as-is and OpenCode loads them directly.
 
+Run the tests on Bun 1.4.2 or newer; CI pins 1.4.2, the version OpenCode v2 embeds. On Bun 1.3.x, advancing fake timers further than the machine's uptime freezes the event loop, and the keepalive tests advance 50 minutes, so they hang on freshly booted CI runners while passing on a long-running laptop.
+
 ## Code intelligence indexes
 
 GitNexus and CodeGraph indexes live in `.gitnexus/` and `.codegraph/` (both gitignored). To refresh them:
