@@ -204,6 +204,7 @@ describe("keepalive engine: scheduling", () => {
       nextPingAt: 50 * MIN,
       pingsUsed: 0,
       maxPings: 5,
+      minContextTokens: 50_000,
       skipReason: null,
       contextTokens: 80_100,
     });
@@ -298,6 +299,7 @@ describe("keepalive engine: scheduling", () => {
       contextTokens: null,
       skipReason: "no-cache-seen",
       nextPingAt: null,
+      minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
     });
     h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
     await h.flush();
@@ -349,6 +351,17 @@ describe("keepalive engine: scheduling", () => {
     expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: null, nextPingAt: 50 * MIN });
     await h.advance(20 * MIN);
     expect(h.pings).toEqual([{ sessionID: "s1", at: 50 * MIN }]);
+  });
+
+  test("changing minContextTokens via reevaluate updates the snapshot field", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    expect(h.engine.snapshot("s1").minContextTokens).toBe(50_000);
+
+    h.settings.minContextTokens = 100_000;
+    await h.engine.reevaluate("s1");
+    expect(h.engine.snapshot("s1")).toMatchObject({ minContextTokens: 100_000, skipReason: "small-context" });
+    expect(h.changes.at(-1)).toMatchObject({ minContextTokens: 100_000 });
   });
 
   test("lowering maxPings below used ends the run", async () => {

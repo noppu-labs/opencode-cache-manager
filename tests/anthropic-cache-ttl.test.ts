@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import plugin from "../server.ts";
 import { PING_PROMPT } from "../keepalive.ts";
+import { CacheTtlRpc } from "../rpc.ts";
 import {
   EXTENDED_CACHE_BETA,
   SENTINEL_HEADER,
@@ -28,13 +29,13 @@ mock.module("@opencode/plugin/tui", () => ({
 // capture what `tui.ts` hands to `registerSidebar`.
 type SidebarCall = {
   snapshots: () => ReadonlyMap<string, any>;
-  hooks: { load?: (sessionID: string) => void; minContext?: (sessionID: string) => number | undefined };
+  load: (sessionID: string) => void;
   disposed: boolean;
 };
 const sidebarCalls: SidebarCall[] = [];
 mock.module("../sidebar.tsx", () => ({
-  registerSidebar: (_ctx: unknown, snapshots: SidebarCall["snapshots"], hooks: SidebarCall["hooks"] = {}) => {
-    const call: SidebarCall = { snapshots, hooks, disposed: false };
+  registerSidebar: (_ctx: unknown, snapshots: SidebarCall["snapshots"], load: SidebarCall["load"]) => {
+    const call: SidebarCall = { snapshots, load, disposed: false };
     sidebarCalls.push(call);
     return () => {
       call.disposed = true;
@@ -1068,6 +1069,7 @@ describe("keepalive wiring", () => {
       ttl: "1h",
       ttlSource: "detected",
       contextTokens: 60_010,
+      minContextTokens: 50_000,
       skipReason: null,
     });
     expect(snapshot.nextPingAt).toBe(T0 + FIFTY_MIN);
@@ -1249,6 +1251,13 @@ describe("keepalive wiring", () => {
     expect(lastSnapshot(mock)).toMatchObject({ skipReason: null, nextPingAt: T0 + FIFTY_MIN });
   });
 
+  test("the keepalive snapshot schema requires minContextTokens as an integer", () => {
+    const schema = (CacheTtlRpc.methods.getKeepalive.output as any);
+    expect(schema.properties.minContextTokens).toEqual({ type: "integer", minimum: 0 });
+    expect(schema.required).toContain("minContextTokens");
+    expect((CacheTtlRpc.events["keepalive.updated"].schema as any).required).toContain("minContextTokens");
+  });
+
   test("RPC getKeepalive returns the current snapshot", async () => {
     const mock = await start();
     await roundTrip(mock);
@@ -1259,6 +1268,7 @@ describe("keepalive wiring", () => {
       sessionID: "ses_unknown",
       ttl: null,
       nextPingAt: null,
+      minContextTokens: 50_000,
     });
   });
 
@@ -2116,6 +2126,7 @@ describe("cache-manager TUI plugin", () => {
       nextPingAt: null,
       pingsUsed: 0,
       maxPings: 5,
+      minContextTokens: 50_000,
       lastPing: null,
       skipReason: null,
       contextTokens: 80_000,
@@ -2148,8 +2159,8 @@ describe("cache-manager TUI plugin", () => {
     test("fetches getKeepalive once per session when its sidebar first renders", async () => {
       const mock = await setupTui({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 3 }) } });
 
-      lastSidebar().hooks.load!("ses_a");
-      lastSidebar().hooks.load!("ses_a");
+      lastSidebar().load("ses_a");
+      lastSidebar().load("ses_a");
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mock.getKeepaliveCalls).toEqual([{ sessionID: "ses_a" }]);
@@ -2160,20 +2171,10 @@ describe("cache-manager TUI plugin", () => {
       const mock = await setupTui({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 0 }) } });
 
       await mock.emitKeepalive(snapshot("ses_a", { pingsUsed: 4 }));
-      lastSidebar().hooks.load!("ses_a");
+      lastSidebar().load("ses_a");
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(lastSidebar().snapshots().get("ses_a")!.pingsUsed).toBe(4);
-    });
-
-    test("a small-context snapshot makes the session's min context threshold available", async () => {
-      const mock = await setupTui({ global: { minContextTokens: 50_000 }, session: { minContextTokens: 40_000 } });
-
-      expect(lastSidebar().hooks.minContext!("ses_a")).toBeUndefined();
-      await mock.emitKeepalive(snapshot("ses_a", { skipReason: "small-context", contextTokens: 31_000 }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(lastSidebar().hooks.minContext!("ses_a")).toBe(40_000);
     });
 
     test("cleanup disposes the slot and aborts the subscription", async () => {

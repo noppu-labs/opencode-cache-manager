@@ -20,15 +20,11 @@ export function formatRemaining(ms: number): string {
 
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
-/**
- * Lines for the sidebar cache section; an empty array means render nothing.
- * `minContextTokens` is the keepalive threshold, which the snapshot does not carry.
- */
+/** Lines for the sidebar cache section; an empty array means render nothing. */
 export function sidebarLines(
   s: KeepaliveSnapshot | undefined,
   now: number,
   formatClock: (ms: number) => string = defaultClock,
-  minContextTokens?: number,
 ): SidebarLine[] {
   if (s === undefined || s.lastRequestAt === null || s.skipReason === "child") return [];
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
@@ -49,9 +45,10 @@ export function sidebarLines(
   if (s.skipReason === "missed") {
     lines.push({ text: "  keepalive stopped · last ping missed", tone: "error" });
   } else if (s.skipReason === "small-context") {
-    const used = thousands(s.contextTokens ?? 0);
-    const detail = minContextTokens === undefined ? `${used} context` : `${used} < ${thousands(minContextTokens)}`;
-    lines.push({ text: `  keepalive   off · ${detail}`, tone: "muted" });
+    lines.push({
+      text: `  keepalive   off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
+      tone: "muted",
+    });
   } else if (s.skipReason === "disabled") {
     lines.push({ text: "  keepalive   off · disabled", tone: "muted" });
   } else {

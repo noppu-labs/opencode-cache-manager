@@ -16,6 +16,7 @@ function snap(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot {
     nextPingAt: null,
     pingsUsed: 0,
     maxPings: 5,
+    minContextTokens: 50_000,
     lastPing: null,
     skipReason: null,
     contextTokens: 80_000,
@@ -23,8 +24,7 @@ function snap(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot {
   };
 }
 
-const lines = (s: KeepaliveSnapshot | undefined, minContextTokens?: number): SidebarLine[] =>
-  sidebarLines(s, NOW, clock, minContextTokens);
+const lines = (s: KeepaliveSnapshot | undefined): SidebarLine[] => sidebarLines(s, NOW, clock);
 
 const HEADER: SidebarLine = { text: "Cache 5m · detected", tone: "base" };
 const noResponse = {
@@ -120,7 +120,7 @@ describe("sidebarLines", () => {
   });
 
   test("small context explains why keepalive is off", () => {
-    expect(lines(snap({ skipReason: "small-context", contextTokens: 31_000 }), 50_000)).toEqual([
+    expect(lines(snap({ skipReason: "small-context", contextTokens: 31_000 }))).toEqual([
       HEADER,
       { text: "● warm, expires HH:MM (4m)", tone: "success" },
       { text: "  keepalive   off · 31k < 50k", tone: "muted" },
@@ -128,16 +128,9 @@ describe("sidebarLines", () => {
   });
 
   test("small context rounds thousands to the nearest k", () => {
-    expect(lines(snap({ skipReason: "small-context", contextTokens: 30_600 }), 49_600)[2]!.text).toBe(
+    expect(lines(snap({ skipReason: "small-context", contextTokens: 30_600, minContextTokens: 49_600 }))[2]!.text).toBe(
       "  keepalive   off · 31k < 50k",
     );
-  });
-
-  test("small context without a known threshold omits it", () => {
-    expect(lines(snap({ skipReason: "small-context", contextTokens: 31_000 }))[2]).toEqual({
-      text: "  keepalive   off · 31k context",
-      tone: "muted",
-    });
   });
 
   test("disabled keepalive", () => {

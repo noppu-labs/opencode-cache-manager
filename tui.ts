@@ -289,29 +289,13 @@ export default Plugin.define({
     }));
 
     const [sidebar, updateSidebar] = ctx.storage.memory("keepalive", {
-      initial: {
-        snapshots: {} as Record<string, KeepaliveSnapshot>,
-        minContext: {} as Record<string, number>,
-      },
+      initial: { snapshots: {} as Record<string, KeepaliveSnapshot> },
     });
-
-    const refreshMinContext = async (sessionID: string): Promise<void> => {
-      try {
-        const { global, session } = await rpc.getSettings({ sessionID });
-        const { minContextTokens } = mergeSettings(global, session ?? {});
-        updateSidebar((draft) => {
-          draft.minContext[sessionID] = minContextTokens;
-        });
-      } catch {
-        // The sidebar falls back to copy without the threshold.
-      }
-    };
 
     const applySnapshot = (snapshot: KeepaliveSnapshot): void => {
       updateSidebar((draft) => {
         draft.snapshots[snapshot.sessionID] = snapshot;
       });
-      if (snapshot.skipReason === "small-context") void refreshMinContext(snapshot.sessionID);
     };
 
     const requested = new Set<string>();
@@ -337,11 +321,7 @@ export default Plugin.define({
       }
     })();
 
-    const disposeSidebar = registerSidebar(
-      ctx,
-      () => new Map(Object.entries(sidebar.snapshots)),
-      { load: loadSnapshot, minContext: (sessionID) => sidebar.minContext[sessionID] },
-    );
+    const disposeSidebar = registerSidebar(ctx, () => new Map(Object.entries(sidebar.snapshots)), loadSnapshot);
 
     return () => {
       abort.abort();

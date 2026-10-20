@@ -20,6 +20,7 @@ export interface KeepaliveSnapshot {
   nextPingAt: number | null;
   pingsUsed: number;
   maxPings: number;
+  minContextTokens: number;
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
@@ -54,6 +55,7 @@ interface SessionState {
   nextPingAt: number | null;
   pingsUsed: number;
   maxPings: number;
+  minContextTokens: number;
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
@@ -187,6 +189,7 @@ export class KeepaliveEngine {
       nextPingAt: null,
       pingsUsed: 0,
       maxPings: BUILTIN_DEFAULTS.maxPings,
+      minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
       lastPing: null,
       skipReason: "no-cache-seen",
       contextTokens: null,
@@ -213,6 +216,7 @@ export class KeepaliveEngine {
       nextPingAt: s.nextPingAt,
       pingsUsed: s.pingsUsed,
       maxPings: s.maxPings,
+      minContextTokens: s.minContextTokens,
       lastPing: s.lastPing,
       skipReason: s.skipReason,
       contextTokens: s.contextTokens,
@@ -283,6 +287,7 @@ export class KeepaliveEngine {
     if (this.disposed || s.generation !== generation || s.inflight) return;
 
     s.maxPings = settings.maxPings;
+    s.minContextTokens = settings.minContextTokens;
     s.skipReason = this.skipReason(s, settings, child);
     s.nextPingAt = s.skipReason === null ? this.pingTime(s) : null;
 
