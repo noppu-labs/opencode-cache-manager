@@ -25,27 +25,62 @@ Always pass `--skip-skills` to `gitnexus analyze`. Without it, GitNexus writes s
 
 ## Layout
 
-- `server.ts` - server entry: `/cache-manager` command, `http.request` / `http.response` hooks (TTL rewrite, ping recognition, usage observation), RPC handlers, session settings in plugin storage.
-- `tui.ts` - TUI entry: palette entry, slash command, Session/Global picker, toasts; loads the sidebar lazily.
-- `shared.ts` - pure logic shared by both sides: argument parsing, TTL rewrite, ping message alignment. Put testable logic here.
-- `settings.ts` - layered settings (built-in, plugin options, global, session) and the storage-backed `SettingsStore`.
-- `usage.ts` - Anthropic usage parsing (including SSE) and TTL detection.
-- `keepalive.ts` - keepalive engine: per-session state, ping schedule, hit/miss, snapshots.
-- `display.ts` - sidebar line formatting (pure).
-- `sidebar.tsx` - Solid sidebar section; the only JSX file.
-- `rpc.ts` - RPC contract (settings methods, `getKeepalive`, `settings.updated` / `keepalive.updated` events).
-- `tests/anthropic-cache-ttl.test.ts` - logic, RPC, hooks, and TUI command paths.
-- `tests/settings.test.ts`, `tests/usage.test.ts`, `tests/keepalive.test.ts`, `tests/display.test.ts` - unit tests for the matching modules.
+The code follows a standard modular TypeScript layout under `src/`, mapped onto what a plugin does. Follow it for all new code.
+
+```
+src/
+├── server.ts                  # server entry: builds the parts and registers them with OpenCode
+├── tui.ts                     # TUI entry: palette, slash command, registers the sidebar
+├── rpc.ts                     # RPC contract (public export, so it stays a top-level entry)
+├── config/
+│   └── settings.ts            # Settings type, defaults, option parsing, layer merging
+├── constants/
+│   ├── anthropic.ts           # beta header value, x-cache-ttl header name
+│   └── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
+├── models/                    # shared types: Ttl, CacheTtlMode, CacheUsage, KeepaliveSnapshot, SkipReason
+├── controllers/
+│   ├── command.ts             # /cache-manager handler and argument parsing
+│   └── rpc-handlers.ts        # getSettings / setGlobal / setSession / resetSession / getKeepalive
+├── middleware/
+│   ├── request.ts             # http.request hook: ping alignment, TTL rewrite, request bookkeeping
+│   └── response.ts            # http.response hook: usage observation
+├── services/
+│   ├── keepalive-engine.ts    # scheduling engine
+│   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep
+│   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge
+│   ├── ping-alignment.ts      # alignPingMessages
+│   └── usage.ts               # usage/SSE parsing, granted-TTL detection
+├── ui/
+│   ├── picker.ts              # Session/Global picker
+│   ├── sidebar.tsx            # Solid sidebar component; the only JSX file
+│   └── sidebar-lines.ts       # pure sidebar line formatting
+└── utils/                     # small shared helpers (isRecord, formatRemaining, token formatting)
+tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts)
+```
+
+Other top-level files:
+
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
 - `docs/` - design notes from the original build.
+
+Where new code goes:
+
+- Entry files (`src/server.ts`, `src/tui.ts`) only wire parts together. Logic belongs in `services/`, `controllers/` or `middleware/`.
+- `controllers/` handle user-facing input (commands, RPC calls) and delegate to services. `middleware/` holds the HTTP hooks. `services/` holds the core logic and should stay testable without a host.
+- Types used by more than one module go in `models/`; a type used by one module stays next to it. Fixed values go in `constants/`, not inline.
+- Configuration (settings shape, defaults, option parsing) goes in `config/`.
+- `utils/` is for small pure helpers with no domain knowledge. Don't duplicate a helper; move it here.
+- Anything rendered in the TUI goes in `ui/`. Keep formatting pure (`sidebar-lines.ts`) and separate from Solid components.
+- Each source file gets a test file at the matching path under `tests/`. Split test files by area rather than growing one large file.
+- No `dist/` and no `@types/`: there is no build step and nothing needs global declarations. Adding a compile step changes how releases work, so it is a separate decision.
 
 ## Rules
 
 - Anthropic requires 1h breakpoints to come before 5m ones in a request. Any change to TTL assignment must preserve that ordering.
 - `1h` / `hybrid` requests must carry `anthropic-beta: extended-cache-ttl-2025-04-11`, merged with any existing beta values.
 - The `x-cache-ttl` header is a per-model override sentinel: read it, apply it, strip it before the request leaves.
-- Adding a source file that must ship means updating `files`, `exports`, and `tsconfig.json` `include` in step; the smoke test checks the tarball matches.
+- `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.
 - Run `bun test` and `bun run typecheck` before calling work done.
 
