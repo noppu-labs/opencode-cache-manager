@@ -162,9 +162,11 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 The effective value of each setting is the first one set, in this order:
 
 1. the session's override (`/cache-manager` typed argument, or the picker's Session section)
-2. the global value from the picker's Global section
-3. the plugin option
+2. the global value stored from the picker's Global section
+3. the plugin option (`defaultMode` or `keepalive.*`)
 4. the built-in default
+
+A global value stored from the picker overrides the plugin option for the same setting, so changing `defaultMode` in `opencode.jsonc` has no effect once the picker has stored a global value for that setting.
 
 Changes take effect immediately. Turning keepalive off cancels the pending ping, and lowering `pings` to or below the pings already used ends the run. A TTL mode change is picked up by the next request.
 
@@ -177,7 +179,7 @@ Inside a session, the sidebar shows a Cache section. It ticks once a second from
 ```
 Cache 1h · detected
 ● warm, expires 14:52 (52m)
-  next ping   14:42 (37m)
+  next ping   14:42 (42m)
   pings       2/5 ✓ hit
 ```
 
@@ -195,9 +197,7 @@ The section is hidden for subagent sessions and for sessions with no cache activ
 Two changes break existing habits:
 
 1. **`/cache-ttl` is now `/cache-manager`.** The palette entry is "Cache Manager" and the old command name is gone, with no alias.
-2. **Typed commands change only the current session.** `/cache-ttl 1h` used to set the global mode; `/cache-manager 1h` sets the mode for the session you are in. To change the global default, use the picker's Global section or the `defaultMode` plugin option.
-
-A global mode stored by 0.1.x is kept and used as the global default, so there is nothing to migrate.
+2. **Typed commands change only the current session.** `/cache-ttl 1h` used to set the global mode; `/cache-manager 1h` sets the mode for the session you are in. To change the global default, use the picker's Global section. A global mode stored by 0.1.x is kept and takes precedence over `defaultMode`, so editing `defaultMode` alone will not change it; set it from the picker's Global section instead. There is nothing else to migrate.
 
 ## Development
 
