@@ -149,6 +149,14 @@ describe("sidebarLines", () => {
     ]);
   });
 
+  test("a busy session is waiting rather than pinged", () => {
+    expect(lines(snap({ skipReason: "busy" }))).toEqual([
+      HEADER,
+      { text: "● warm, expires HH:MM (4m)", tone: "success" },
+      { text: "  keepalive   waiting · session busy", tone: "muted" },
+    ]);
+  });
+
   test("uses the injected clock for HH:MM", () => {
     const seen: number[] = [];
     sidebarLines(snap({ nextPingAt: NOW + 3 * MIN }), NOW, (ms) => (seen.push(ms), "09:05"));

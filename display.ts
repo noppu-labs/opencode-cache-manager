@@ -44,6 +44,8 @@ export function sidebarLines(
 
   if (s.skipReason === "missed") {
     lines.push({ text: "  keepalive stopped · last ping missed", tone: "error" });
+  } else if (s.skipReason === "busy") {
+    lines.push({ text: "  keepalive   waiting · session busy", tone: "muted" });
   } else if (s.skipReason === "small-context") {
     lines.push({
       text: `  keepalive   off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,

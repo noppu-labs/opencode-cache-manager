@@ -116,6 +116,7 @@ Keepalive sends a hidden request shortly before a session's cache expires. The r
 Keepalive skips:
 
 - subagent (child) sessions
+- sessions waiting on a tool call, such as a running subagent or a long build; they are pinged again once the next request has gone out
 - sessions whose context is below `minContextTokens` (default 50,000)
 - sessions with keepalive turned off
 - sessions where no cache activity has been seen, such as sessions on non-Anthropic models
@@ -187,7 +188,7 @@ Cache 1h · detected
 - `● warm, expires 14:52 (52m)` is the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
-- When keepalive isn't running, the last line says why: `keepalive   off · 31k < 50k` (context below the minimum), `keepalive   off · disabled`, or `keepalive stopped · last ping missed`.
+- When keepalive isn't running, the last line says why: `keepalive   off · 31k < 50k` (context below the minimum), `keepalive   off · disabled`, `keepalive   waiting · session busy` (waiting on a tool call), or `keepalive stopped · last ping missed`.
 - `○ expired 12m ago` shows when the cache has expired.
 
 The section is hidden for subagent sessions and for sessions with no cache activity.

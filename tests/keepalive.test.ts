@@ -6,6 +6,7 @@ import {
   RETRY_DELAY_MS,
   TTL_MS,
   type KeepaliveSnapshot,
+  type RequestKind,
 } from "../keepalive.ts";
 import { BUILTIN_DEFAULTS, type Settings } from "../settings.ts";
 import type { CacheUsage, Ttl } from "../usage.ts";
@@ -56,7 +57,8 @@ type Behavior =
   | { kind: "reject" }
   | { kind: "notok-then-reject" }
   | { kind: "silent" }
-  | { kind: "hold" };
+  | { kind: "hold" }
+  | { kind: "respond-then-hold" };
 
 function harness(
   options: { settings?: Partial<Settings>; child?: boolean; requestedTtl?: Ttl } = {},
@@ -92,16 +94,22 @@ function harness(
         return;
       case "hold":
         await new Promise<void>((resolve) => held.push(resolve));
-        await engine.responseObserved(sessionID, { usage: hit, ok: true, isPing: true });
+        await engine.responseObserved(sessionID, { usage: hit, ok: true, isPing: true, kind: "generate" });
+        return;
+      case "respond-then-hold":
+        await engine.responseObserved(sessionID, { usage: hit, ok: true, isPing: true, kind: "generate" });
+        await new Promise<void>((resolve) => held.push(resolve));
         return;
       case "notok-then-reject":
-        await engine.responseObserved(sessionID, { usage: undefined, ok: false, isPing: true });
+        await engine.responseObserved(sessionID, { usage: undefined, ok: false, isPing: true, kind: "generate" });
         throw new Error("http 500");
       case "respond":
         await engine.responseObserved(sessionID, {
           usage: behavior.usage ?? hit,
           ok: behavior.ok ?? true,
           isPing: true,
+          kind: "generate",
+          kind: "generate",
         });
     }
   };
@@ -183,10 +191,21 @@ function harness(
       await runDue(false, clock);
       await flush();
     },
-    async request(sessionID: string, usage: CacheUsage | undefined, ttl: Ttl = requested) {
+    async request(
+      sessionID: string,
+      usage: CacheUsage | undefined,
+      ttl: Ttl = requested,
+      extra: { kind?: RequestKind; stopReason?: string } = {},
+    ) {
       engine.requestSent(sessionID, { requestedTtl: ttl, isPing: false });
       await flush();
-      await engine.responseObserved(sessionID, { usage, ok: usage !== undefined, isPing: false });
+      await engine.responseObserved(sessionID, {
+        usage,
+        ok: usage !== undefined,
+        isPing: false,
+        kind: extra.kind ?? "primary",
+        stopReason: extra.stopReason,
+      });
       await flush();
     },
   };
@@ -305,7 +324,7 @@ describe("keepalive engine: scheduling", () => {
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({ ttl: null, contextTokens: null, skipReason: "no-cache-seen" });
 
-    await h.engine.responseObserved("s1", { usage: noCache, ok: true, isPing: false });
+    await h.engine.responseObserved("s1", { usage: noCache, ok: true, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({
       ttl: null,
@@ -412,7 +431,7 @@ describe("keepalive engine: ping outcomes", () => {
       lastPing: "miss",
       skipReason: "missed",
       nextPingAt: null,
-      lastRequestAt: 150 * MIN,
+      lastRequestAt: 100 * MIN,
     });
     await h.advance(5 * 60 * MIN);
     expect(h.pings).toHaveLength(3);
@@ -420,7 +439,7 @@ describe("keepalive engine: ping outcomes", () => {
     h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false });
     expect(h.engine.snapshot("s1")).toMatchObject({ lastPing: null, pingsUsed: 0, skipReason: null });
     await h.flush();
-    await h.engine.responseObserved("s1", { usage: write1h, ok: true, isPing: false });
+    await h.engine.responseObserved("s1", { usage: write1h, ok: true, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({
       lastPing: null,
@@ -566,7 +585,7 @@ describe("keepalive engine: races and lifecycle", () => {
     await h.advance(50 * MIN);
     await h.request("s1", hit);
     const before = h.engine.snapshot("s1");
-    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: true });
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: true, kind: "generate" });
     expect(h.engine.snapshot("s1")).toEqual(before);
   });
 
@@ -647,7 +666,7 @@ describe("keepalive engine: review fixes", () => {
     await h.advance(3 * MIN);
     h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
     await h.flush();
-    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({
       lastRequestAt: 0,
@@ -667,7 +686,7 @@ describe("keepalive engine: review fixes", () => {
     await h.jump(6 * MIN);
     h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
     await h.flush();
-    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: 0, nextPingAt: null });
     await h.advance(30 * MIN);
@@ -678,14 +697,14 @@ describe("keepalive engine: review fixes", () => {
     const h = harness();
     h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
     await h.flush();
-    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: null, expiresAt: null, nextPingAt: null });
 
     await h.advance(MIN);
     h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
     await h.advance(30_000);
-    await h.engine.responseObserved("s1", { usage: write5m, ok: true, isPing: false });
+    await h.engine.responseObserved("s1", { usage: write5m, ok: true, isPing: false, kind: "primary" });
     await h.flush();
     expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: MIN, expiresAt: 6 * MIN, nextPingAt: 5 * MIN });
   });
@@ -777,5 +796,97 @@ describe("keepalive engine: review fixes", () => {
     await h.request("s1", write5m, "5m");
     await h.jump(TTL_MS["5m"] - EXPIRY_MARGIN_MS);
     expect(h.pings).toEqual([{ sessionID: "s1", at: TTL_MS["5m"] - EXPIRY_MARGIN_MS }]);
+  });
+});
+
+describe("keepalive engine: busy sessions", () => {
+  test("a primary response stopping for tool_use is not pinged until the next real request", async () => {
+    const h = harness();
+    await h.request("s1", write1h, "1h", { stopReason: "tool_use" });
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: "busy", nextPingAt: null });
+    await h.advance(55 * MIN);
+    expect(h.pings).toHaveLength(0);
+
+    await h.request("s1", write1h, "1h", { stopReason: "end_turn" });
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: null, nextPingAt: h.clock + 50 * MIN });
+    await h.advance(50 * MIN);
+    expect(h.pings).toHaveLength(1);
+  });
+
+  test("the busy flag clears as soon as the next real request is sent", async () => {
+    const h = harness();
+    await h.request("s1", write1h, "1h", { stopReason: "tool_use" });
+    h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false });
+    await h.flush();
+    expect(h.engine.snapshot("s1").skipReason).toBe(null);
+  });
+
+  test("only primary responses mark a session busy", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    await h.request("s1", write1h, "1h", { kind: "generate", stopReason: "tool_use" });
+    await h.request("s1", write1h, "1h", { kind: "title", stopReason: "tool_use" });
+    expect(h.engine.snapshot("s1").skipReason).toBe(null);
+  });
+
+  test("busy is checked right after child", async () => {
+    const child = harness({ child: true });
+    await child.request("s1", write1h, "1h", { stopReason: "tool_use" });
+    expect(child.engine.snapshot("s1").skipReason).toBe("child");
+
+    const off = harness({ settings: { keepalive: false } });
+    await off.request("s1", write1h, "1h", { stopReason: "tool_use" });
+    expect(off.engine.snapshot("s1").skipReason).toBe("busy");
+  });
+});
+
+describe("keepalive engine: final review fixes", () => {
+  test("a missed ping keeps the previous expiry anchor", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    h.queue.push({ kind: "respond", usage: miss });
+    await h.advance(50 * MIN);
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      lastPing: "miss",
+      lastRequestAt: 0,
+      expiresAt: TTL_MS["1h"],
+    });
+  });
+
+  test("a hit still moves the anchor to the ping's send time", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    await h.advance(50 * MIN);
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastPing: "hit", lastRequestAt: 50 * MIN });
+  });
+
+  test("title and non-ping generate responses do not overwrite the context size or the TTL", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    const small: CacheUsage = { ...write5m, cacheWriteTokens: 2_000, write5mTokens: 2_000 };
+    await h.request("s1", small, "5m", { kind: "title" });
+    await h.request("s1", small, "5m", { kind: "generate" });
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", contextTokens: 80_100 });
+
+    await h.request("s1", write5m, "5m", { kind: "compaction" });
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "5m", contextTokens: 80_100 });
+  });
+
+  test("no new ping fires while the previous ping call is unsettled", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    h.queue.push({ kind: "respond-then-hold" });
+    await h.advance(50 * MIN);
+    expect(h.pings).toHaveLength(1);
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastPing: "hit", nextPingAt: 100 * MIN });
+
+    await h.advance(52 * MIN);
+    expect(h.pings).toHaveLength(1);
+
+    h.held[0]!();
+    await h.flush();
+    await h.advance(0);
+    expect(h.pings).toHaveLength(2);
+    expect(h.pings[1]!.at).toBe(102 * MIN);
   });
 });

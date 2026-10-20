@@ -33,7 +33,7 @@ const keepaliveSnapshotSchema = {
     maxPings: { type: "integer", minimum: 0 },
     minContextTokens: { type: "integer", minimum: 0 },
     lastPing: nullableString(["hit", "miss", "failed"]),
-    skipReason: nullableString(["disabled", "small-context", "child", "exhausted", "no-cache-seen", "missed"]),
+    skipReason: nullableString(["disabled", "small-context", "child", "busy", "exhausted", "no-cache-seen", "missed"]),
     contextTokens: nullableNumber,
   },
   required: [

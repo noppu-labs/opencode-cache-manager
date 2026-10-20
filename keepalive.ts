@@ -9,7 +9,17 @@ export const RETRY_DELAY_MS = 30_000;
 export const EXPIRY_MARGIN_MS = 15_000;
 export const PING_PROMPT = "Do not perform any work and do not use tools. Reply with exactly: OK";
 
-export type SkipReason = "disabled" | "small-context" | "child" | "exhausted" | "no-cache-seen" | "missed";
+export type SkipReason =
+  | "disabled"
+  | "small-context"
+  | "child"
+  | "busy"
+  | "exhausted"
+  | "no-cache-seen"
+  | "missed";
+
+/** OpenCode's request kind for a model call. */
+export type RequestKind = "primary" | "compaction" | "title" | "generate";
 
 export interface KeepaliveSnapshot {
   sessionID: string;
@@ -61,8 +71,14 @@ interface SessionState {
   contextTokens: number | null;
   cacheSeen: boolean;
   missed: boolean;
+  /** The last primary response stopped for a tool call; cleared by the next real request. */
+  busy: boolean;
   retryAt: number | null;
   inflight: PingInFlight | null;
+  /** A `deps.ping` call that has not settled yet, whether or not its response was seen. */
+  pingPending: boolean;
+  /** A timer fired while `pingPending`; the schedule runs again once the call settles. */
+  deferred: boolean;
   timer: { handle: unknown } | null;
   /** Bumped by every schedule and non-ping request; invalidates older timers and async computations. */
   generation: number;
@@ -94,6 +110,7 @@ export class KeepaliveEngine {
     s.pingsUsed = 0;
     s.lastPing = null;
     s.missed = false;
+    s.busy = false;
     s.retryAt = null;
     s.nextPingAt = null;
     if (s.skipReason === "missed" || s.skipReason === "exhausted") s.skipReason = null;
@@ -103,7 +120,7 @@ export class KeepaliveEngine {
 
   async responseObserved(
     sessionID: string,
-    info: { usage: CacheUsage | undefined; ok: boolean; isPing: boolean },
+    info: { usage: CacheUsage | undefined; ok: boolean; isPing: boolean; kind: RequestKind; stopReason?: string },
   ): Promise<void> {
     if (this.disposed) return;
     const s = this.state(sessionID);
@@ -117,14 +134,16 @@ export class KeepaliveEngine {
         return;
       }
       const usage = info.usage;
-      s.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
-      s.confirmedAt = s.lastRequestAt;
       const before = inflight.contextBefore ?? contextTokens(usage);
       const hit = usage.cacheReadTokens >= HIT_RATIO * before;
+      // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
+      if (hit) {
+        s.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
+        s.confirmedAt = s.lastRequestAt;
+      }
       s.lastPing = hit ? "hit" : "miss";
       s.missed = !hit;
       s.retryAt = null;
-      this.learn(s, usage);
       this.commit(sessionID, s);
       await this.schedule(sessionID);
       return;
@@ -141,10 +160,12 @@ export class KeepaliveEngine {
       s.confirmedAt = s.requestSentAt;
       s.lastRequestAt = s.requestSentAt;
     }
-    if (info.usage) {
+    // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
+    if (info.usage && (info.kind === "primary" || info.kind === "compaction")) {
       s.contextTokens = contextTokens(info.usage);
       this.learn(s, info.usage);
     }
+    if (info.kind === "primary" && info.stopReason === "tool_use") s.busy = true;
     this.commit(sessionID, s);
     await this.schedule(sessionID);
   }
@@ -195,8 +216,11 @@ export class KeepaliveEngine {
       contextTokens: null,
       cacheSeen: false,
       missed: false,
+      busy: false,
       retryAt: null,
       inflight: null,
+      pingPending: false,
+      deferred: false,
       timer: null,
       generation: 0,
       child: undefined,
@@ -300,6 +324,7 @@ export class KeepaliveEngine {
 
   private skipReason(s: SessionState, settings: Settings, child: boolean): SkipReason | null {
     if (child) return "child";
+    if (s.busy) return "busy";
     if (!settings.keepalive) return "disabled";
     if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return "no-cache-seen";
     if ((s.contextTokens ?? 0) < settings.minContextTokens) return "small-context";
@@ -322,6 +347,11 @@ export class KeepaliveEngine {
     if (this.disposed || !s || s.generation !== generation) return;
     s.timer = null;
 
+    if (s.pingPending) {
+      s.deferred = true;
+      return;
+    }
+
     const now = this.deps.now();
     const expiresAt = s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null;
     if (expiresAt === null || now > expiresAt - EXPIRY_MARGIN_MS) {
@@ -334,14 +364,21 @@ export class KeepaliveEngine {
     s.nextPingAt = null;
     const inflight: PingInFlight = { firedAt: now, sentAt: null, contextBefore: s.contextTokens };
     s.inflight = inflight;
+    s.pingPending = true;
     this.commit(sessionID, s);
 
     const settled = () => {
+      s.pingPending = false;
+      if (this.disposed) return;
       // Resolved without a response seen, or rejected: unless a response (or a
       // newer real request) already settled this ping, it failed.
-      if (s.inflight === inflight && !this.disposed) {
+      if (s.inflight === inflight) {
         s.inflight = null;
+        s.deferred = false;
         void this.failPing(sessionID, s);
+      } else if (s.deferred) {
+        s.deferred = false;
+        void this.schedule(sessionID);
       }
     };
     this.deps.ping(sessionID).then(settled, settled);
