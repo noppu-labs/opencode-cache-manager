@@ -1,3 +1,23 @@
 node_modules/
 .DS_Store
 *.log
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Tooling / agent caches
+.opencode/
+.superpowers/
+.gitnexus/
+.codegraph/
