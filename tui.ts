@@ -1,6 +1,7 @@
 import { Plugin } from "@opencode/plugin/tui";
 import { CacheTtlRpc } from "./rpc.ts";
 import { isCacheTtlMode, type CacheTtlMode } from "./shared.ts";
+import type { Settings, SettingsPatch } from "./settings.ts";
 
 /**
  * Interactive metadata for each cache TTL mode, shown in the picker modal.
@@ -24,13 +25,16 @@ const USAGE = "Usage: /cache-ttl [5m | 1h | hybrid | status]";
 
 /** Loose client shape mirroring the `@opencode/plugin` RPC client for our contract. */
 type RpcClient = {
-  getMode(input: Record<string, never>): Promise<string>;
-  setMode(input: { mode: CacheTtlMode }): Promise<unknown>;
+  getSettings(input: { sessionID?: string }): Promise<{
+    global: Settings;
+    session: SettingsPatch | null;
+  }>;
+  setSession(input: { sessionID: string; patch: SettingsPatch }): Promise<unknown>;
   events: {
     subscribe(
-      name: "mode.updated",
+      name: "settings.updated",
       options?: { signal?: AbortSignal },
-    ): AsyncIterable<{ data?: { mode?: unknown }; mode?: unknown }>;
+    ): AsyncIterable<unknown>;
   };
 };
 
@@ -45,18 +49,36 @@ function errorMessage(error: unknown): string {
  * Registers a palette + `/cache-ttl` slash command. With no argument it opens a
  * native picker (`ctx.ui.dialog.select`); an explicit mode is applied directly;
  * `status` reports the current mode. All mutations go through the server RPC so
- * the mode stays in one place (`ctx.storage`).
+ * the settings stay in one place (`ctx.storage`).
  */
 export default Plugin.define({
   id: "anthropic-cache-ttl",
   async setup(ctx) {
     const rpc = ctx.client.rpc(CacheTtlRpc as any) as unknown as RpcClient;
 
+    const currentSessionID = (): string | undefined => {
+      const route = ctx.ui.router.current();
+      return route.type === "session" ? route.sessionID : undefined;
+    };
+
     const runCommand = async (input?: string): Promise<void> => {
       const argument = (input ?? "").trim().toLowerCase();
       try {
+        const sessionID = currentSessionID();
+        if (sessionID === undefined) {
+          ctx.ui.toast.show({
+            message: "Open a session to change its cache TTL.",
+            variant: "warning",
+          });
+          return;
+        }
+        const readMode = async (): Promise<CacheTtlMode> => {
+          const settings = await rpc.getSettings({ sessionID });
+          return settings.session?.mode ?? settings.global.mode;
+        };
+
         if (argument === "") {
-          const current = await rpc.getMode({});
+          const current = await readMode();
           const selected = await ctx.ui.dialog.select<CacheTtlMode>({
             title: "Anthropic Prompt Cache TTL",
             placeholder: "Select a TTL mode",
@@ -68,7 +90,7 @@ export default Plugin.define({
             })),
           });
           if (selected !== undefined && selected !== current) {
-            await rpc.setMode({ mode: selected });
+            await rpc.setSession({ sessionID, patch: { mode: selected } });
             ctx.ui.toast.show({
               message: `Anthropic cache TTL set to ${selected}.`,
               variant: "success",
@@ -78,7 +100,7 @@ export default Plugin.define({
         }
 
         if (argument === "status") {
-          const current = await rpc.getMode({});
+          const current = await readMode();
           ctx.ui.toast.show({
             message: `Anthropic cache TTL mode: ${current}.`,
             variant: "info",
@@ -87,7 +109,7 @@ export default Plugin.define({
         }
 
         if (isCacheTtlMode(argument)) {
-          await rpc.setMode({ mode: argument });
+          await rpc.setSession({ sessionID, patch: { mode: argument } });
           ctx.ui.toast.show({
             message: `Anthropic cache TTL set to ${argument}.`,
             variant: "success",
@@ -122,21 +144,18 @@ export default Plugin.define({
     const controller = new AbortController();
     let disposed = false;
 
-    // Surface mode changes triggered elsewhere (e.g. the server command or a
-    // second TUI instance) as an info toast. Fire-and-forget; torn down below.
+    // Surface settings changes triggered elsewhere (e.g. a second TUI
+    // instance) as an info toast. Fire-and-forget; torn down below.
     void (async () => {
       try {
-        for await (const event of rpc.events.subscribe("mode.updated", {
+        for await (const _event of rpc.events.subscribe("settings.updated", {
           signal: controller.signal,
         })) {
           if (disposed) break;
-          const next = event?.data?.mode ?? event?.mode;
-          if (isCacheTtlMode(next)) {
-            ctx.ui.toast.show({
-              message: `Anthropic cache TTL set to ${next}.`,
-              variant: "info",
-            });
-          }
+          ctx.ui.toast.show({
+            message: "Anthropic cache settings updated.",
+            variant: "info",
+          });
         }
       } catch {
         // Subscription aborted on cleanup; nothing to report.

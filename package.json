@@ -29,6 +29,7 @@
     "server.ts",
     "tui.ts",
     "shared.ts",
+    "settings.ts",
     "rpc.ts",
     "usage.ts"
   ],

@@ -2,158 +2,123 @@ import { Plugin } from "@opencode/plugin";
 import { CacheTtlRpc } from "./rpc.ts";
 import {
   SENTINEL_HEADER,
-  isCacheTtlMode,
-  parseModeArg,
+  parseCommandArg,
   transformHttpRequest,
-  type CacheTtlMode,
 } from "./shared.ts";
 import {
-  contextTokens,
-  isAnthropicMessagesRequest,
-  observeResponseUsage,
-  type CacheUsage,
-} from "./usage.ts";
+  SettingsStore,
+  sanitizePatch,
+  settingsFromOptions,
+  type Settings,
+  type SettingsPatch,
+} from "./settings.ts";
+
+const INVALID_ARGUMENT_TEXT =
+  "Unknown cache argument. Use `5m`, `1h`, `hybrid`, `keepalive on|off`, " +
+  "`pings <0-100>`, `min <tokens|50k>`, `status`, or `reset`, " +
+  "or run `/cache-manager` with no argument to toggle this session between 5m and 1h.";
+
+/** Rejects a patch carrying any invalid or unknown field instead of silently dropping it. */
+function validatePatch(value: unknown): SettingsPatch {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Invalid settings patch: expected an object");
+  }
+  const patch = sanitizePatch(value);
+  const invalid = Object.keys(value).filter((key) => !(key in patch));
+  if (invalid.length > 0) {
+    throw new Error(`Invalid settings patch fields: ${invalid.join(", ")}`);
+  }
+  return patch;
+}
+
+function describeSettings(settings: Settings): string {
+  return (
+    `mode ${settings.mode}, keepalive ${settings.keepalive ? "on" : "off"}, ` +
+    `max pings ${settings.maxPings}, min context ${settings.minContextTokens} tokens`
+  );
+}
 
 /**
- * Server entrypoint for the Anthropic prompt-cache TTL plugin.
+ * Server entrypoint for the Anthropic prompt-cache plugin.
  *
- * Preserves the original single-file behavior — a `/cache-ttl` command plus an
- * `http.request` hook that rewrites `cache_control.ttl` — and additionally
- * registers an RPC surface (`getMode` / `setMode`) with a `mode.updated` event
- * so the TUI can drive the mode through an interactive modal.
+ * Registers a `/cache-manager` command and an `http.request` hook that rewrites
+ * `cache_control.ttl` using layered settings (built-in defaults, plugin options,
+ * global, per-session). An RPC surface (`getSettings` / `setGlobal` /
+ * `setSession` / `resetSession`) with a `settings.updated` event lets the TUI
+ * drive the same settings through an interactive modal.
  */
 export default Plugin.define({
   id: "anthropic-cache-ttl",
   async setup(ctx) {
-    const stored = await ctx.storage.get("mode");
-    const defaultMode = ctx.options?.defaultMode;
-    let mode: CacheTtlMode = isCacheTtlMode(stored)
-      ? stored
-      : isCacheTtlMode(defaultMode)
-        ? defaultMode
-        : "5m";
+    const store = new SettingsStore(ctx.storage, settingsFromOptions(ctx.options));
+    await store.load();
 
-    // Referenced from inside its own handlers so `setMode` can emit the update
+    // Referenced from inside its own handlers so they can emit the update
     // event; declared before the `await` to avoid a temporal-dead-zone hazard.
     let rpcRegistration: any;
+    // RPC output schemas are `object`; returning undefined would fail host
+    // output validation (rpc.invalid_output). Handlers return an empty object.
+    const notify = async (sessionID: string | null) => {
+      await rpcRegistration?.events.emit("settings.updated", { sessionID });
+      return {};
+    };
     try {
       rpcRegistration = await (ctx.rpc.register as any)(CacheTtlRpc, {
-        getMode: async () => mode,
-        setMode: async (input: { mode: unknown }) => {
-          if (!isCacheTtlMode(input.mode)) {
-            throw new Error(`Invalid cache TTL mode: ${String(input.mode)}`);
-          }
-          mode = input.mode;
-          await ctx.storage.set("mode", mode);
-          await rpcRegistration?.events.emit("mode.updated", { mode });
-          // RPC output schema is `object`; returning undefined would fail host
-          // output validation (rpc.invalid_output). Return an empty object.
-          return {};
+        getSettings: async (input: { sessionID?: string }) => ({
+          global: store.global(),
+          session: input?.sessionID ? await store.sessionPatch(input.sessionID) : null,
+        }),
+        setGlobal: async (input: { patch: unknown }) => {
+          await store.setGlobal(validatePatch(input.patch));
+          return notify(null);
+        },
+        setSession: async (input: { sessionID: string; patch: unknown }) => {
+          await store.setSession(input.sessionID, validatePatch(input.patch));
+          return notify(input.sessionID);
+        },
+        resetSession: async (input: { sessionID: string }) => {
+          await store.resetSession(input.sessionID);
+          return notify(input.sessionID);
         },
       });
     } catch {
       // RPC is optional (older hosts / headless runs): keep command + hook.
     }
 
-    // TEMPORARY PROBE (removed in the next task): checks that a transient
-    // `session.generate` reads the cached prefix of the session.
-    type Observed = { kind: string; model: string; usage: CacheUsage };
-    // Baseline is the last primary response only: title/compaction/generate
-    // responses are small or differently prefixed and would give a false HIT.
-    const lastPrimary = new Map<string, Observed>();
-    const pendingGenerate = new Map<string, Promise<Observed | undefined>>();
-
-    await ctx.session.hook("http.response", async (evt) => {
-      if (!isAnthropicMessagesRequest(evt.request)) return;
-      const observed = observeResponseUsage(evt.response);
-      evt.response = observed.response;
-      const sessionID: string = evt.sessionID;
-      const kind: string = evt.kind;
-      const model = `${evt.model.providerID}/${evt.model.id}`;
-      const result = observed.usage.then((usage) => {
-        if (!usage) return undefined;
-        const entry: Observed = { kind, model, usage };
-        if (kind === "primary") lastPrimary.set(sessionID, entry);
-        return entry;
-      });
-      if (kind === "generate") pendingGenerate.set(sessionID, result);
-    });
-
     await ctx.command.transform((editor) => {
       editor.add({
-        name: "cache-manager-probe",
-        description: "Temporary: check that a transient generate reads the session's cache",
+        name: "cache-manager",
+        description:
+          "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
         async execute(input) {
           const sessionID: string = input.sessionID;
-          const before = lastPrimary.get(sessionID);
-          pendingGenerate.delete(sessionID);
-          await ctx.session.generate({
-            sessionID: input.sessionID,
-            prompt: "Do not perform any work and do not use tools. Reply with exactly: OK",
-          });
-          const ping = await pendingGenerate.get(sessionID);
+          const action = parseCommandArg(input.prompt);
+          const say = (text: string) =>
+            ctx.session.synthetic({ sessionID, text, resume: false });
 
-          const describe = (label: string, o: Observed | undefined) =>
-            o
-              ? `${label}: kind=${o.kind} model=${o.model} inputTokens=${o.usage.inputTokens} ` +
-                `cacheReadTokens=${o.usage.cacheReadTokens} cacheWriteTokens=${o.usage.cacheWriteTokens} ` +
-                `write5mTokens=${o.usage.write5mTokens} write1hTokens=${o.usage.write1hTokens} ` +
-                `contextTokens=${contextTokens(o.usage)}`
-              : `${label}: no usage captured`;
-          const verdict =
-            before && ping
-              ? ping.usage.cacheReadTokens >= 0.9 * contextTokens(before.usage)
-                ? "HIT"
-                : "MISS"
-              : "UNKNOWN";
-
-          await ctx.session.synthetic({
-            sessionID: input.sessionID,
-            resume: false,
-            text: [
-              describe("before", before),
-              describe("ping", ping),
-              verdict,
-            ].join("\n"),
-          });
-        },
-      });
-    });
-
-    await ctx.command.transform((editor) => {
-      editor.add({
-        name: "cache-ttl",
-        description: "Toggle Anthropic prompt cache TTL (5m | 1h | hybrid | status)",
-        async execute(input) {
-          const action = parseModeArg(input.prompt);
-
-          if (action === "status") {
-            await ctx.session.synthetic({
-              sessionID: input.sessionID,
-              text: `Anthropic cache TTL mode: ${mode}.`,
-              resume: false,
-            });
-            return;
+          switch (action.type) {
+            case "status":
+              await say(`Session cache settings: ${describeSettings(await store.effective(sessionID))}.`);
+              return;
+            case "invalid":
+              await say(INVALID_ARGUMENT_TEXT);
+              return;
+            case "reset":
+              await store.resetSession(sessionID);
+              await say(
+                `Session cache settings reset: ${describeSettings(await store.effective(sessionID))}.`,
+              );
+              return;
+            case "toggle": {
+              const { mode } = await store.effective(sessionID);
+              await store.setSession(sessionID, { mode: mode === "5m" ? "1h" : "5m" });
+              break;
+            }
+            case "set":
+              await store.setSession(sessionID, action.patch);
+              break;
           }
-
-          if (action === "invalid") {
-            await ctx.session.synthetic({
-              sessionID: input.sessionID,
-              text:
-                "Unknown cache TTL argument. Use `5m`, `1h`, `hybrid`, or `status`, " +
-                "or run `/cache-ttl` with no argument to toggle between 5m and 1h.",
-              resume: false,
-            });
-            return;
-          }
-
-          mode = action === "toggle" ? (mode === "5m" ? "1h" : "5m") : action;
-          await ctx.storage.set("mode", mode);
-          await ctx.session.synthetic({
-            sessionID: input.sessionID,
-            text: `Anthropic cache TTL mode set to ${mode}.`,
-            resume: false,
-          });
+          await say(`Session cache settings updated: ${describeSettings(await store.effective(sessionID))}.`);
         },
       });
     });
@@ -168,6 +133,7 @@ export default Plugin.define({
       ) {
         return;
       }
+      const { mode } = await store.effective(evt.sessionID);
       evt.request = await transformHttpRequest(evt.request, mode);
     });
   },

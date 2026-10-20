@@ -1,3 +1,6 @@
+import type { SettingsPatch } from "./settings.ts";
+import type { Ttl } from "./usage.ts";
+
 /**
  * Anthropic prompt-cache TTL modes.
  *
@@ -53,18 +56,60 @@ function extractRawText(raw: unknown): string {
   return "";
 }
 
+/** What a `/cache-manager` argument asks for. */
+export type CommandAction =
+  | { type: "toggle" }
+  | { type: "status" }
+  | { type: "reset" }
+  | { type: "set"; patch: SettingsPatch }
+  | { type: "invalid" };
+
+/** Parses `50000` or `50k` into a token count; `undefined` when malformed. */
+function parseTokenCount(text: string | undefined): number | undefined {
+  const match = /^(\d+)(k?)$/.exec(text ?? "");
+  if (!match) return undefined;
+  return Number(match[1]) * (match[2] ? 1000 : 1);
+}
+
 /**
  * Parses a slash-command argument into an action. Accepts a raw string, a
  * `PromptInput.Prompt`-shaped object, or an array of `{ text }` parts.
  */
-export function parseModeArg(
-  raw: unknown,
-): CacheTtlMode | "toggle" | "status" | "invalid" {
+export function parseCommandArg(raw: unknown): CommandAction {
   const text = extractRawText(raw).trim().toLowerCase();
-  if (text === "" || text === "toggle") return "toggle";
-  if (text === "status") return "status";
-  if (isCacheTtlMode(text)) return text;
-  return "invalid";
+  if (text === "" || text === "toggle") return { type: "toggle" };
+  if (text === "status") return { type: "status" };
+  if (text === "reset") return { type: "reset" };
+  if (isCacheTtlMode(text)) return { type: "set", patch: { mode: text } };
+
+  const [command, value, ...rest] = text.split(/\s+/);
+  if (rest.length > 0) return { type: "invalid" };
+
+  if (command === "keepalive" && (value === "on" || value === "off")) {
+    return { type: "set", patch: { keepalive: value === "on" } };
+  }
+  if (command === "pings" && /^\d+$/.test(value ?? "")) {
+    const maxPings = Number(value);
+    if (maxPings <= 100) return { type: "set", patch: { maxPings } };
+  }
+  if (command === "min") {
+    const minContextTokens = parseTokenCount(value);
+    if (minContextTokens !== undefined) {
+      return { type: "set", patch: { minContextTokens } };
+    }
+  }
+  return { type: "invalid" };
+}
+
+/** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
+export function ttlForMode(mode: CacheTtlMode): Ttl {
+  return mode === "1h" ? "1h" : "5m";
+}
+
+/** The mode a request runs at: a valid `x-cache-ttl` header, else `fallback`. */
+export function resolveActiveMode(request: Request, fallback: CacheTtlMode): CacheTtlMode {
+  const normalized = (request.headers.get(SENTINEL_HEADER) ?? "").trim().toLowerCase();
+  return isCacheTtlMode(normalized) ? normalized : fallback;
 }
 
 /**
@@ -216,10 +261,8 @@ export async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
 ): Promise<Request> {
-  const rawSentinel = request.headers.get(SENTINEL_HEADER);
   const hadSentinel = request.headers.has(SENTINEL_HEADER);
-  const normalized = (rawSentinel ?? "").trim().toLowerCase();
-  const activeMode: CacheTtlMode = isCacheTtlMode(normalized) ? normalized : fallbackMode;
+  const activeMode = resolveActiveMode(request, fallbackMode);
 
   const headers = new Headers(request.headers);
   headers.delete(SENTINEL_HEADER);

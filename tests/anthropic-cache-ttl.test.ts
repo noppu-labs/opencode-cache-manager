@@ -8,9 +8,11 @@ import {
   hasOneHourCacheControl,
   isCacheTtlMode,
   mergeBetaHeader,
-  parseModeArg,
+  parseCommandArg,
+  resolveActiveMode,
   rewriteAnthropicCacheTtl,
   transformHttpRequest,
+  ttlForMode,
 } from "../shared.ts";
 
 // `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
@@ -120,59 +122,124 @@ describe("isCacheTtlMode", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseModeArg
+// parseCommandArg
 // ---------------------------------------------------------------------------
 
-describe("parseModeArg", () => {
-  test("parses plain strings case-insensitively", () => {
-    expect(parseModeArg("5m")).toBe("5m");
-    expect(parseModeArg("1h")).toBe("1h");
-    expect(parseModeArg("hybrid")).toBe("hybrid");
-    expect(parseModeArg("HyBrId")).toBe("hybrid");
-    expect(parseModeArg("  1H  ")).toBe("1h");
-    expect(parseModeArg("5M")).toBe("5m");
+describe("parseCommandArg", () => {
+  test("parses mode arguments case-insensitively", () => {
+    expect(parseCommandArg("5m")).toEqual({ type: "set", patch: { mode: "5m" } });
+    expect(parseCommandArg("1h")).toEqual({ type: "set", patch: { mode: "1h" } });
+    expect(parseCommandArg("hybrid")).toEqual({ type: "set", patch: { mode: "hybrid" } });
+    expect(parseCommandArg("HyBrId")).toEqual({ type: "set", patch: { mode: "hybrid" } });
+    expect(parseCommandArg("  1H  ")).toEqual({ type: "set", patch: { mode: "1h" } });
+    expect(parseCommandArg("5M")).toEqual({ type: "set", patch: { mode: "5m" } });
   });
 
-  test("parses status", () => {
-    expect(parseModeArg("status")).toBe("status");
-    expect(parseModeArg("STATUS")).toBe("status");
-    expect(parseModeArg(" status ")).toBe("status");
+  test("parses status, reset and toggle", () => {
+    expect(parseCommandArg("status")).toEqual({ type: "status" });
+    expect(parseCommandArg(" STATUS ")).toEqual({ type: "status" });
+    expect(parseCommandArg("reset")).toEqual({ type: "reset" });
+    expect(parseCommandArg("Reset")).toEqual({ type: "reset" });
+    expect(parseCommandArg("toggle")).toEqual({ type: "toggle" });
+    expect(parseCommandArg("TOGGLE")).toEqual({ type: "toggle" });
   });
 
-  test("empty input and explicit toggle both mean toggle", () => {
-    expect(parseModeArg("")).toBe("toggle");
-    expect(parseModeArg("   ")).toBe("toggle");
-    expect(parseModeArg("toggle")).toBe("toggle");
-    expect(parseModeArg("TOGGLE")).toBe("toggle");
+  test("empty input means toggle", () => {
+    expect(parseCommandArg("")).toEqual({ type: "toggle" });
+    expect(parseCommandArg("   ")).toEqual({ type: "toggle" });
+  });
+
+  test("parses keepalive on and off", () => {
+    expect(parseCommandArg("keepalive on")).toEqual({ type: "set", patch: { keepalive: true } });
+    expect(parseCommandArg("KEEPALIVE OFF")).toEqual({ type: "set", patch: { keepalive: false } });
+    expect(parseCommandArg("keepalive   off")).toEqual({ type: "set", patch: { keepalive: false } });
+    expect(parseCommandArg("keepalive maybe")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("keepalive")).toEqual({ type: "invalid" });
+  });
+
+  test("parses pings within 0..100", () => {
+    expect(parseCommandArg("pings 3")).toEqual({ type: "set", patch: { maxPings: 3 } });
+    expect(parseCommandArg("pings 0")).toEqual({ type: "set", patch: { maxPings: 0 } });
+    expect(parseCommandArg("pings 100")).toEqual({ type: "set", patch: { maxPings: 100 } });
+    expect(parseCommandArg("pings 101")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("pings -1")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("pings 2.5")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("pings many")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("pings")).toEqual({ type: "invalid" });
+  });
+
+  test("parses min as an integer or a k-suffixed integer", () => {
+    expect(parseCommandArg("min 20000")).toEqual({ type: "set", patch: { minContextTokens: 20000 } });
+    expect(parseCommandArg("min 50k")).toEqual({ type: "set", patch: { minContextTokens: 50000 } });
+    expect(parseCommandArg("MIN 50K")).toEqual({ type: "set", patch: { minContextTokens: 50000 } });
+    expect(parseCommandArg("min 0")).toEqual({ type: "set", patch: { minContextTokens: 0 } });
+    expect(parseCommandArg("min -5")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("min 1.5k")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("min k")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("min")).toEqual({ type: "invalid" });
   });
 
   test("unknown input is invalid", () => {
-    expect(parseModeArg("banana")).toBe("invalid");
-    expect(parseModeArg("5")).toBe("invalid");
-    expect(parseModeArg("1hour")).toBe("invalid");
+    expect(parseCommandArg("banana")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("5")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("1hour")).toEqual({ type: "invalid" });
+    expect(parseCommandArg("1h extra")).toEqual({ type: "invalid" });
   });
 
   test("parses the PromptInput.Prompt object shape", () => {
-    expect(parseModeArg({ text: "1h" })).toBe("1h");
-    expect(parseModeArg({ text: "  status " })).toBe("status");
-    expect(parseModeArg({ text: "" })).toBe("toggle");
-    expect(parseModeArg({ text: "nonsense" })).toBe("invalid");
-    expect(parseModeArg({ text: "hybrid", files: [] })).toBe("hybrid");
+    expect(parseCommandArg({ text: "1h" })).toEqual({ type: "set", patch: { mode: "1h" } });
+    expect(parseCommandArg({ text: "  status " })).toEqual({ type: "status" });
+    expect(parseCommandArg({ text: "" })).toEqual({ type: "toggle" });
+    expect(parseCommandArg({ text: "nonsense" })).toEqual({ type: "invalid" });
+    expect(parseCommandArg({ text: "pings 4", files: [] })).toEqual({
+      type: "set",
+      patch: { maxPings: 4 },
+    });
   });
 
   test("parses arrays of { text } parts joined by spaces", () => {
-    expect(parseModeArg([{ text: "1h" }])).toBe("1h");
-    expect(parseModeArg([{ text: "hybrid" }])).toBe("hybrid");
-    expect(parseModeArg([{ text: "status" }])).toBe("status");
-    expect(parseModeArg([])).toBe("toggle");
-    expect(parseModeArg([{ text: "nope" }])).toBe("invalid");
+    expect(parseCommandArg([{ text: "1h" }])).toEqual({ type: "set", patch: { mode: "1h" } });
+    expect(parseCommandArg([{ text: "keepalive" }, { text: "off" }])).toEqual({
+      type: "set",
+      patch: { keepalive: false },
+    });
+    expect(parseCommandArg([])).toEqual({ type: "toggle" });
+    expect(parseCommandArg([{ text: "nope" }])).toEqual({ type: "invalid" });
   });
 
   test("handles unexpected shapes without throwing", () => {
-    expect(parseModeArg(undefined)).toBe("toggle");
-    expect(parseModeArg(null)).toBe("toggle");
-    expect(parseModeArg(42)).toBe("toggle");
-    expect(parseModeArg({ foo: "bar" })).toBe("toggle");
+    expect(parseCommandArg(undefined)).toEqual({ type: "toggle" });
+    expect(parseCommandArg(null)).toEqual({ type: "toggle" });
+    expect(parseCommandArg(42)).toEqual({ type: "toggle" });
+    expect(parseCommandArg({ foo: "bar" })).toEqual({ type: "toggle" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ttlForMode / resolveActiveMode
+// ---------------------------------------------------------------------------
+
+describe("ttlForMode", () => {
+  test("hybrid pings at 5m, matching its message breakpoints", () => {
+    expect(ttlForMode("5m")).toBe("5m");
+    expect(ttlForMode("1h")).toBe("1h");
+    expect(ttlForMode("hybrid")).toBe("5m");
+  });
+});
+
+describe("resolveActiveMode", () => {
+  test("honours a valid x-cache-ttl header", () => {
+    const request = makeRequest("{}", { [SENTINEL_HEADER]: " 1H " });
+    expect(resolveActiveMode(request, "5m")).toBe("1h");
+  });
+
+  test("ignores an invalid header", () => {
+    const request = makeRequest("{}", { [SENTINEL_HEADER]: "bogus" });
+    expect(resolveActiveMode(request, "hybrid")).toBe("hybrid");
+  });
+
+  test("uses the fallback when the header is absent", () => {
+    expect(resolveActiveMode(makeRequest("{}"), "1h")).toBe("1h");
   });
 });
 
@@ -544,23 +611,25 @@ function invocation(text: string) {
 }
 
 describe("plugin.setup", () => {
+  test("registers the cache-manager command, not cache-ttl", async () => {
+    const mock = await setup();
+    expect(mock.command().name).toBe("cache-manager");
+  });
+
   test("defaults to 5m when no stored mode or option is present", async () => {
     const mock = await setup();
-    expect(mock.command()).toBeDefined();
     await mock.command().execute(invocation("status"));
     expect(mock.synthetic).toHaveLength(1);
+    expect(mock.synthetic[0].text).toContain("Session");
     expect(mock.synthetic[0].text).toContain("5m");
   });
 
-  test("loads the stored mode from ctx.storage", async () => {
-    const mock = await setup();
+  test("the legacy stored mode key seeds the global mode", async () => {
+    const mock = createMockCtx();
     mock.store.set("mode", "hybrid");
-    // Re-run setup on a fresh context whose storage already holds hybrid.
-    const mock2 = createMockCtx();
-    mock2.store.set("mode", "hybrid");
-    await (plugin as any).setup(mock2.ctx);
-    await mock2.command().execute(invocation("status"));
-    expect(mock2.synthetic[0].text).toContain("hybrid");
+    await (plugin as any).setup(mock.ctx);
+    await mock.command().execute(invocation("status"));
+    expect(mock.synthetic[0].text).toContain("hybrid");
   });
 
   test("falls back to ctx.options.defaultMode when storage is empty", async () => {
@@ -577,73 +646,127 @@ describe("plugin.setup", () => {
     expect(mock.synthetic[0].text).toContain("5m");
   });
 
-  test("no-arg command toggles 5m -> 1h -> 5m, persists and sends synthetic notices", async () => {
+  test("reads keepalive options from ctx.options", async () => {
+    const mock = await setup({ keepalive: { enabled: false, maxPings: 2, minContextTokens: 20000 } });
+    await mock.command().execute(invocation("status"));
+    const text = mock.synthetic[0].text;
+    expect(text).toContain("off");
+    expect(text).toContain("2");
+    expect(text).toContain("20000");
+  });
+
+  test("/cache-manager 1h writes the session layer only", async () => {
+    const mock = await setup();
+    await mock.command().execute(invocation("1h"));
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
+    expect(mock.store.has("global")).toBe(false);
+    expect(mock.store.has("mode")).toBe(false);
+    expect(mock.synthetic).toHaveLength(1);
+    expect(mock.synthetic[0]).toMatchObject({ sessionID: "ses_test", resume: false });
+    expect(mock.synthetic[0].text).toContain("Session");
+    expect(mock.synthetic[0].text).toContain("1h");
+  });
+
+  test("an explicit mode does not touch an existing global setting", async () => {
+    const mock = createMockCtx();
+    mock.store.set("global", { mode: "hybrid" });
+    await (plugin as any).setup(mock.ctx);
+    await mock.command().execute(invocation("5m"));
+    expect(mock.store.get("global")).toEqual({ mode: "hybrid" });
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "5m" });
+  });
+
+  test("no-arg command toggles the session mode 5m -> 1h -> 5m", async () => {
     const mock = await setup();
 
     await mock.command().execute(invocation(""));
-    expect(mock.store.get("mode")).toBe("1h");
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
     expect(mock.synthetic).toHaveLength(1);
     expect(mock.synthetic[0]).toMatchObject({ sessionID: "ses_test", resume: false });
     expect(mock.synthetic[0].text).toContain("1h");
 
     await mock.command().execute(invocation(""));
-    expect(mock.store.get("mode")).toBe("5m");
-    expect(mock.synthetic).toHaveLength(2);
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "5m" });
     expect(mock.synthetic[1].resume).toBe(false);
 
     await mock.command().execute(invocation(""));
-    expect(mock.store.get("mode")).toBe("1h");
-    expect(mock.synthetic).toHaveLength(3);
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
+    expect(mock.store.has("global")).toBe(false);
   });
 
-  test("/cache-ttl 5m explicitly sets 5m", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("5m"));
-    expect(mock.store.get("mode")).toBe("5m");
-    expect(mock.synthetic[0].text).toContain("5m");
-  });
-
-  test("/cache-ttl 1h explicitly sets 1h", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    expect(mock.store.get("mode")).toBe("1h");
-    expect(mock.synthetic[0].text).toContain("1h");
-  });
-
-  test("/cache-ttl hybrid sets hybrid", async () => {
+  test("hybrid is settable per session", async () => {
     const mock = await setup();
     await mock.command().execute(invocation("hybrid"));
-    expect(mock.store.get("mode")).toBe("hybrid");
+    expect(mock.store.get("session/ses_test")).toEqual({ mode: "hybrid" });
     expect(mock.synthetic[0].text).toContain("hybrid");
   });
 
-  test("/cache-ttl status reports without changing the mode", async () => {
+  test("keepalive off, pings 3 and min 20k accumulate in the session patch", async () => {
     const mock = await setup();
-    mock.store.set("mode", "hybrid");
-    const mock2 = createMockCtx();
-    mock2.store.set("mode", "hybrid");
-    await (plugin as any).setup(mock2.ctx);
-    await mock2.command().execute(invocation("status"));
-    expect(mock2.store.get("mode")).toBe("hybrid");
-    expect(mock2.synthetic).toHaveLength(1);
-    expect(mock2.synthetic[0].text).toContain("hybrid");
+
+    await mock.command().execute(invocation("keepalive off"));
+    expect(mock.store.get("session/ses_test")).toEqual({ keepalive: false });
+    expect(mock.synthetic[0].text).toContain("Session");
+
+    await mock.command().execute(invocation("pings 3"));
+    await mock.command().execute(invocation("min 20k"));
+    expect(mock.store.get("session/ses_test")).toEqual({
+      keepalive: false,
+      maxPings: 3,
+      minContextTokens: 20000,
+    });
+    expect(mock.synthetic[1].text).toContain("3");
+    expect(mock.synthetic[2].text).toContain("20000");
+    expect(mock.store.has("global")).toBe(false);
   });
 
-  test("/cache-ttl invalid-arg explains valid args without changing mode", async () => {
+  test("reset removes the session patch", async () => {
+    const mock = await setup();
+    await mock.command().execute(invocation("1h"));
+    await mock.command().execute(invocation("reset"));
+    expect(mock.store.has("session/ses_test")).toBe(false);
+    expect(mock.synthetic).toHaveLength(2);
+    expect(mock.synthetic[1]).toMatchObject({ sessionID: "ses_test", resume: false });
+    expect(mock.synthetic[1].text).toContain("Session");
+  });
+
+  test("status reports the effective session settings without writing", async () => {
+    const mock = createMockCtx();
+    mock.store.set("global", { mode: "hybrid", maxPings: 7 });
+    mock.store.set("session/ses_test", { keepalive: false });
+    await (plugin as any).setup(mock.ctx);
+    const before = new Map(mock.store);
+
+    await mock.command().execute(invocation("status"));
+
+    expect(new Map(mock.store)).toEqual(before);
+    expect(mock.synthetic).toHaveLength(1);
+    const text = mock.synthetic[0].text;
+    expect(text).toContain("hybrid");
+    expect(text).toContain("off");
+    expect(text).toContain("7");
+  });
+
+  test("an invalid argument lists the valid ones without writing", async () => {
     const mock = await setup();
     await mock.command().execute(invocation("not-a-mode"));
-    expect(mock.store.has("mode")).toBe(false);
+    expect(mock.store.size).toBe(0);
     expect(mock.synthetic).toHaveLength(1);
-    expect(mock.synthetic[0].text).toMatch(/5m/);
-    expect(mock.synthetic[0].text).toMatch(/1h/);
-    expect(mock.synthetic[0].text).toMatch(/hybrid/);
-    expect(mock.synthetic[0].text).toMatch(/status/);
+    const text = mock.synthetic[0].text;
+    for (const word of ["5m", "1h", "hybrid", "status", "reset", "keepalive", "pings", "min"]) {
+      expect(text).toContain(word);
+    }
   });
 });
 
 describe("http.request hook", () => {
-  async function dispatch(mock: MockCtx, providerID: string, request: Request) {
-    const evt = { model: { providerID }, request };
+  async function dispatch(
+    mock: MockCtx,
+    providerID: string,
+    request: Request,
+    sessionID = "ses_test",
+  ) {
+    const evt = { sessionID, kind: "primary", model: { providerID }, request };
     await mock.hook()(evt);
     return evt;
   }
@@ -681,9 +804,48 @@ describe("http.request hook", () => {
     expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
   });
 
-  test("uses the current in-memory mode after a toggle", async () => {
+  test("two sessions with different modes get different rewrites", async () => {
+    const mock = await setup();
+    await mock.command().execute({ ...invocation("1h"), sessionID: "ses_a" });
+    await mock.command().execute({ ...invocation("hybrid"), sessionID: "ses_b" });
+
+    const a = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_a");
+    const b = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_b");
+
+    const aBody = (await parsedBodyOf(a.request)) as { messages: Record<string, unknown>[] };
+    const bBody = (await parsedBodyOf(b.request)) as { messages: Record<string, unknown>[] };
+    expect((aBody.messages[2].cache_control as Record<string, unknown>).ttl).toBe("1h");
+    expect("ttl" in (bBody.messages[2].cache_control as Record<string, unknown>)).toBe(false);
+    expect(collectCacheControls(bBody).some((cc) => cc.ttl === "1h")).toBe(true);
+  });
+
+  test("a session without an override uses the global mode", async () => {
+    const mock = createMockCtx();
+    mock.store.set("global", { mode: "1h" });
+    await (plugin as any).setup(mock.ctx);
+    await mock.command().execute({ ...invocation("5m"), sessionID: "ses_a" });
+
+    const a = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_a");
+    const other = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_other");
+
+    expect(a.request.headers.get("anthropic-beta")).toBeNull();
+    expect(other.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("x-cache-ttl still wins over the session mode", async () => {
     const mock = await setup();
     await mock.command().execute(invocation("1h"));
+    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "5m" });
+    const evt = await dispatch(mock, "anthropic", request);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
+    const body = (await parsedBodyOf(evt.request)) as Record<string, unknown>;
+    for (const cc of collectCacheControls(body)) expect("ttl" in cc).toBe(false);
+  });
+
+  test("uses the current in-memory session mode after a toggle", async () => {
+    const mock = await setup();
+    await mock.command().execute(invocation(""));
     const evt = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())));
     expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
   });
@@ -790,49 +952,110 @@ describe("opencode.jsonc omniroute-anthropic -1h variants", () => {
 });
 
 // ---------------------------------------------------------------------------
-// RPC contract (server ctx.rpc.register / getMode / setMode / mode.updated)
+// RPC contract (server ctx.rpc.register / getSettings / setGlobal / setSession / resetSession)
 // ---------------------------------------------------------------------------
 
-describe("cache-ttl RPC", () => {
-  test("setup resolves and getMode defaults to 5m", async () => {
+describe("cache-manager RPC", () => {
+  test("setup resolves and getSettings returns the built-in defaults", async () => {
     const mock = createMockCtx();
     await (plugin as any).setup(mock.ctx);
     expect(mock.rpc()).toBeDefined();
-    expect(await mock.rpc().getMode({})).toBe("5m");
+    expect(await mock.rpc().getSettings({})).toEqual({
+      global: { mode: "5m", keepalive: true, maxPings: 5, minContextTokens: 50_000 },
+      session: null,
+    });
   });
 
-  test("getMode returns the persisted mode", async () => {
+  test("getSettings returns both layers for a session", async () => {
     const mock = createMockCtx();
-    mock.store.set("mode", "1h");
+    mock.store.set("global", { mode: "hybrid" });
+    mock.store.set("session/ses_x", { mode: "1h" });
     await (plugin as any).setup(mock.ctx);
-    expect(await mock.rpc().getMode({})).toBe("1h");
+
+    const result = await mock.rpc().getSettings({ sessionID: "ses_x" });
+    expect(result.global.mode).toBe("hybrid");
+    expect(result.session).toEqual({ mode: "1h" });
+    expect((await mock.rpc().getSettings({ sessionID: "ses_none" })).session).toEqual({});
   });
 
-  test("falls back to a valid defaultMode option when storage is empty", async () => {
-    const mock = createMockCtx({ defaultMode: "hybrid" });
-    await (plugin as any).setup(mock.ctx);
-    expect(await mock.rpc().getMode({})).toBe("hybrid");
+  test("getSettings reflects the legacy mode key and defaultMode option", async () => {
+    const legacy = createMockCtx();
+    legacy.store.set("mode", "1h");
+    await (plugin as any).setup(legacy.ctx);
+    expect((await legacy.rpc().getSettings({})).global.mode).toBe("1h");
+
+    const optioned = createMockCtx({ defaultMode: "hybrid" });
+    await (plugin as any).setup(optioned.ctx);
+    expect((await optioned.rpc().getSettings({})).global.mode).toBe("hybrid");
   });
 
-  test("setMode persists, emits mode.updated, and updates getMode", async () => {
+  test("setSession persists, emits settings.updated with the session ID and returns {}", async () => {
     const mock = createMockCtx();
     await (plugin as any).setup(mock.ctx);
 
-    await mock.rpc().setMode({ mode: "hybrid" });
+    const result = await mock.rpc().setSession({ sessionID: "ses_x", patch: { mode: "hybrid" } });
 
-    expect(mock.store.get("mode")).toBe("hybrid");
-    expect(mock.emits).toEqual([{ name: "mode.updated", data: { mode: "hybrid" } }]);
-    expect(await mock.rpc().getMode({})).toBe("hybrid");
+    expect(result).toEqual({});
+    expect(mock.store.get("session/ses_x")).toEqual({ mode: "hybrid" });
+    expect(mock.emits).toEqual([{ name: "settings.updated", data: { sessionID: "ses_x" } }]);
+    expect((await mock.rpc().getSettings({ sessionID: "ses_x" })).session).toEqual({ mode: "hybrid" });
   });
 
-  test("setMode rejects an invalid mode without changing stored state", async () => {
+  test("setGlobal persists, emits settings.updated with null and returns {}", async () => {
     const mock = createMockCtx();
     await (plugin as any).setup(mock.ctx);
 
-    await expect(mock.rpc().setMode({ mode: "bogus" })).rejects.toThrow();
-    expect(mock.store.has("mode")).toBe(false);
+    const result = await mock.rpc().setGlobal({ patch: { mode: "1h", maxPings: 2 } });
+
+    expect(result).toEqual({});
+    expect(mock.store.get("global")).toEqual({ mode: "1h", maxPings: 2 });
+    expect(mock.emits).toEqual([{ name: "settings.updated", data: { sessionID: null } }]);
+    expect((await mock.rpc().getSettings({})).global.mode).toBe("1h");
+  });
+
+  test("a global change applies to the http.request hook", async () => {
+    const mock = createMockCtx();
+    await (plugin as any).setup(mock.ctx);
+    await mock.rpc().setGlobal({ patch: { mode: "1h" } });
+
+    const evt = {
+      sessionID: "ses_x",
+      kind: "primary",
+      model: { providerID: "anthropic" },
+      request: makeRequest(JSON.stringify(sampleBody())),
+    };
+    await mock.hook()(evt);
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("resetSession clears the session patch, emits and returns {}", async () => {
+    const mock = createMockCtx();
+    mock.store.set("session/ses_x", { mode: "1h" });
+    await (plugin as any).setup(mock.ctx);
+
+    const result = await mock.rpc().resetSession({ sessionID: "ses_x" });
+
+    expect(result).toEqual({});
+    expect(mock.store.has("session/ses_x")).toBe(false);
+    expect(mock.emits).toEqual([{ name: "settings.updated", data: { sessionID: "ses_x" } }]);
+    expect((await mock.rpc().getSettings({ sessionID: "ses_x" })).session).toEqual({});
+  });
+
+  test("invalid patch fields are rejected without changing state", async () => {
+    const mock = createMockCtx();
+    await (plugin as any).setup(mock.ctx);
+
+    await expect(
+      mock.rpc().setSession({ sessionID: "ses_x", patch: { mode: "bogus" } }),
+    ).rejects.toThrow();
+    await expect(mock.rpc().setSession({ sessionID: "ses_x", patch: { maxPings: 101 } })).rejects.toThrow();
+    await expect(mock.rpc().setGlobal({ patch: { minContextTokens: -1 } })).rejects.toThrow();
+    await expect(mock.rpc().setGlobal({ patch: { unknown: 1 } })).rejects.toThrow();
+    await expect(mock.rpc().setGlobal({ patch: "1h" })).rejects.toThrow();
+
+    expect(mock.store.size).toBe(0);
     expect(mock.emits).toHaveLength(0);
-    expect(await mock.rpc().getMode({})).toBe("5m");
+    expect((await mock.rpc().getSettings({})).global.mode).toBe("5m");
   });
 });
 
@@ -844,7 +1067,7 @@ type TuiMock = {
   ctx: any;
   toasts: any[];
   dialogCalls: any[];
-  setModeCalls: any[];
+  setSessionCalls: any[];
   layer: () => any;
   run: (input?: string) => Promise<void>;
 };
@@ -852,20 +1075,23 @@ type TuiMock = {
 function createTuiCtx(
   currentMode: string = "5m",
   dialogResult?: unknown,
-  setModeImpl?: (input: any) => Promise<unknown>,
+  setSessionImpl?: (input: any) => Promise<unknown>,
 ): TuiMock {
   let layer: any;
   const toasts: any[] = [];
   const dialogCalls: any[] = [];
-  const setModeCalls: any[] = [];
+  const setSessionCalls: any[] = [];
 
   const ctx = {
     client: {
       rpc: () => ({
-        getMode: async () => currentMode,
-        setMode: async (input: any) => {
-          setModeCalls.push(input);
-          if (setModeImpl) return setModeImpl(input);
+        getSettings: async () => ({
+          global: { mode: currentMode, keepalive: true, maxPings: 5, minContextTokens: 50_000 },
+          session: null,
+        }),
+        setSession: async (input: any) => {
+          setSessionCalls.push(input);
+          if (setSessionImpl) return setSessionImpl(input);
           return undefined;
         },
         events: {
@@ -886,6 +1112,9 @@ function createTuiCtx(
           toasts.push(options);
         },
       },
+      router: {
+        current: () => ({ type: "session", sessionID: "ses_tui" }),
+      },
     },
     keymap: {
       layer: (fn: () => any) => {
@@ -898,7 +1127,7 @@ function createTuiCtx(
     ctx,
     toasts,
     dialogCalls,
-    setModeCalls,
+    setSessionCalls,
     layer: () => layer,
     run: (input?: string) => layer.commands[0].run(input),
   };
@@ -921,7 +1150,7 @@ describe("cache-ttl TUI plugin", () => {
       expect(typeof option.description).toBe("string");
       expect(option.description.length).toBeGreaterThan(0);
     }
-    expect(mock.setModeCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
@@ -935,13 +1164,13 @@ describe("cache-ttl TUI plugin", () => {
     expect(mock.dialogCalls[0].current).toBe("1h");
   });
 
-  test("dialog selection posts setMode and shows a success toast", async () => {
+  test("dialog selection posts setSession and shows a success toast", async () => {
     const mock = createTuiCtx("5m", "1h");
     await (tuiPlugin as any).setup(mock.ctx);
 
     await mock.run("");
 
-    expect(mock.setModeCalls).toEqual([{ mode: "1h" }]);
+    expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { mode: "1h" } }]);
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("success");
     expect(mock.toasts[0].message).toContain("1h");
@@ -954,7 +1183,7 @@ describe("cache-ttl TUI plugin", () => {
     await mock.run("");
 
     expect(mock.dialogCalls).toHaveLength(1);
-    expect(mock.setModeCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
@@ -964,7 +1193,7 @@ describe("cache-ttl TUI plugin", () => {
 
     await mock.run("");
 
-    expect(mock.setModeCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
@@ -975,7 +1204,7 @@ describe("cache-ttl TUI plugin", () => {
     await mock.run("status");
 
     expect(mock.dialogCalls).toHaveLength(0);
-    expect(mock.setModeCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("info");
     expect(mock.toasts[0].message).toContain("hybrid");
@@ -988,7 +1217,7 @@ describe("cache-ttl TUI plugin", () => {
     await mock.run("5m");
 
     expect(mock.dialogCalls).toHaveLength(0);
-    expect(mock.setModeCalls).toEqual([{ mode: "5m" }]);
+    expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { mode: "5m" } }]);
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("success");
   });
@@ -1000,13 +1229,26 @@ describe("cache-ttl TUI plugin", () => {
     await mock.run("garbage");
 
     expect(mock.dialogCalls).toHaveLength(0);
-    expect(mock.setModeCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("warning");
     expect(mock.toasts[0].message).toContain("5m");
     expect(mock.toasts[0].message).toContain("1h");
     expect(mock.toasts[0].message).toContain("hybrid");
     expect(mock.toasts[0].message).toContain("status");
+  });
+
+  test("outside a session it warns and performs no RPC write", async () => {
+    const mock = createTuiCtx("5m", "1h");
+    mock.ctx.ui.router.current = () => ({ type: "home" });
+    await (tuiPlugin as any).setup(mock.ctx);
+
+    await mock.run("");
+
+    expect(mock.dialogCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.toasts).toHaveLength(1);
+    expect(mock.toasts[0].variant).toBe("warning");
   });
 
   test("an RPC failure surfaces as an error toast without throwing", async () => {
@@ -1017,7 +1259,7 @@ describe("cache-ttl TUI plugin", () => {
 
     await expect(mock.run("")).resolves.toBeUndefined();
 
-    expect(mock.setModeCalls).toHaveLength(1);
+    expect(mock.setSessionCalls).toHaveLength(1);
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("error");
     expect(mock.toasts[0].message).toContain("rpc down");
