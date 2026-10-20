@@ -5,6 +5,9 @@
  * handlers, and the TUI entrypoint (`tui.ts`), which calls them and subscribes
  * to the `settings.updated` and `keepalive.updated` events.
  */
+import type { Settings, SettingsPatch } from "./config/settings.ts";
+import type { KeepaliveSnapshot } from "./models/keepalive.ts";
+
 const settingsSchema = {
   type: "object",
   properties: {
@@ -123,3 +126,21 @@ export const CacheTtlRpc = {
     },
   },
 } as const;
+
+/** Loose client shape mirroring the `@opencode/plugin` RPC client for this contract. */
+export type CacheTtlRpcClient = {
+  getSettings(input: { sessionID?: string }): Promise<{
+    global: Settings;
+    session: SettingsPatch | null;
+  }>;
+  setGlobal(input: { patch: SettingsPatch }): Promise<unknown>;
+  setSession(input: { sessionID: string; patch: SettingsPatch }): Promise<unknown>;
+  resetSession(input: { sessionID: string }): Promise<unknown>;
+  getKeepalive(input: { sessionID: string }): Promise<KeepaliveSnapshot>;
+  events: {
+    subscribe(
+      name: "keepalive.updated",
+      options?: { signal?: AbortSignal },
+    ): AsyncIterable<{ data: KeepaliveSnapshot }>;
+  };
+};

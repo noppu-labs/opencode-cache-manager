@@ -31,35 +31,46 @@ The code follows a standard modular TypeScript layout under `src/`, mapped onto 
 src/
 ├── server.ts                  # server entry: builds the parts and registers them with OpenCode
 ├── tui.ts                     # TUI entry: palette, slash command, registers the sidebar
-├── rpc.ts                     # RPC contract (public export, so it stays a top-level entry)
+├── rpc.ts                     # RPC contract and client type (public export, so it stays a top-level entry)
 ├── config/
 │   └── settings.ts            # Settings type, defaults, option parsing, layer merging
 ├── constants/
-│   ├── anthropic.ts           # beta header value, x-cache-ttl header name
+│   ├── anthropic.ts           # beta header value, x-cache-ttl header name, Anthropic provider IDs
 │   └── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
-├── models/                    # shared types: Ttl, CacheTtlMode, CacheUsage, KeepaliveSnapshot, SkipReason
+├── models/
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage
+│   └── keepalive.ts           # KeepaliveSnapshot, SkipReason, RequestKind
 ├── controllers/
-│   ├── command.ts             # /cache-manager handler and argument parsing
+│   ├── command.ts             # server /cache-manager handler
+│   ├── command-args.ts        # /cache-manager argument parsing (shared with the TUI)
 │   └── rpc-handlers.ts        # getSettings / setGlobal / setSession / resetSession / getKeepalive
 ├── middleware/
 │   ├── request.ts             # http.request hook: ping alignment, TTL rewrite, request bookkeeping
 │   └── response.ts            # http.response hook: usage observation
 ├── services/
 │   ├── keepalive-engine.ts    # scheduling engine
+│   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
 │   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge
-│   ├── ping-alignment.ts      # alignPingMessages
+│   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
 │   └── usage.ts               # usage/SSE parsing, granted-TTL detection
 ├── ui/
+│   ├── command.ts             # TUI /cache-manager runner (typed arguments, toasts)
 │   ├── picker.ts              # Session/Global picker
+│   ├── snapshot-feed.ts       # keepalive snapshots for the sidebar, fed by RPC events
 │   ├── sidebar.tsx            # Solid sidebar component; the only JSX file
 │   └── sidebar-lines.ts       # pure sidebar line formatting
-└── utils/                     # small shared helpers (isRecord, formatRemaining, token formatting)
+└── utils/
+    ├── format.ts              # formatRemaining, formatTokens, errorMessage
+    └── is-record.ts
 tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts)
 ```
 
 Other top-level files:
 
+- `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host; they cover the wiring in controllers, middleware and `ui/`.
+- `tests/helpers/` - shared test fixtures (sample Anthropic bodies, request builders).
+- `tests/opencode-config.test.ts` - checks the `-1h` variants in `opencode.jsonc`.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
 - `docs/` - design notes from the original build.
@@ -73,6 +84,7 @@ Where new code goes:
 - `utils/` is for small pure helpers with no domain knowledge. Don't duplicate a helper; move it here.
 - Anything rendered in the TUI goes in `ui/`. Keep formatting pure (`sidebar-lines.ts`) and separate from Solid components.
 - Each source file gets a test file at the matching path under `tests/`. Split test files by area rather than growing one large file.
+- A local checkout is loaded by symlinking `src/` (not the repo root) into `~/.config/opencode/plugins/`: OpenCode resolves a plugin directory by file path, not through `package.json` `exports`.
 - No `dist/` and no `@types/`: there is no build step and nothing needs global declarations. Adding a compile step changes how releases work, so it is a separate decision.
 
 ## Rules

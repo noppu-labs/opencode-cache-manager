@@ -1,6 +1,6 @@
 // Sample opencode.jsonc for the anthropic-cache-ttl plugin (opencode-cache-manager).
 //
-// This fixture is also used by the test suite (tests/anthropic-cache-ttl.test.ts).
+// This fixture is also used by the test suite (tests/opencode-config.test.ts).
 // To use the plugin with your own setup, copy the "omniroute-anthropic" provider
 // below into your ~/.config/opencode/opencode.jsonc, or point it at any
 // Anthropic-compatible endpoint. The authToken is an env-var reference, so

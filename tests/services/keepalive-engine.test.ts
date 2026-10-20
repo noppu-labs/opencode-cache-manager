@@ -1,15 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import {
-  EXPIRY_MARGIN_MS,
-  KeepaliveEngine,
-  PING_OFFSET_MS,
-  RETRY_DELAY_MS,
-  TTL_MS,
-  type KeepaliveSnapshot,
-  type RequestKind,
-} from "../keepalive.ts";
-import { BUILTIN_DEFAULTS, type Settings } from "../settings.ts";
-import type { CacheUsage, Ttl } from "../usage.ts";
+import { BUILTIN_DEFAULTS, type Settings } from "../../src/config/settings.ts";
+import { EXPIRY_MARGIN_MS, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../../src/constants/keepalive.ts";
+import type { CacheUsage, Ttl } from "../../src/models/cache.ts";
+import type { KeepaliveSnapshot, RequestKind } from "../../src/models/keepalive.ts";
+import { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 
 const MIN = 60_000;
 

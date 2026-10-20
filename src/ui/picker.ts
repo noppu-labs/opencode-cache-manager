@@ -1,0 +1,191 @@
+import type { Plugin } from "@opencode/plugin/tui";
+import { mergeSettings, type Settings, type SettingsPatch } from "../config/settings.ts";
+import { parseCommandArg } from "../controllers/command-args.ts";
+import type { CacheTtlMode } from "../models/cache.ts";
+import type { CacheTtlRpcClient } from "../rpc.ts";
+import { formatTokens } from "../utils/format.ts";
+
+/**
+ * Interactive metadata for each cache TTL mode, shown in the picker modal.
+ */
+const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> = {
+  "5m": {
+    title: "5 minutes (default)",
+    description: "Standard ephemeral cache. 1.25x base input write cost, 0.1x read.",
+  },
+  "1h": {
+    title: "1 hour (extended)",
+    description: "1h ephemeral on every breakpoint. 2x base input write cost, 0.1x read.",
+  },
+  hybrid: {
+    title: "Hybrid",
+    description: "1h on tools + system prompt; 5m on rolling messages.",
+  },
+};
+
+const CUSTOM = "custom";
+
+type Field = keyof Settings;
+type Scope = "session" | "global";
+type Choice<V> = { title: string; value: V; description?: string };
+
+export const FIELDS: Field[] = ["mode", "keepalive", "maxPings", "minContextTokens"];
+
+export const FIELD_INFO: Record<Field, { row: string; label: string }> = {
+  mode: { row: "TTL mode", label: "cache TTL" },
+  keepalive: { row: "Keepalive", label: "keepalive" },
+  maxPings: { row: "Pings per idle", label: "pings per idle" },
+  minContextTokens: { row: "Min context", label: "min context" },
+};
+
+const PING_CHOICES = [0, 1, 3, 5, 10];
+const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
+
+export type Toast = (message: string, variant: "success" | "info" | "warning" | "error") => unknown;
+
+export function formatValue<F extends Field>(field: F, value: Settings[F]): string {
+  if (field === "keepalive") return value ? "on" : "off";
+  if (field === "minContextTokens") return formatTokens(value as number);
+  return String(value);
+}
+
+/** Dialog rows for one scope; session rows mark values inherited from global. */
+function settingsOptions(
+  scope: Scope,
+  values: Settings,
+  override: SettingsPatch | null,
+): { title: string; value: string; category: string }[] {
+  const category = scope === "session" ? "Session" : "Global";
+  return FIELDS.map((field) => {
+    const inherited = scope === "session" && override?.[field] === undefined;
+    return {
+      title: `${FIELD_INFO[field].row}  ${formatValue(field, values[field])}${inherited ? " · global" : ""}`,
+      value: `${scope}:${field}`,
+      category,
+    };
+  });
+}
+
+/** The sub-dialog choices for a setting; `custom` is present for numeric ones. */
+function fieldChoices(field: Field): Choice<string | number>[] {
+  switch (field) {
+    case "mode":
+      return (["5m", "1h", "hybrid"] as const).map((value) => ({ value, ...OPTION_INFO[value] }));
+    case "keepalive":
+      return [
+        { title: "on", value: "on" },
+        { title: "off", value: "off" },
+      ];
+    case "maxPings":
+      return [
+        ...PING_CHOICES.map((value) => ({ title: String(value), value })),
+        { title: "Custom…", value: CUSTOM },
+      ];
+    case "minContextTokens":
+      return [
+        ...MIN_CONTEXT_CHOICES.map((value) => ({ title: formatTokens(value), value })),
+        { title: "Custom…", value: CUSTOM },
+      ];
+  }
+}
+
+export interface PickerDeps {
+  dialog: Plugin.Context["ui"]["dialog"];
+  rpc: CacheTtlRpcClient;
+  toast: Toast;
+  currentSessionID(): string | undefined;
+}
+
+/** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */
+export function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
+  const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
+    if (scope === "session" && sessionID !== undefined) {
+      await rpc.setSession({ sessionID, patch });
+    } else {
+      await rpc.setGlobal({ patch });
+    }
+  };
+
+  /** Asks for a number via the prompt dialog; `undefined` on cancel or invalid input. */
+  const promptNumber = async (field: "maxPings" | "minContextTokens"): Promise<number | undefined> => {
+    const input = await dialog.prompt({
+      title: FIELD_INFO[field].row,
+      description: field === "maxPings" ? "Number of pings, 0-100." : "Tokens, e.g. 50000 or 50k.",
+      placeholder: field === "maxPings" ? "5" : "50k",
+    });
+    if (input === undefined) return undefined;
+    const action = parseCommandArg(`${field === "maxPings" ? "pings" : "min"} ${input}`);
+    const value = action.type === "set" ? action.patch[field] : undefined;
+    if (value === undefined) {
+      toast(`"${input.trim()}" is not a valid value for ${FIELD_INFO[field].label}.`, "warning");
+    }
+    return value;
+  };
+
+  /** Picks a new value for one setting and writes it; cancelling writes nothing. */
+  const editField = async (
+    scope: Scope,
+    field: Field,
+    sessionID: string | undefined,
+    effective: Settings,
+  ): Promise<void> => {
+    const current = effective[field];
+    const currentChoice = field === "keepalive" ? (current ? "on" : "off") : current;
+    const selected = await dialog.select<string | number>({
+      title: `${scope === "session" ? "Session" : "Global"} ${FIELD_INFO[field].label}`,
+      current: currentChoice as string | number,
+      options: fieldChoices(field),
+    });
+    if (selected === undefined) return;
+
+    let patch: SettingsPatch;
+    if (selected === CUSTOM) {
+      const value = await promptNumber(field as "maxPings" | "minContextTokens");
+      if (value === undefined) return;
+      patch = { [field]: value };
+    } else if (field === "keepalive") {
+      patch = { keepalive: selected === "on" };
+    } else {
+      patch = { [field]: selected } as SettingsPatch;
+    }
+
+    const next = patch[field] as Settings[Field];
+    if (next === current) return;
+    await write(scope, sessionID, patch);
+    toast(
+      `${scope === "session" ? "Session" : "Global"} ${FIELD_INFO[field].label} set to ${formatValue(field, next as never)}.`,
+      "success",
+    );
+  };
+
+  return async (): Promise<void> => {
+    const sessionID = currentSessionID();
+    const { global, session } = await rpc.getSettings(sessionID === undefined ? {} : { sessionID });
+    const effective = mergeSettings(global, session ?? {});
+
+    const options = [
+      ...(sessionID === undefined
+        ? []
+        : [
+            ...settingsOptions("session", effective, session),
+            { title: "Reset session to global", value: "session:reset", category: "Session" },
+          ]),
+      ...settingsOptions("global", global, null),
+    ];
+    const choice = await dialog.select<string>({
+      title: "Cache Manager",
+      placeholder: "Select a setting",
+      options,
+    });
+    if (choice === undefined) return;
+
+    if (choice === "session:reset") {
+      if (sessionID === undefined) return;
+      await rpc.resetSession({ sessionID });
+      toast("Session cache settings reset to global.", "success");
+      return;
+    }
+    const [scope, field] = choice.split(":") as [Scope, Field];
+    await editField(scope, field, sessionID, scope === "session" ? effective : global);
+  };
+}

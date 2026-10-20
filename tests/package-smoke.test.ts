@@ -59,21 +59,13 @@ function extract(): string {
   return dir;
 }
 
-/** The exact ship set: entrypoints, metadata, docs. Nothing else. */
-const SHIP_FILES = [
-  "LICENSE",
-  "README.md",
-  "display.ts",
-  "keepalive.ts",
-  "package.json",
-  "rpc.ts",
-  "server.ts",
-  "settings.ts",
-  "shared.ts",
-  "sidebar.tsx",
-  "tui.ts",
-  "usage.ts",
-];
+/** Every source file under `src/`, relative to the repo root. */
+function sourceFiles(): string[] {
+  return [...new Bun.Glob("src/**/*.{ts,tsx}").scanSync({ cwd: CWD })].sort();
+}
+
+/** The exact ship set: metadata, docs and every source file. Nothing else. */
+const SHIP_FILES = ["LICENSE", "README.md", "package.json", ...sourceFiles()].sort();
 
 afterAll(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -99,19 +91,7 @@ describe("npm package manifest", () => {
   });
 
   test("files whitelist covers exactly the ship set", () => {
-    expect([...(manifest.files ?? [])].sort()).toEqual([
-      "LICENSE",
-      "README.md",
-      "display.ts",
-      "keepalive.ts",
-      "rpc.ts",
-      "server.ts",
-      "settings.ts",
-      "shared.ts",
-      "sidebar.tsx",
-      "tui.ts",
-      "usage.ts",
-    ]);
+    expect([...(manifest.files ?? [])].sort()).toEqual(["LICENSE", "README.md", "src"]);
   });
 });
 
@@ -152,26 +132,26 @@ describe("Host.resolve against the extracted package", () => {
     const name = manifest.name;
 
     const server = Bun.resolveSync(`${name}/server`, dir);
-    expect(server.endsWith("server.ts")).toBe(true);
+    expect(server.endsWith("src/server.ts")).toBe(true);
     expect(server.startsWith(dir)).toBe(true);
 
     const tui = Bun.resolveSync(`${name}/tui`, dir);
-    expect(tui.endsWith("tui.ts")).toBe(true);
+    expect(tui.endsWith("src/tui.ts")).toBe(true);
 
     const rpc = Bun.resolveSync(`${name}/rpc`, dir);
-    expect(rpc.endsWith("rpc.ts")).toBe(true);
+    expect(rpc.endsWith("src/rpc.ts")).toBe(true);
 
     // The bare-name fallback of entry(["server", ""]) must also resolve.
     const bare = Bun.resolveSync(name, dir);
-    expect(bare.endsWith("server.ts")).toBe(true);
+    expect(bare.endsWith("src/server.ts")).toBe(true);
   });
 
-  test("shipped entrypoints are byte-identical to the tested sources", () => {
+  test("shipped sources are byte-identical to the tested sources", () => {
     // Loadability of these exact files is covered by the main suite (it
     // imports them from the repo). What the tarball must additionally
     // guarantee is that what ships is what was tested -- byte for byte.
     const dir = extract();
-    for (const file of ["server.ts", "tui.ts", "shared.ts", "rpc.ts"]) {
+    for (const file of sourceFiles()) {
       expect(readFileSync(join(dir, file))).toEqual(readFileSync(join(CWD, file)));
     }
   });

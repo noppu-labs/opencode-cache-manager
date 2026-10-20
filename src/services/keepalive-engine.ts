@@ -1,40 +1,8 @@
-import { contextTokens, grantedTtl, hasCacheActivity, type CacheUsage, type Ttl } from "./usage.ts";
-import { BUILTIN_DEFAULTS, type Settings } from "./settings.ts";
-
-export const TTL_MS: Record<Ttl, number> = { "5m": 300_000, "1h": 3_600_000 };
-export const PING_OFFSET_MS: Record<Ttl, number> = { "5m": 240_000, "1h": 3_000_000 };
-export const HIT_RATIO = 0.9;
-export const RETRY_DELAY_MS = 30_000;
-/** A ping is never sent later than `expiresAt - EXPIRY_MARGIN_MS`. */
-export const EXPIRY_MARGIN_MS = 15_000;
-export const PING_PROMPT = "Do not perform any work and do not use tools. Reply with exactly: OK";
-
-export type SkipReason =
-  | "disabled"
-  | "small-context"
-  | "child"
-  | "busy"
-  | "exhausted"
-  | "no-cache-seen"
-  | "missed";
-
-/** OpenCode's request kind for a model call. */
-export type RequestKind = "primary" | "compaction" | "title" | "generate";
-
-export interface KeepaliveSnapshot {
-  sessionID: string;
-  ttl: Ttl | null;
-  ttlSource: "detected" | "requested" | null;
-  lastRequestAt: number | null;
-  expiresAt: number | null;
-  nextPingAt: number | null;
-  pingsUsed: number;
-  maxPings: number;
-  minContextTokens: number;
-  lastPing: "hit" | "miss" | "failed" | null;
-  skipReason: SkipReason | null;
-  contextTokens: number | null;
-}
+import { BUILTIN_DEFAULTS, type Settings } from "../config/settings.ts";
+import { EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
+import type { CacheUsage, Ttl } from "../models/cache.ts";
+import type { KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
+import { contextTokens, grantedTtl, hasCacheActivity } from "./usage.ts";
 
 export interface EngineDeps {
   now(): number;

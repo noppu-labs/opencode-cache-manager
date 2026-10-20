@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode/plugin/tui";
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
-import { LABEL_WIDTH, sidebarLines, type Tone } from "./display.ts";
-import type { KeepaliveSnapshot } from "./keepalive.ts";
+import { LABEL_WIDTH, sidebarLines, type Tone } from "./sidebar-lines.ts";
+import type { KeepaliveSnapshot } from "../models/keepalive.ts";
 
 function toneColor(theme: Plugin.Context["theme"], tone: Tone) {
   switch (tone) {

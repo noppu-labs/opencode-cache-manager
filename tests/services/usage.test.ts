@@ -9,8 +9,8 @@ import {
   parseStopReasonFromSse,
   parseUsageFromJson,
   parseUsageFromSse,
-  type CacheUsage,
-} from "../usage.ts";
+} from "../../src/services/usage.ts";
+import type { CacheUsage } from "../../src/models/cache.ts";
 
 const fullUsage = {
   input_tokens: 10,

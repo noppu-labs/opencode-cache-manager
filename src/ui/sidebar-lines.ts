@@ -1,4 +1,5 @@
-import type { KeepaliveSnapshot } from "./keepalive.ts";
+import type { KeepaliveSnapshot } from "../models/keepalive.ts";
+import { formatRemaining } from "../utils/format.ts";
 
 export type Tone = "base" | "muted" | "success" | "warning" | "error";
 export interface SidebarLine {
@@ -19,15 +20,6 @@ const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
 
 const defaultClock = (ms: number): string =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-
-/** "52m", "3m", "45s"; "1h 05m" at 60 minutes and above. */
-export function formatRemaining(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  if (totalSeconds < 60) return `${totalSeconds}s`;
-  const totalMinutes = Math.floor(totalSeconds / 60);
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  return `${Math.floor(totalMinutes / 60)}h ${String(totalMinutes % 60).padStart(2, "0")}m`;
-}
 
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 

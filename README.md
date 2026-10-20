@@ -39,11 +39,11 @@ Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. O
 
 ### Local checkout instead
 
-If you prefer running from a clone (or while hacking on it), symlink the repo into the plugins directory. OpenCode resolves `server.ts` / `tui.ts` / `rpc.ts` from the directory:
+If you prefer running from a clone (or while hacking on it), symlink the repo's `src/` directory into the plugins directory. OpenCode resolves `server.ts` / `tui.ts` / `rpc.ts` from the directory itself, so the link has to point at `src/`, not the repo root:
 
 ```sh
 git clone https://github.com/noppu-labs/opencode-cache-manager.git
-ln -s "$(pwd)/opencode-cache-manager" ~/.config/opencode/plugins/anthropic-cache-ttl
+ln -s "$(pwd)/opencode-cache-manager/src" ~/.config/opencode/plugins/anthropic-cache-ttl
 ```
 
 Do not keep both the npm spec and a local copy installed at the same time, or the plugin loads twice.
@@ -213,17 +213,20 @@ bun run typecheck
 Layout:
 
 ```
-server.ts      # server entry: command, http.request / http.response hooks, RPC handlers, storage
-tui.ts         # TUI entry: palette + slash command, picker modal, toasts
-shared.ts      # pure logic: argument parsing, TTL rewrite, ping message alignment
-settings.ts    # layered settings (built-in, plugin options, global, session)
-usage.ts       # Anthropic usage parsing and TTL detection
-keepalive.ts   # keepalive engine: per-session state, ping schedule, hit/miss
-display.ts     # sidebar line formatting
-sidebar.tsx    # Solid sidebar section
-rpc.ts         # the RPC contract (settings, keepalive snapshot, events)
-tests/
-docs/        # design notes from the original build
+src/
+├── server.ts      # server entry: wires the command, HTTP hooks and RPC handlers
+├── tui.ts         # TUI entry: palette + slash command, sidebar
+├── rpc.ts         # the RPC contract (settings, keepalive snapshot, events)
+├── config/        # settings shape, defaults, option parsing, layer merging
+├── constants/     # Anthropic header values, keepalive timings
+├── models/        # shared types (TTL modes, usage, keepalive snapshot)
+├── controllers/   # /cache-manager command and RPC handlers
+├── middleware/    # http.request / http.response hooks
+├── services/      # TTL rewrite, keepalive engine, ping alignment, usage parsing, settings store
+├── ui/            # picker, typed command, sidebar
+└── utils/         # small shared helpers
+tests/             # mirrors src/
+docs/              # design notes from the original build
 ```
 
 The suite includes a package smoke test: it runs `npm pack`, then replays the exact entrypoint resolution OpenCode performs for a configured npm plugin (`Bun.resolveSync("<name>/server" | "<name>/tui" | "<name>/rpc")` against the extracted tarball) and checks the shipped files are byte-identical to the tested sources.

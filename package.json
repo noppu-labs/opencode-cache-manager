@@ -17,24 +17,16 @@
     "access": "public"
   },
   "exports": {
-    ".": "./server.ts",
-    "./server": "./server.ts",
-    "./tui": "./tui.ts",
-    "./rpc": "./rpc.ts",
+    ".": "./src/server.ts",
+    "./server": "./src/server.ts",
+    "./tui": "./src/tui.ts",
+    "./rpc": "./src/rpc.ts",
     "./package.json": "./package.json"
   },
   "files": [
     "LICENSE",
     "README.md",
-    "server.ts",
-    "tui.ts",
-    "shared.ts",
-    "settings.ts",
-    "rpc.ts",
-    "usage.ts",
-    "keepalive.ts",
-    "display.ts",
-    "sidebar.tsx"
+    "src"
   ],
   "scripts": {
     "test": "bun test tests/",

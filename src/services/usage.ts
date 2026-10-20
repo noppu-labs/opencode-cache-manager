@@ -1,15 +1,6 @@
-/** Cache TTL granted by Anthropic for a cache write. */
-export type Ttl = "5m" | "1h";
-
-/** Token counts from an Anthropic `usage` block, relevant to prompt caching. */
-export interface CacheUsage {
-  inputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  /** `undefined` when the provider omits the `cache_creation` breakdown. */
-  write5mTokens: number | undefined;
-  write1hTokens: number | undefined;
-}
+import { ANTHROPIC_PROVIDER_IDS } from "../constants/anthropic.ts";
+import type { CacheUsage, Ttl } from "../models/cache.ts";
+import { isRecord } from "../utils/is-record.ts";
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -32,10 +23,6 @@ export function grantedTtl(u: CacheUsage): Ttl | undefined {
 }
 
 type PartialUsage = Partial<CacheUsage>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -129,6 +116,10 @@ export function parseStopReasonFromSse(text: string): string | undefined {
     }
   }
   return stopReason;
+}
+
+export function isAnthropicProvider(providerID: string): boolean {
+  return ANTHROPIC_PROVIDER_IDS.includes(providerID);
 }
 
 /** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
