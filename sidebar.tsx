@@ -61,6 +61,7 @@ export function registerSidebar(
 ): () => void {
   return ctx.ui.slot({
     append: "sidebar.content",
-    render: ({ sessionID }) => <CacheSection ctx={ctx} sessionID={sessionID} snapshots={snapshots} load={load} />,
+    // `input` is reactive: read `sessionID` through it so the section follows session switches.
+    render: (input) => <CacheSection ctx={ctx} sessionID={input.sessionID} snapshots={snapshots} load={load} />,
   });
 }
