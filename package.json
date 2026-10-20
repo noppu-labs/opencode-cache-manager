@@ -1,7 +1,7 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
   "version": "0.1.1",
-  "description": "Anthropic prompt-cache TTL manager for OpenCode V2: 5m / 1h / hybrid modes with an interactive TUI picker modal",
+  "description": "Anthropic prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL, keepalive pings for idle sessions, and a sidebar cache status",
   "type": "module",
   "license": "MIT",
   "author": "cris005",
@@ -68,6 +68,8 @@
     "claude",
     "prompt-caching",
     "cache-ttl",
+    "cache-keepalive",
+    "keepalive",
     "tui",
     "typescript",
     "bun"

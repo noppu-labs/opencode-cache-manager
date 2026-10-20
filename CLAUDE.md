@@ -1,6 +1,6 @@
 # opencode-cache-manager
 
-OpenCode V2 plugin that rewrites outgoing Anthropic requests to control the prompt-cache TTL: `5m` (default), `1h`, or `hybrid` (1h on tools + system, 5m on messages). Published to npm as both `@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`.
+OpenCode V2 plugin that manages the Anthropic prompt cache: it rewrites outgoing requests to control the TTL (`5m` default, `1h`, or `hybrid` with 1h on tools + system and 5m on messages), per session, and keeps idle sessions' caches warm with hidden keepalive pings. Published to npm as both `@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`.
 
 ## Commands
 
@@ -25,13 +25,19 @@ Always pass `--skip-skills` to `gitnexus analyze`. Without it, GitNexus writes s
 
 ## Layout
 
-- `server.ts` - server entry: `/cache-ttl` command, `http.request` hook that rewrites `cache_control` TTLs, RPC handlers, persisted mode in plugin storage.
-- `tui.ts` - TUI entry: palette entry, slash command, picker modal, toasts.
-- `shared.ts` - pure logic shared by both sides. Put testable logic here.
-- `rpc.ts` - RPC contract (`getMode` / `setMode` / `mode.updated` event).
-- `tests/anthropic-cache-ttl.test.ts` - logic, RPC, and TUI command paths.
+- `server.ts` - server entry: `/cache-manager` command, `http.request` / `http.response` hooks (TTL rewrite, ping recognition, usage observation), RPC handlers, session settings in plugin storage.
+- `tui.ts` - TUI entry: palette entry, slash command, Session/Global picker, toasts; loads the sidebar lazily.
+- `shared.ts` - pure logic shared by both sides: argument parsing, TTL rewrite, ping message alignment. Put testable logic here.
+- `settings.ts` - layered settings (built-in, plugin options, global, session) and the storage-backed `SettingsStore`.
+- `usage.ts` - Anthropic usage parsing (including SSE) and TTL detection.
+- `keepalive.ts` - keepalive engine: per-session state, ping schedule, hit/miss, snapshots.
+- `display.ts` - sidebar line formatting (pure).
+- `sidebar.tsx` - Solid sidebar section; the only JSX file.
+- `rpc.ts` - RPC contract (settings methods, `getKeepalive`, `settings.updated` / `keepalive.updated` events).
+- `tests/anthropic-cache-ttl.test.ts` - logic, RPC, hooks, and TUI command paths.
+- `tests/settings.test.ts`, `tests/usage.test.ts`, `tests/keepalive.test.ts`, `tests/display.test.ts` - unit tests for the matching modules.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
-- `opencode.jsonc` - sample provider config with `-1h` model variants (not shipped).
+- `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
 - `docs/` - design notes from the original build.
 
 ## Rules

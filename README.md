@@ -1,8 +1,10 @@
 # opencode-cache-manager
 
-An [OpenCode](https://opencode.ai) plugin that controls the Anthropic prompt-cache TTL from inside the TUI: pick between the standard 5-minute cache, the 1-hour extended cache, or a hybrid of the two.
+An [OpenCode](https://opencode.ai) plugin that manages the Anthropic prompt cache from inside the TUI. It lets you pick the cache TTL (the standard 5-minute cache, the 1-hour extended cache, or a hybrid of the two) per session, and it can keep an idle session's cache warm with small hidden pings so it doesn't expire while you are away.
 
 OpenCode marks cache breakpoints automatically (tools, system prompt, the last message) but always sends the default `ttl: "5m"`. There is no config knob for it. This plugin rewrites the outgoing request after OpenCode's own cache policy runs, so the TTL can be changed per session without forking the provider package.
+
+When a session sits idle past its TTL, the next prompt has to write the whole context into the cache again at 1.25x (5m) or 2x (1h) the base input price, instead of reading it at about 0.1x. Keepalive avoids that by sending a ping shortly before the cache would expire.
 
 Published to npm under two names with identical contents:
 
@@ -48,23 +50,48 @@ Do not keep both the npm spec and a local copy installed at the same time, or th
 
 ## Usage
 
-Run `/cache-ttl` in the TUI with no argument and a picker opens with the current mode highlighted:
+Run `/cache-manager` in the TUI. The command also appears in the palette as "Cache Manager".
+
+With no argument it opens a picker with two sections:
 
 ```
-/cache-ttl          -> picker modal (5m / 1h / hybrid)
-/cache-ttl 1h       -> set 1h directly
-/cache-ttl hybrid   -> set hybrid directly
-/cache-ttl 5m       -> back to default
-/cache-ttl status    -> toast with the current mode
+Session                       (only shown inside a session)
+  TTL mode          1h · global
+  Keepalive         on · global
+  Pings per idle    3
+  Min context       50k · global
+  Reset session to global
+Global
+  TTL mode          1h
+  Keepalive         on
+  Pings per idle    5
+  Min context       50k
 ```
 
-The command also appears in the palette as "Anthropic Cache TTL". The chosen mode persists in plugin storage across restarts, and a second TUI instance sees the change through the `mode.updated` RPC event.
+Session rows that show `· global` inherit the global value; a row without it has a session override. Picking a row opens a list of values; the numeric settings also offer "Custom…" for a typed value.
 
-Explicit arguments work headless too (the server side registers the same command), with the reply posted as a synthetic message instead of a toast.
+With an argument, the command edits the **current session only**, never the global settings:
+
+```
+/cache-manager 5m                -> session TTL mode 5m
+/cache-manager 1h                -> session TTL mode 1h
+/cache-manager hybrid            -> session TTL mode hybrid
+/cache-manager keepalive on|off  -> turn keepalive on or off for this session
+/cache-manager pings 3           -> at most 3 pings per idle stretch (0-100)
+/cache-manager min 50k           -> minimum context size to ping (50000 or 50k)
+/cache-manager reset             -> drop the session's overrides
+/cache-manager status            -> toast with the session's effective settings
+```
+
+Typed arguments need an open session. Global settings are changed from the picker's Global section or in the plugin options (see [Settings](#settings)).
+
+Session overrides and global settings persist in plugin storage across restarts.
+
+The server side registers the same command, so explicit arguments also work headless; the reply is posted as a synthetic message instead of a toast. With no argument the server-side command toggles the session's TTL mode between `5m` and `1h`.
 
 ### Per-model override
 
-Model variants can force a TTL regardless of the stored mode, via the `x-cache-ttl` sentinel header:
+Model variants can force a TTL regardless of the session or global mode, via the `x-cache-ttl` sentinel header:
 
 ```jsonc
 "variants": [
@@ -75,21 +102,123 @@ Model variants can force a TTL regardless of the stored mode, via the `x-cache-t
 
 The plugin reads the header before the request goes out, applies that TTL, and strips the header. `opencode.jsonc` at this repo's root is a full sample provider config with a complete set of `-1h` variants for four Claude models.
 
+## Keepalive
+
+Keepalive sends a hidden request shortly before a session's cache expires. The request reads the cached prefix, which restarts the TTL. A ping costs roughly a cache read of the session's context, which is much less than the cold re-write you pay when the cache has expired.
+
+- **Hidden.** The ping is a transient request that uses the session's context. Nothing is added to the conversation history, and the model is told to reply `OK` without using tools.
+- **Schedule.** The ping goes out 4 minutes after the last request on a 5m cache, and 50 minutes after it on a 1h cache. `hybrid` follows the 5m schedule, because its message tail is cached for 5 minutes. A ping is itself a request, so it restarts the clock and the next ping is scheduled the same way.
+- **Idle stretches.** Any real request on the session (your prompt, a tool-loop request, compaction) cancels the pending ping and resets the ping count to 0.
+- **Limit.** After `maxPings` pings (default 5) in one idle stretch, keepalive stops and the cache expires. Failed pings count towards the limit.
+- **Never late.** A ping is never sent after the cache would have expired. A failed ping is retried after 30 seconds, but only if it can still land before the original expiry.
+- **Hit or miss.** A ping that reads at least 90% of the context from cache is a hit. If it reads less, it is a miss: keepalive stops for that session until the next real request, so a provider that doesn't reuse the cache can't turn into a stream of paid pings.
+
+Keepalive skips:
+
+- subagent (child) sessions
+- sessions whose context is below `minContextTokens` (default 50,000)
+- sessions with keepalive turned off
+- sessions where no cache activity has been seen, such as sessions on non-Anthropic models
+
+All eligible top-level sessions are kept warm at once, not only the one in view. Timers live in memory and are not restored when OpenCode restarts.
+
+**Detected TTL.** The schedule uses the TTL the provider actually granted, read from the cache-write breakdown in the response usage. Some providers (for example Claude Code-backed ones) grant 1h regardless of the mode requested. If a response has both 5m and 1h writes, the shorter one wins. Reads don't change the TTL. When the provider gives no breakdown, the requested mode is used. The sidebar labels the source as `detected` or `requested`.
+
+**Cache hits for pings.** A ping reuses the exact conversation bytes of the session's last agent request, so it hits the cache even when other plugins rewrite the history. Those bytes are kept in memory only, never written to disk.
+
+> **Pings cost tokens.** Each one is a real provider request that reads the whole context from cache. Keepalive saves money when you come back after a long gap and stay within the ping limit; it costs money for sessions you never return to.
+
+> **Don't combine this with OpenCode's built-in `warming: true`.** Both would ping the same session, so you would pay for double the pings. Use one or the other.
+
+## Settings
+
+Plugin options set the defaults. They live in the plugin entry in `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "@noppu-labs/opencode-cache-manager",
+      "options": {
+        "defaultMode": "1h",
+        "keepalive": {
+          "enabled": true,           // default true
+          "maxPings": 5,             // default 5
+          "minContextTokens": 50000  // default 50000
+        }
+      }
+    }
+  ]
+}
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `defaultMode` | `"5m"` | TTL mode when nothing else is set |
+| `keepalive.enabled` | `true` | Whether keepalive runs |
+| `keepalive.maxPings` | `5` | Pings per idle stretch |
+| `keepalive.minContextTokens` | `50000` | Smallest context worth pinging |
+
+The effective value of each setting is the first one set, in this order:
+
+1. the session's override (`/cache-manager` typed argument, or the picker's Session section)
+2. the global value from the picker's Global section
+3. the plugin option
+4. the built-in default
+
+Changes take effect immediately. Turning keepalive off cancels the pending ping, and lowering `pings` to or below the pings already used ends the run. A TTL mode change is picked up by the next request.
+
+The `x-cache-ttl` model-variant header (see [Per-model override](#per-model-override)) still wins over the session mode for the requests it is on.
+
+## Sidebar
+
+Inside a session, the sidebar shows a Cache section. It ticks once a second from timestamps the server sends, so countdowns stay live without server traffic.
+
+```
+Cache 1h · detected
+● warm, expires 14:52 (52m)
+  next ping   14:42 (37m)
+  pings       2/5 ✓ hit
+```
+
+- The header gives the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response it reads `Cache · waiting for first response`.
+- `● warm, expires 14:52 (52m)` is the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up.
+- `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
+- `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
+- When keepalive isn't running, the last line says why: `keepalive   off · 31k < 50k` (context below the minimum), `keepalive   off · disabled`, or `keepalive stopped · last ping missed`.
+- `○ expired 12m ago` shows when the cache has expired.
+
+The section is hidden for subagent sessions and for sessions with no cache activity.
+
+## Upgrading from 0.1.x
+
+Two changes break existing habits:
+
+1. **`/cache-ttl` is now `/cache-manager`.** The palette entry is "Cache Manager" and the old command name is gone, with no alias.
+2. **Typed commands change only the current session.** `/cache-ttl 1h` used to set the global mode; `/cache-manager 1h` sets the mode for the session you are in. To change the global default, use the picker's Global section or the `defaultMode` plugin option.
+
+A global mode stored by 0.1.x is kept and used as the global default, so there is nothing to migrate.
+
 ## Development
 
 ```sh
 bun install
-bun test        # 74 tests: logic, RPC, TUI command paths, package tarball
+bun test        # logic, keepalive engine, RPC, TUI command paths, package tarball
 bun run typecheck
 ```
 
 Layout:
 
 ```
-server.ts    # server entry: command, http.request hook, RPC handlers, storage
-tui.ts       # TUI entry: palette + slash command, picker modal, toasts
-shared.ts    # pure logic, imported by both sides
-rpc.ts       # the RPC contract (getMode / setMode / mode.updated)
+server.ts      # server entry: command, http.request / http.response hooks, RPC handlers, storage
+tui.ts         # TUI entry: palette + slash command, picker modal, toasts
+shared.ts      # pure logic: argument parsing, TTL rewrite, ping message alignment
+settings.ts    # layered settings (built-in, plugin options, global, session)
+usage.ts       # Anthropic usage parsing and TTL detection
+keepalive.ts   # keepalive engine: per-session state, ping schedule, hit/miss
+display.ts     # sidebar line formatting
+sidebar.tsx    # Solid sidebar section
+rpc.ts         # the RPC contract (settings, keepalive snapshot, events)
 tests/
 docs/        # design notes from the original build
 ```
