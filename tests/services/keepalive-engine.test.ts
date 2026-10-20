@@ -103,7 +103,6 @@ function harness(
           ok: behavior.ok ?? true,
           isPing: true,
           kind: "generate",
-          kind: "generate",
         });
     }
   };

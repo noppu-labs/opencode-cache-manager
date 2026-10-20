@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { BUILTIN_DEFAULTS, mergeSettings, sanitizePatch, settingsFromOptions } from "../../src/config/settings.ts";
+import {
+  BUILTIN_DEFAULTS,
+  mergeSettings,
+  sanitizePatch,
+  settingsFromOptions,
+  type SettingsPatch,
+} from "../../src/config/settings.ts";
 
 describe("mergeSettings", () => {
   test("no layers yields the built-in defaults", () => {
@@ -22,7 +28,7 @@ describe("mergeSettings", () => {
 
 describe("sanitizePatch", () => {
   test("keeps valid fields", () => {
-    const patch = { mode: "hybrid", keepalive: false, maxPings: 0, minContextTokens: 0 };
+    const patch: SettingsPatch = { mode: "hybrid", keepalive: false, maxPings: 0, minContextTokens: 0 };
     expect(sanitizePatch(patch)).toEqual(patch);
   });
 

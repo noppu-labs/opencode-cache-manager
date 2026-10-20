@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
-import { SettingsStore, sweepDeletedSessions, type ScannableKV } from "../../src/services/settings-store.ts";
+import { SettingsStore, sweepDeletedSessions, type KV, type ScannableKV } from "../../src/services/settings-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
 describe("SettingsStore", () => {

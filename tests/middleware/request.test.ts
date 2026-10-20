@@ -221,7 +221,7 @@ describe("createRequestHook engine reporting", () => {
   ] as const)("session mode %s with sentinel %s requests a %s TTL", async (mode, sentinel, expected) => {
     const h = harness();
     await h.store.setSession("ses_a", { mode });
-    const headers = sentinel ? { [SENTINEL_HEADER]: sentinel } : {};
+    const headers: Record<string, string> = sentinel ? { [SENTINEL_HEADER]: sentinel } : {};
     await h.dispatch(makeRequest(JSON.stringify(sampleBody()), headers));
     expect(h.sent[0].info.requestedTtl).toBe(expected);
   });

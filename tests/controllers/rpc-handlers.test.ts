@@ -1,9 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
 import { createRpcHandlers } from "../../src/controllers/rpc-handlers.ts";
+import type { KeepaliveSnapshot } from "../../src/models/keepalive.ts";
 import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
+
+const SNAPSHOT = { sessionID: "ses_x" } as KeepaliveSnapshot;
 
 async function setup(seed: Record<string, unknown> = {}) {
   const { kv, data } = memoryKv();
@@ -11,7 +14,7 @@ async function setup(seed: Record<string, unknown> = {}) {
   const store = new SettingsStore(kv, {});
   await store.load();
   const settingsChanged = mock(async (_sessionID: string | null): Promise<object> => ({}));
-  const snapshot = mock((sessionID: string) => ({ sessionID }));
+  const snapshot = mock((_sessionID: string) => SNAPSHOT);
   const engine = { snapshot } as unknown as KeepaliveEngine;
   const handlers = createRpcHandlers({ store, engine, settingsChanged });
   return { handlers, data, settingsChanged, snapshot };
@@ -102,7 +105,7 @@ describe("createRpcHandlers", () => {
   describe("getKeepalive", () => {
     test("returns the engine snapshot for the session", async () => {
       const { handlers, snapshot } = await setup();
-      expect(await handlers.getKeepalive({ sessionID: "ses_x" })).toEqual({ sessionID: "ses_x" });
+      expect(await handlers.getKeepalive({ sessionID: "ses_x" })).toBe(SNAPSHOT);
       expect(snapshot).toHaveBeenCalledWith("ses_x");
     });
   });
