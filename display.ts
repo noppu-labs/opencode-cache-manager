@@ -31,9 +31,12 @@ export function sidebarLines(
   now: number,
   formatClock: (ms: number) => string = defaultClock,
 ): SidebarLine[] {
-  if (s === undefined || s.lastRequestAt === null || s.skipReason === "child") return [];
+  const waiting: SidebarLine[] = [HEADER, { text: "waiting for first response", tone: "muted" }];
+  // No snapshot yet (e.g. after a restart) still shows the section, so the user can see the plugin is there.
+  if (s === undefined || s.lastRequestAt === null) return waiting;
+  if (s.skipReason === "child") return [];
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
-  if (s.ttl === null) return [HEADER, { text: "waiting for first response", tone: "muted" }];
+  if (s.ttl === null) return waiting;
 
   const lines: SidebarLine[] = [HEADER, { text: "ttl", tone: "base", right: `${s.ttl} (${s.ttlSource})` }];
   if (s.expiresAt === null) return lines;

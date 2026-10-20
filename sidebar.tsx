@@ -61,8 +61,10 @@ function CacheSection(props: {
   createEffect(() => props.load(props.sessionID));
 
   const snapshot = () => props.snapshots().get(props.sessionID);
+  // Child sessions are never pinged; before a snapshot exists only the TUI's session data can tell.
+  const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
   // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
-  const visible = () => sidebarLines(snapshot(), 0).length > 0;
+  const visible = () => !child() && sidebarLines(snapshot(), 0).length > 0;
 
   return (
     <Show when={visible()}>

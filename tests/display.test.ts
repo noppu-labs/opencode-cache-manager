@@ -50,12 +50,14 @@ describe("formatRemaining", () => {
 });
 
 describe("sidebarLines", () => {
-  test("renders nothing without a snapshot", () => {
-    expect(lines(undefined)).toEqual([]);
+  const WAITING: SidebarLine[] = [TITLE, { text: "waiting for first response", tone: "muted" }];
+
+  test("waits without a snapshot, e.g. right after a restart", () => {
+    expect(lines(undefined)).toEqual(WAITING);
   });
 
-  test("renders nothing before any request was sent", () => {
-    expect(lines(snap({ ...noResponse, lastRequestAt: null, contextTokens: null }))).toEqual([]);
+  test("waits before any request was sent", () => {
+    expect(lines(snap({ ...noResponse, lastRequestAt: null, contextTokens: null }))).toEqual(WAITING);
   });
 
   test("renders nothing for child sessions", () => {
@@ -67,10 +69,7 @@ describe("sidebarLines", () => {
   });
 
   test("shows a waiting line while the first response is outstanding", () => {
-    expect(lines(snap({ ...noResponse, contextTokens: null }))).toEqual([
-      TITLE,
-      { text: "waiting for first response", tone: "muted" },
-    ]);
+    expect(lines(snap({ ...noResponse, contextTokens: null }))).toEqual(WAITING);
   });
 
   test("header is a bold title and a two-column ttl row", () => {

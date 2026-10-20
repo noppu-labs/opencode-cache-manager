@@ -185,7 +185,7 @@ ttl                      1h (detected)
   pings       2/5 ✓ hit
 ```
 
-- `ttl` is the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response the section reads `waiting for first response`.
+- `ttl` is the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response, including right after a restart, the section reads `waiting for first response`.
 - `● warm, expires 14:52 (52m)` is the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
