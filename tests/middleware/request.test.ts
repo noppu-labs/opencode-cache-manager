@@ -1,0 +1,539 @@
+import { describe, expect, test } from "bun:test";
+import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
+import { PING_PROMPT } from "../../src/constants/keepalive.ts";
+import { createRequestHook, type HttpRequestEvent } from "../../src/middleware/request.ts";
+import type { SkipReason } from "../../src/models/keepalive.ts";
+import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
+import { PingTracker } from "../../src/services/ping-tracker.ts";
+import { SettingsStore } from "../../src/services/settings-store.ts";
+import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
+import { memoryKv } from "../helpers/memory-kv.ts";
+
+function harness() {
+  const { kv } = memoryKv();
+  const store = new SettingsStore(kv, {});
+  const pings = new PingTracker();
+  const primaryMessages = new Map<string, unknown[]>();
+  const sent: Array<{ sessionID: string; info: { requestedTtl: string; isPing: boolean } }> = [];
+  const fake = { skipReason: null as SkipReason | null, failRequestSent: false, failSnapshot: false };
+  const engine = {
+    snapshot: () => {
+      if (fake.failSnapshot) throw new Error("snapshot failed");
+      return { skipReason: fake.skipReason };
+    },
+    requestSent: (sessionID: string, info: { requestedTtl: string; isPing: boolean }) => {
+      sent.push({ sessionID, info });
+      if (fake.failRequestSent) throw new Error("engine down");
+    },
+  } as unknown as KeepaliveEngine;
+  const hook = createRequestHook({ store, engine, pings, primaryMessages });
+
+  async function dispatch(
+    request: Request,
+    overrides: Partial<Pick<HttpRequestEvent, "sessionID" | "kind">> & { providerID?: string } = {},
+  ) {
+    const { providerID = "anthropic", ...rest } = overrides;
+    const evt: HttpRequestEvent = { sessionID: "ses_a", kind: "primary", model: { providerID }, request, ...rest };
+    await hook(evt);
+    return evt;
+  }
+
+  /** Runs `run` while a ping is pending for `sessionID`, so `generate` requests count as pings. */
+  async function duringPing<T>(sessionID: string, run: () => Promise<T>): Promise<T> {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const sending = pings.send(sessionID, () => gate);
+    try {
+      return await run();
+    } finally {
+      release();
+      await sending;
+    }
+  }
+
+  return { store, pings, primaryMessages, sent, fake, dispatch, duringPing };
+}
+
+const body = (value: Record<string, unknown> = sampleBody()) => makeRequest(JSON.stringify(value));
+const messagesOf = async (request: Request) => ((await parsedBodyOf(request)) as any).messages as unknown[];
+const userText = (text: string) => ({ role: "user", content: [{ type: "text", text }] });
+
+describe("createRequestHook TTL rewrite", () => {
+  test("rewrites requests for omniroute-anthropic", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(body(), { providerID: "omniroute-anthropic" });
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("rewrites requests for anthropic", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(body());
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect(cc.ttl).toBe("1h");
+  });
+
+  test("leaves the request alone in the default 5m mode", async () => {
+    const h = harness();
+    const request = body();
+    const evt = await h.dispatch(request);
+    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect("ttl" in cc).toBe(false);
+  });
+
+  test("ignores unrelated providers without a sentinel header", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = body();
+    const evt = await h.dispatch(request, { providerID: "omniroute" });
+    expect(evt.request).toBe(request);
+  });
+
+  test("honors the sentinel header even on an unrelated provider", async () => {
+    const h = harness();
+    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "1h" });
+    const evt = await h.dispatch(request, { providerID: "omniroute" });
+    expect(evt.request).not.toBe(request);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("two sessions with different modes get different rewrites", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    await h.store.setSession("ses_b", { mode: "hybrid" });
+
+    const a = await h.dispatch(body(), { sessionID: "ses_a" });
+    const b = await h.dispatch(body(), { sessionID: "ses_b" });
+
+    const aBody = (await parsedBodyOf(a.request)) as { messages: Record<string, unknown>[] };
+    const bBody = (await parsedBodyOf(b.request)) as { messages: Record<string, unknown>[] };
+    expect((aBody.messages[2].cache_control as Record<string, unknown>).ttl).toBe("1h");
+    expect("ttl" in (bBody.messages[2].cache_control as Record<string, unknown>)).toBe(false);
+    expect(collectCacheControls(bBody).some((cc) => cc.ttl === "1h")).toBe(true);
+  });
+
+  test("a session without an override uses the global mode", async () => {
+    const h = harness();
+    await h.store.setGlobal({ mode: "1h" });
+    await h.store.setSession("ses_a", { mode: "5m" });
+
+    const a = await h.dispatch(body(), { sessionID: "ses_a" });
+    const other = await h.dispatch(body(), { sessionID: "ses_other" });
+
+    expect(a.request.headers.get("anthropic-beta")).toBeNull();
+    expect(other.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("x-cache-ttl wins over the session mode", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "5m" });
+    const evt = await h.dispatch(request);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect("ttl" in cc).toBe(false);
+  });
+
+  test("picks up a session mode changed after an earlier request", async () => {
+    const h = harness();
+    const first = await h.dispatch(body());
+    expect(first.request.headers.get("anthropic-beta")).toBeNull();
+
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const second = await h.dispatch(body());
+    expect(second.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+
+  test("a rejecting storage lookup still rewrites with the global mode", async () => {
+    const { kv } = memoryKv();
+    const store = new SettingsStore(kv, {});
+    await store.setGlobal({ mode: "1h" });
+    kv.get = async () => {
+      throw new Error("storage down");
+    };
+    const hook = createRequestHook({
+      store,
+      engine: { snapshot: () => ({ skipReason: null }), requestSent: () => {} } as unknown as KeepaliveEngine,
+      pings: new PingTracker(),
+      primaryMessages: new Map(),
+    });
+    const evt: HttpRequestEvent = {
+      sessionID: "ses_never_seen",
+      kind: "primary",
+      model: { providerID: "anthropic" },
+      request: body(),
+    };
+    await hook(evt);
+
+    expect(collectCacheControls(await parsedBodyOf(evt.request)).every((cc) => cc.ttl === "1h")).toBe(true);
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+});
+
+describe("createRequestHook engine reporting", () => {
+  test("a non-Anthropic provider and URL are neither rewritten nor reported", async () => {
+    const h = harness();
+    const request = new Request("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify(sampleBody()),
+    });
+    const evt = await h.dispatch(request, { providerID: "openai" });
+    expect(evt.request).toBe(request);
+    expect(h.sent).toHaveLength(0);
+    expect(h.primaryMessages.size).toBe(0);
+  });
+
+  test("an Anthropic-shaped URL on an unknown provider is reported but not rewritten", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = new Request("https://proxy.example/anthropic/v1/messages", {
+      method: "POST",
+      body: JSON.stringify(sampleBody()),
+    });
+    const evt = await h.dispatch(request, { providerID: "some-proxy" });
+    expect(evt.request).toBe(request);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false } }]);
+  });
+
+  test("a sentinel request on an unobserved URL is rewritten but not reported", async () => {
+    const h = harness();
+    const request = new Request("https://example.com/v1/chat", {
+      method: "POST",
+      headers: { [SENTINEL_HEADER]: "1h" },
+      body: JSON.stringify(sampleBody()),
+    });
+    const evt = await h.dispatch(request, { providerID: "omniroute" });
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    expect(h.sent).toHaveLength(0);
+    expect(h.primaryMessages.size).toBe(0);
+  });
+
+  test.each([
+    ["5m", undefined, "5m"],
+    ["1h", undefined, "1h"],
+    ["hybrid", undefined, "5m"],
+    ["5m", "1h", "1h"],
+    ["1h", "5m", "5m"],
+    ["1h", "hybrid", "5m"],
+    ["5m", "bogus", "5m"],
+  ] as const)("session mode %s with sentinel %s requests a %s TTL", async (mode, sentinel, expected) => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode });
+    const headers = sentinel ? { [SENTINEL_HEADER]: sentinel } : {};
+    await h.dispatch(makeRequest(JSON.stringify(sampleBody()), headers));
+    expect(h.sent[0].info.requestedTtl).toBe(expected);
+  });
+
+  test("the requested TTL is read before the sentinel is stripped", async () => {
+    const h = harness();
+    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "1h" });
+    const evt = await h.dispatch(request);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false } }]);
+  });
+
+  test("reports the session and marks a generate request as a ping only while one is pending", async () => {
+    const h = harness();
+    await h.dispatch(body(), { sessionID: "ses_b", kind: "generate" });
+    await h.duringPing("ses_b", () => h.dispatch(body(), { sessionID: "ses_b", kind: "generate" }));
+
+    expect(h.sent.map((s) => [s.sessionID, s.info.isPing])).toEqual([
+      ["ses_b", false],
+      ["ses_b", true],
+    ]);
+  });
+
+  test("only a generate request counts as a ping", async () => {
+    const h = harness();
+    await h.duringPing("ses_a", async () => {
+      await h.dispatch(body(), { kind: "primary" });
+      await h.dispatch(body(), { kind: "title" });
+      await h.dispatch(body(), { kind: "compaction" });
+    });
+    expect(h.sent.map((s) => s.info.isPing)).toEqual([false, false, false]);
+  });
+
+  test("ping flag is per session", async () => {
+    const h = harness();
+    await h.duringPing("ses_a", async () => {
+      await h.dispatch(body(), { sessionID: "ses_b", kind: "generate" });
+      await h.dispatch(body(), { sessionID: "ses_a", kind: "generate" });
+    });
+    expect(h.sent.map((s) => [s.sessionID, s.info.isPing])).toEqual([
+      ["ses_b", false],
+      ["ses_a", true],
+    ]);
+  });
+
+  test("a ping on an unobserved request is not reported as one", async () => {
+    const h = harness();
+    const request = new Request("https://example.com/v1/chat", {
+      method: "POST",
+      headers: { [SENTINEL_HEADER]: "1h" },
+      body: JSON.stringify(sampleBody()),
+    });
+    await h.duringPing("ses_a", () => h.dispatch(request, { providerID: "omniroute", kind: "generate" }));
+    expect(h.sent).toHaveLength(0);
+  });
+
+  test("an engine failure never fails the request", async () => {
+    const h = harness();
+    h.fake.failRequestSent = true;
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(body());
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  test("a failing snapshot never fails the request", async () => {
+    const h = harness();
+    h.fake.failSnapshot = true;
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(body());
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+  });
+});
+
+describe("createRequestHook ping alignment", () => {
+  test("stores the primary request's messages", async () => {
+    const h = harness();
+    const evt = await h.dispatch(body());
+    expect(h.primaryMessages.get("ses_a")).toEqual(await messagesOf(evt.request));
+  });
+
+  test("keeps the latest primary's messages", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const later = sampleBody();
+    later.messages = [userText("later")];
+    await h.dispatch(body(later));
+    expect(h.primaryMessages.get("ses_a")).toEqual([userText("later")]);
+  });
+
+  test("does not store messages from other kinds", async () => {
+    const h = harness();
+    await h.dispatch(body(), { kind: "title" });
+    await h.dispatch(body(), { kind: "generate" });
+    expect(h.primaryMessages.size).toBe(0);
+  });
+
+  test("does not store the messages of a child session", async () => {
+    const h = harness();
+    h.fake.skipReason = "child";
+    await h.dispatch(body());
+    expect(h.primaryMessages.has("ses_a")).toBe(false);
+  });
+
+  test("stores messages when the session is skipped for another reason", async () => {
+    const h = harness();
+    h.fake.skipReason = "busy";
+    await h.dispatch(body());
+    expect(h.primaryMessages.has("ses_a")).toBe(true);
+  });
+
+  test("a primary request body is never altered by alignment", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const original = sampleBody();
+    const evt = await h.dispatch(body(original));
+    expect(await messagesOf(evt.request)).toEqual(original.messages as unknown[]);
+  });
+
+  test("the ping's history is replaced by the stored primary messages", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const primary = await h.dispatch(body());
+    const primaryMessages = await messagesOf(primary.request);
+
+    const diverging = sampleBody();
+    diverging.messages = [
+      userText("rewritten 0"),
+      { role: "assistant", content: [{ type: "text", text: "rewritten 1" }] },
+      userText("rewritten 2"),
+      userText(PING_PROMPT),
+    ];
+    const ping = await h.duringPing("ses_a", () => h.dispatch(body(diverging), { kind: "generate" }));
+    const sent = await messagesOf(ping.request);
+
+    expect(sent).toHaveLength(4);
+    expect(sent.slice(0, 3)).toEqual(primaryMessages);
+    expect(sent[3]).toEqual((diverging.messages as unknown[])[3]);
+  });
+
+  test("the ping body has exactly the primary's cache_control occurrences in messages", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const primary = await h.dispatch(body());
+    const primaryMessages = await messagesOf(primary.request);
+    expect(collectCacheControls(primaryMessages).length).toBeGreaterThan(0);
+
+    const marked = (text: string) => ({
+      role: "user",
+      cache_control: ephemeral(),
+      content: [{ type: "text", text, cache_control: ephemeral() }],
+    });
+    const diverging = sampleBody();
+    diverging.messages = [marked("d0"), marked("d1"), marked("d2"), marked("d3"), marked(PING_PROMPT)];
+    const ping = await h.duringPing("ses_a", () => h.dispatch(body(diverging), { kind: "generate" }));
+    const sent = await messagesOf(ping.request);
+
+    expect(sent).toHaveLength(5);
+    expect(collectCacheControls(sent)).toHaveLength(collectCacheControls(primaryMessages).length);
+    expect(JSON.stringify(sent.slice(0, 3))).toBe(JSON.stringify(primaryMessages));
+    expect(collectCacheControls(sent.slice(3))).toHaveLength(0);
+  });
+
+  test("a ping with no stored primary is sent as-is, keeping its own cache_control", async () => {
+    const h = harness();
+    const own = sampleBody();
+    const ping = await h.duringPing("ses_a", () => h.dispatch(body(own), { kind: "generate" }));
+    const sent = await messagesOf(ping.request);
+
+    expect(sent).toEqual(own.messages as unknown[]);
+    expect(collectCacheControls(sent)).toHaveLength(2);
+  });
+
+  test("a generate request outside a ping is not aligned", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const own = sampleBody();
+    own.messages = [userText("own 0"), userText("own 1")];
+    const evt = await h.dispatch(body(own), { kind: "generate" });
+    expect(await messagesOf(evt.request)).toEqual(own.messages as unknown[]);
+  });
+
+  test("a ping of another session is not aligned to this session's messages", async () => {
+    const h = harness();
+    await h.dispatch(body(), { sessionID: "ses_a" });
+    const own = sampleBody();
+    own.messages = [userText("own 0"), userText("own 1")];
+    const ping = await h.duringPing("ses_b", () => h.dispatch(body(own), { sessionID: "ses_b", kind: "generate" }));
+    expect(await messagesOf(ping.request)).toEqual(own.messages as unknown[]);
+  });
+
+  test("stored messages are kept across pings", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const stored = structuredClone(h.primaryMessages.get("ses_a"));
+
+    const diverging = () => {
+      const value = sampleBody();
+      value.messages = [userText("rewritten 0"), userText(PING_PROMPT)];
+      return value;
+    };
+    for (let i = 0; i < 2; i++) {
+      const ping = await h.duringPing("ses_a", () => h.dispatch(body(diverging()), { kind: "generate" }));
+      expect((await messagesOf(ping.request))[0]).toEqual(stored![0]);
+    }
+    expect(h.primaryMessages.get("ses_a")).toEqual(stored);
+  });
+
+  test("a compaction request drops the stored primary messages", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    await h.dispatch(body(), { kind: "compaction" });
+    expect(h.primaryMessages.has("ses_a")).toBe(false);
+
+    const own = sampleBody();
+    own.messages = [userText("own 0"), userText(PING_PROMPT)];
+    const ping = await h.duringPing("ses_a", () => h.dispatch(body(own), { kind: "generate" }));
+    expect(await messagesOf(ping.request)).toEqual(own.messages as unknown[]);
+  });
+
+  test("a compaction request drops only its own session's messages", async () => {
+    const h = harness();
+    await h.dispatch(body(), { sessionID: "ses_a" });
+    await h.dispatch(body(), { sessionID: "ses_b" });
+    await h.dispatch(body(), { sessionID: "ses_a", kind: "compaction" });
+    expect(h.primaryMessages.has("ses_b")).toBe(true);
+  });
+
+  test("a compaction request is reported to the engine", async () => {
+    const h = harness();
+    await h.dispatch(body(), { kind: "compaction" });
+    expect(h.sent).toHaveLength(1);
+  });
+
+  describe("after the session mode changes", () => {
+    const breakpointTtls = (value: any): string[] =>
+      collectCacheControls([value.tools, value.system, value.messages]).map((cc) => String(cc.ttl ?? "5m"));
+
+    /** Stores a primary in `from`, switches the session to `to` and returns the ping request. */
+    async function pingAfterModeChange(from: "5m" | "1h" | "hybrid", to: "5m" | "1h" | "hybrid") {
+      const h = harness();
+      await h.store.setSession("ses_a", { mode: from });
+      await h.dispatch(body());
+      await h.store.setSession("ses_a", { mode: to });
+      const diverging = sampleBody();
+      (diverging.messages as unknown[]).push(userText(PING_PROMPT));
+      const ping = await h.duringPing("ses_a", () => h.dispatch(body(diverging), { kind: "generate" }));
+      return ping.request;
+    }
+
+    test("a ping after switching 1h -> 5m carries no 1h breakpoint and no extended beta", async () => {
+      const sent = await pingAfterModeChange("1h", "5m");
+      const ttls = breakpointTtls(await parsedBodyOf(sent));
+      expect(ttls.length).toBeGreaterThan(0);
+      expect(ttls.every((ttl) => ttl === "5m")).toBe(true);
+      expect(sent.headers.get("anthropic-beta") ?? "").not.toContain(EXTENDED_CACHE_BETA);
+    });
+
+    test("a ping after switching 5m -> 1h is all 1h and carries the extended beta", async () => {
+      const sent = await pingAfterModeChange("5m", "1h");
+      const parsed = await parsedBodyOf(sent);
+      const ttls = breakpointTtls(parsed);
+      expect(ttls.length).toBeGreaterThan(0);
+      expect(ttls.every((ttl) => ttl === "1h")).toBe(true);
+      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(collectCacheControls((parsed.messages as unknown[]).slice(3))).toHaveLength(0);
+    });
+
+    test("a hybrid ping after a 1h primary keeps 1h breakpoints ahead of 5m ones", async () => {
+      const sent = await pingAfterModeChange("1h", "hybrid");
+      const ttls = breakpointTtls(await parsedBodyOf(sent));
+      const firstShort = ttls.indexOf("5m");
+      expect(firstShort).toBeGreaterThan(0);
+      expect(ttls.slice(firstShort).every((ttl) => ttl === "5m")).toBe(true);
+      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    });
+  });
+
+  test("the aligned ping request keeps the original abort signal", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const controller = new AbortController();
+    const request = new Request("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      body: JSON.stringify(sampleBody()),
+      signal: controller.signal,
+    });
+    const ping = await h.duringPing("ses_a", () => h.dispatch(request, { kind: "generate" }));
+
+    expect(ping.request).not.toBe(request);
+    expect(ping.request.signal.aborted).toBe(false);
+    controller.abort();
+    expect(ping.request.signal.aborted).toBe(true);
+  });
+
+  test("an unparseable ping request still passes through", async () => {
+    const h = harness();
+    await h.dispatch(body());
+    const ping = await h.duringPing("ses_a", () => h.dispatch(makeRequest("not json"), { kind: "generate" }));
+    expect(await ping.request.text()).toBe("not json");
+  });
+
+  test("an unparseable ping request is still reported as a ping", async () => {
+    const h = harness();
+    await h.duringPing("ses_a", () => h.dispatch(makeRequest("not json"), { kind: "generate" }));
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: true } }]);
+  });
+
+  test("an unparseable primary request is not stored", async () => {
+    const h = harness();
+    await h.dispatch(makeRequest("not json"));
+    expect(h.primaryMessages.has("ses_a")).toBe(false);
+    expect(h.sent).toHaveLength(1);
+  });
+});

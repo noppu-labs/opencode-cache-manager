@@ -68,8 +68,8 @@ tests/                         # mirrors src/ (tests/services/usage.test.ts test
 
 Other top-level files:
 
-- `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host; they cover the wiring in controllers, middleware and `ui/`.
-- `tests/helpers/` - shared test fixtures (sample Anthropic bodies, request builders).
+- `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host.
+- `tests/helpers/` - shared test fixtures (sample Anthropic bodies, request builders, in-memory storage).
 - `tests/opencode-config.test.ts` - checks the `-1h` variants in `opencode.jsonc`.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
@@ -83,7 +83,8 @@ Where new code goes:
 - Configuration (settings shape, defaults, option parsing) goes in `config/`.
 - `utils/` is for small pure helpers with no domain knowledge. Don't duplicate a helper; move it here.
 - Anything rendered in the TUI goes in `ui/`. Keep formatting pure (`sidebar-lines.ts`) and separate from Solid components.
-- Each source file gets a test file at the matching path under `tests/`. Split test files by area rather than growing one large file.
+- Each source file with logic gets a unit test file at the matching path under `tests/`; files that only declare types, constants or schemas (`models/keepalive.ts`, `constants/`, `rpc.ts`) need none, and `ui/sidebar.tsx` can only run inside the TUI host, so its logic lives in `sidebar-lines.ts`. Split test files by area rather than growing one large file.
+- Test behaviour in the unit test of the module that owns it. `tests/server.test.ts` and `tests/tui.test.ts` only check what needs the plugin host: registration, setup-time option and storage reads, events emitted, keepalive round trips through both hooks and the engine, and cleanup.
 - A local checkout is loaded by symlinking `src/` (not the repo root) into `~/.config/opencode/plugins/`: OpenCode resolves a plugin directory by file path, not through `package.json` `exports`.
 - No `dist/` and no `@types/`: there is no build step and nothing needs global declarations. Adding a compile step changes how releases work, so it is a separate decision.
 

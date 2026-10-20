@@ -3,7 +3,7 @@ import plugin from "../src/server.ts";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../src/constants/anthropic.ts";
 import { PING_PROMPT } from "../src/constants/keepalive.ts";
 import { CacheTtlRpc } from "../src/rpc.ts";
-import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
+import { makeRequest, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Plugin.setup(ctx) integration
@@ -156,200 +156,6 @@ describe("plugin.setup", () => {
     expect(text).toContain("20000");
   });
 
-  test("/cache-manager 1h writes the session layer only", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
-    expect(mock.store.has("global")).toBe(false);
-    expect(mock.store.has("mode")).toBe(false);
-    expect(mock.synthetic).toHaveLength(1);
-    expect(mock.synthetic[0]).toMatchObject({ sessionID: "ses_test", resume: false });
-    expect(mock.synthetic[0].text).toContain("Session");
-    expect(mock.synthetic[0].text).toContain("1h");
-  });
-
-  test("an explicit mode does not touch an existing global setting", async () => {
-    const mock = createMockCtx();
-    mock.store.set("global", { mode: "hybrid" });
-    await (plugin as any).setup(mock.ctx);
-    await mock.command().execute(invocation("5m"));
-    expect(mock.store.get("global")).toEqual({ mode: "hybrid" });
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "5m" });
-  });
-
-  test("no-arg command toggles the session mode 5m -> 1h -> 5m", async () => {
-    const mock = await setup();
-
-    await mock.command().execute(invocation(""));
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
-    expect(mock.synthetic).toHaveLength(1);
-    expect(mock.synthetic[0]).toMatchObject({ sessionID: "ses_test", resume: false });
-    expect(mock.synthetic[0].text).toContain("1h");
-
-    await mock.command().execute(invocation(""));
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "5m" });
-    expect(mock.synthetic[1].resume).toBe(false);
-
-    await mock.command().execute(invocation(""));
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "1h" });
-    expect(mock.store.has("global")).toBe(false);
-  });
-
-  test("hybrid is settable per session", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("hybrid"));
-    expect(mock.store.get("session/ses_test")).toEqual({ mode: "hybrid" });
-    expect(mock.synthetic[0].text).toContain("hybrid");
-  });
-
-  test("keepalive off, pings 3 and min 20k accumulate in the session patch", async () => {
-    const mock = await setup();
-
-    await mock.command().execute(invocation("keepalive off"));
-    expect(mock.store.get("session/ses_test")).toEqual({ keepalive: false });
-    expect(mock.synthetic[0].text).toContain("Session");
-
-    await mock.command().execute(invocation("pings 3"));
-    await mock.command().execute(invocation("min 20k"));
-    expect(mock.store.get("session/ses_test")).toEqual({
-      keepalive: false,
-      maxPings: 3,
-      minContextTokens: 20000,
-    });
-    expect(mock.synthetic[1].text).toContain("3");
-    expect(mock.synthetic[2].text).toContain("20000");
-    expect(mock.store.has("global")).toBe(false);
-  });
-
-  test("reset removes the session patch", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    await mock.command().execute(invocation("reset"));
-    expect(mock.store.has("session/ses_test")).toBe(false);
-    expect(mock.synthetic).toHaveLength(2);
-    expect(mock.synthetic[1]).toMatchObject({ sessionID: "ses_test", resume: false });
-    expect(mock.synthetic[1].text).toContain("Session");
-  });
-
-  test("status reports the effective session settings without writing", async () => {
-    const mock = createMockCtx();
-    mock.store.set("global", { mode: "hybrid", maxPings: 7 });
-    mock.store.set("session/ses_test", { keepalive: false });
-    await (plugin as any).setup(mock.ctx);
-    const before = new Map(mock.store);
-
-    await mock.command().execute(invocation("status"));
-
-    expect(new Map(mock.store)).toEqual(before);
-    expect(mock.synthetic).toHaveLength(1);
-    const text = mock.synthetic[0].text;
-    expect(text).toContain("hybrid");
-    expect(text).toContain("off");
-    expect(text).toContain("7");
-  });
-
-  test("an invalid argument lists the valid ones without writing", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("not-a-mode"));
-    expect(mock.store.size).toBe(0);
-    expect(mock.synthetic).toHaveLength(1);
-    const text = mock.synthetic[0].text;
-    for (const word of ["5m", "1h", "hybrid", "status", "reset", "keepalive", "pings", "min"]) {
-      expect(text).toContain(word);
-    }
-  });
-});
-
-describe("http.request hook", () => {
-  async function dispatch(
-    mock: MockCtx,
-    providerID: string,
-    request: Request,
-    sessionID = "ses_test",
-  ) {
-    const evt = { sessionID, kind: "primary", model: { providerID }, request };
-    await mock.hook()(evt);
-    return evt;
-  }
-
-  test("rewrites requests for omniroute-anthropic", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    const evt = await dispatch(mock, "omniroute-anthropic", makeRequest(JSON.stringify(sampleBody())));
-    expect(evt.request).not.toBe(undefined);
-    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-  });
-
-  test("rewrites requests for anthropic", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    const evt = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())));
-    const body = (await parsedBodyOf(evt.request)) as Record<string, unknown>;
-    for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe("1h");
-  });
-
-  test("ignores unrelated providers without a sentinel header", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    const request = makeRequest(JSON.stringify(sampleBody()));
-    const evt = await dispatch(mock, "omniroute", request);
-    expect(evt.request).toBe(request);
-  });
-
-  test("honors the sentinel header even on an unrelated provider", async () => {
-    const mock = await setup();
-    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "1h" });
-    const evt = await dispatch(mock, "omniroute", request);
-    expect(evt.request).not.toBe(request);
-    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-  });
-
-  test("two sessions with different modes get different rewrites", async () => {
-    const mock = await setup();
-    await mock.command().execute({ ...invocation("1h"), sessionID: "ses_a" });
-    await mock.command().execute({ ...invocation("hybrid"), sessionID: "ses_b" });
-
-    const a = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_a");
-    const b = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_b");
-
-    const aBody = (await parsedBodyOf(a.request)) as { messages: Record<string, unknown>[] };
-    const bBody = (await parsedBodyOf(b.request)) as { messages: Record<string, unknown>[] };
-    expect((aBody.messages[2].cache_control as Record<string, unknown>).ttl).toBe("1h");
-    expect("ttl" in (bBody.messages[2].cache_control as Record<string, unknown>)).toBe(false);
-    expect(collectCacheControls(bBody).some((cc) => cc.ttl === "1h")).toBe(true);
-  });
-
-  test("a session without an override uses the global mode", async () => {
-    const mock = createMockCtx();
-    mock.store.set("global", { mode: "1h" });
-    await (plugin as any).setup(mock.ctx);
-    await mock.command().execute({ ...invocation("5m"), sessionID: "ses_a" });
-
-    const a = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_a");
-    const other = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())), "ses_other");
-
-    expect(a.request.headers.get("anthropic-beta")).toBeNull();
-    expect(other.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-  });
-
-  test("x-cache-ttl still wins over the session mode", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation("1h"));
-    const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "5m" });
-    const evt = await dispatch(mock, "anthropic", request);
-    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
-    const body = (await parsedBodyOf(evt.request)) as Record<string, unknown>;
-    for (const cc of collectCacheControls(body)) expect("ttl" in cc).toBe(false);
-  });
-
-  test("uses the current in-memory session mode after a toggle", async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation(""));
-    const evt = await dispatch(mock, "anthropic", makeRequest(JSON.stringify(sampleBody())));
-    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -541,16 +347,6 @@ describe("keepalive wiring", () => {
     expect(lastSnapshot(mock, "ses_a")).toMatchObject({ lastPing: "hit" });
   });
 
-  test("a non-Anthropic provider and URL produce no snapshot", async () => {
-    const mock = await start();
-    await roundTrip(mock, {
-      providerID: "openai",
-      url: "https://api.openai.com/v1/chat/completions",
-    });
-    await flush();
-    expect(mock.emits.filter((e) => e.name === "keepalive.updated")).toHaveLength(0);
-  });
-
   test("an Anthropic-shaped URL on an unknown provider is still observed", async () => {
     const mock = await start();
     await roundTrip(mock, { providerID: "some-proxy", url: "https://proxy.example/anthropic/v1/messages" });
@@ -675,13 +471,6 @@ describe("keepalive wiring", () => {
     expect(mock.generate).not.toHaveBeenCalled();
   });
 
-  test("the response returned by the hook has the original body", async () => {
-    const mock = await start();
-    const { responseEvt, original } = await roundTrip(mock);
-    expect(await responseEvt.response.text()).toBe(original);
-    expect(responseEvt.response.status).toBe(200);
-  });
-
   test("a failed response does not extend the expiry", async () => {
     const mock = await start();
     await roundTrip(mock);
@@ -730,173 +519,6 @@ describe("keepalive wiring", () => {
   describe("ping alignment", () => {
     const messagesOf = async (request: Request) => ((await parsedBodyOf(request)) as any).messages as unknown[];
 
-    test("the ping's history is replaced by the stored primary messages", async () => {
-      const mock = await start();
-      await mock.command().execute({ ...invocation("1h"), sessionID: "ses_a" });
-      const { requestEvt: primary } = await roundTrip(mock);
-      const primaryMessages = await messagesOf(primary.request);
-
-      const diverging = sampleBody();
-      diverging.messages = [
-        { role: "user", content: [{ type: "text", text: "rewritten 0" }] },
-        { role: "assistant", content: [{ type: "text", text: "rewritten 1" }] },
-        { role: "user", content: [{ type: "text", text: "rewritten 2" }] },
-        { role: "user", content: [{ type: "text", text: PING_PROMPT }] },
-      ];
-      let sent: unknown[] = [];
-      mock.generate.mockImplementation(async () => {
-        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
-        sent = await messagesOf(requestEvt.request);
-        return {};
-      });
-      await flush();
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-
-      expect(mock.generate).toHaveBeenCalledTimes(1);
-      expect(sent).toHaveLength(4);
-      expect(sent.slice(0, 3)).toEqual(primaryMessages);
-      expect(sent[3]).toEqual((diverging.messages as unknown[])[3]);
-    });
-
-    test("the ping body has exactly the primary's cache_control occurrences in messages", async () => {
-      const mock = await start();
-      await mock.command().execute({ ...invocation("1h"), sessionID: "ses_a" });
-      const { requestEvt: primary } = await roundTrip(mock);
-      const primaryMessages = await messagesOf(primary.request);
-      expect(collectCacheControls(primaryMessages).length).toBeGreaterThan(0);
-
-      const marked = (text: string) => ({
-        role: "user",
-        cache_control: ephemeral(),
-        content: [{ type: "text", text, cache_control: ephemeral() }],
-      });
-      const diverging = sampleBody();
-      diverging.messages = [marked("d0"), marked("d1"), marked("d2"), marked("d3"), marked(PING_PROMPT)];
-      let sent: unknown[] = [];
-      mock.generate.mockImplementation(async () => {
-        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
-        sent = await messagesOf(requestEvt.request);
-        return {};
-      });
-      await flush();
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-
-      expect(sent).toHaveLength(5);
-      expect(collectCacheControls(sent)).toHaveLength(collectCacheControls(primaryMessages).length);
-      expect(JSON.stringify(sent.slice(0, 3))).toBe(JSON.stringify(primaryMessages));
-      expect(collectCacheControls(sent.slice(3))).toHaveLength(0);
-    });
-
-    test("a ping with no stored primary is sent as-is, keeping its own cache_control", async () => {
-      const mock = await start();
-      // A compaction request seeds the engine without storing primary messages.
-      await roundTrip(mock, { kind: "compaction" });
-      await flush();
-
-      const body = sampleBody();
-      let sent: unknown[] = [];
-      mock.generate.mockImplementation(async () => {
-        const { requestEvt } = await roundTrip(mock, { kind: "generate", body, usage: READ_HIT });
-        sent = await messagesOf(requestEvt.request);
-        return {};
-      });
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-
-      expect(mock.generate).toHaveBeenCalledTimes(1);
-      expect(sent).toEqual(body.messages as unknown[]);
-      expect(collectCacheControls(sent)).toHaveLength(2);
-    });
-
-    test("a primary request body is never altered by alignment", async () => {
-      const mock = await start();
-      await roundTrip(mock);
-      const body = sampleBody();
-      const { requestEvt } = await roundTrip(mock, { body });
-      expect(await messagesOf(requestEvt.request)).toEqual(body.messages as unknown[]);
-    });
-
-    /** TTLs of every breakpoint in request order: tools, system, then messages. */
-    const breakpointTtls = (body: any): string[] =>
-      collectCacheControls([body.tools, body.system, body.messages]).map((cc) => String(cc.ttl ?? "5m"));
-
-    /** Sends a primary in `from`, switches the session to `to`, fires a ping and returns its final request. */
-    async function pingAfterModeChange(from: string, to: string) {
-      const mock = await start();
-      await mock.command().execute({ ...invocation(from), sessionID: "ses_a" });
-      await roundTrip(mock);
-      await mock.command().execute({ ...invocation(to), sessionID: "ses_a" });
-      await flush();
-      const diverging = sampleBody();
-      (diverging.messages as unknown[]).push({ role: "user", content: [{ type: "text", text: PING_PROMPT }] });
-      let sent: Request | undefined;
-      mock.generate.mockImplementation(async () => {
-        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
-        sent = requestEvt.request;
-        return {};
-      });
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-      expect(mock.generate).toHaveBeenCalledTimes(1);
-      return sent!;
-    }
-
-    test("a ping after switching 1h -> 5m carries no 1h breakpoint and no extended beta", async () => {
-      const sent = await pingAfterModeChange("1h", "5m");
-      const body = await parsedBodyOf(sent);
-      expect(breakpointTtls(body).length).toBeGreaterThan(0);
-      expect(breakpointTtls(body).every((ttl) => ttl === "5m")).toBe(true);
-      expect(sent.headers.get("anthropic-beta") ?? "").not.toContain(EXTENDED_CACHE_BETA);
-    });
-
-    test("a ping after switching 5m -> 1h is all 1h and carries the extended beta", async () => {
-      const sent = await pingAfterModeChange("5m", "1h");
-      const body = await parsedBodyOf(sent);
-      expect(breakpointTtls(body).length).toBeGreaterThan(0);
-      expect(breakpointTtls(body).every((ttl) => ttl === "1h")).toBe(true);
-      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-      expect(collectCacheControls((body.messages as unknown[]).slice(3))).toHaveLength(0);
-    });
-
-    test("a hybrid ping after a 1h primary keeps 1h breakpoints ahead of 5m ones", async () => {
-      const sent = await pingAfterModeChange("1h", "hybrid");
-      const ttls = breakpointTtls(await parsedBodyOf(sent));
-      const firstShort = ttls.indexOf("5m");
-      expect(firstShort).toBeGreaterThan(0);
-      expect(ttls.slice(firstShort).every((ttl) => ttl === "5m")).toBe(true);
-      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-    });
-
-    test("the aligned ping request keeps the original abort signal", async () => {
-      const mock = await start();
-      await roundTrip(mock);
-      await flush();
-      const controller = new AbortController();
-      let sent: Request | undefined;
-      mock.generate.mockImplementation(async () => {
-        const evt = {
-          sessionID: "ses_a",
-          kind: "generate",
-          model: { providerID: "anthropic" },
-          request: new Request("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            body: JSON.stringify(sampleBody()),
-            signal: controller.signal,
-          }),
-        };
-        await mock.hook()(evt);
-        sent = evt.request;
-        return {};
-      });
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-      expect(sent!.signal.aborted).toBe(false);
-      controller.abort();
-      expect(sent!.signal.aborted).toBe(true);
-    });
-
     /** Fires the next ping with a diverging body; true when the ping was aligned to stored messages. */
     async function nextPingAligned(mock: MockCtx, advance = FIFTY_MIN) {
       const diverging = sampleBody();
@@ -915,22 +537,6 @@ describe("keepalive wiring", () => {
       expect(sent).toBeDefined();
       return JSON.stringify(sent![0]) !== JSON.stringify((diverging.messages as unknown[])[0]);
     }
-
-    test("a compaction request drops the stored primary messages", async () => {
-      const mock = await start();
-      await roundTrip(mock);
-      await flush();
-      await roundTrip(mock, { kind: "compaction" });
-      await flush();
-      expect(await nextPingAligned(mock)).toBe(false);
-    });
-
-    test("stored messages are kept while pings continue", async () => {
-      const mock = await start();
-      await roundTrip(mock);
-      await flush();
-      expect(await nextPingAligned(mock)).toBe(true);
-    });
 
     test("stored messages are dropped once the session is exhausted", async () => {
       const mock = await start();
@@ -975,64 +581,6 @@ describe("keepalive wiring", () => {
       } finally {
         clear.mockRestore();
       }
-    });
-  });
-
-  describe("hook failures never fail the host request", () => {
-    test("a response whose body is already locked passes through unchanged", async () => {
-      const mock = await start();
-      const response = new Response(JSON.stringify({ usage: WRITE_1H }), {
-        headers: { "content-type": "application/json" },
-      });
-      response.body!.getReader();
-      const evt = {
-        sessionID: "ses_a",
-        kind: "primary",
-        model: { providerID: "anthropic" },
-        request: new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" }),
-        response,
-      };
-      await mock.responseHook()(evt);
-      expect(evt.response).toBe(response);
-    });
-
-    test("a rejecting storage lookup still rewrites with the global mode", async () => {
-      const mock = await start();
-      await mock.rpc().setGlobal({ patch: { mode: "1h" } });
-      mock.ctx.storage.get = async () => {
-        throw new Error("storage down");
-      };
-      const evt = {
-        sessionID: "ses_never_seen",
-        kind: "primary",
-        model: { providerID: "anthropic" },
-        request: makeRequest(JSON.stringify(sampleBody())),
-      };
-      await mock.hook()(evt);
-      const body = await parsedBodyOf(evt.request);
-      expect(collectCacheControls(body).every((cc) => cc.ttl === "1h")).toBe(true);
-      expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-    });
-
-    test("an unparseable ping request still passes through", async () => {
-      const mock = await start();
-      await roundTrip(mock);
-      await flush();
-      let sent: Request | undefined;
-      mock.generate.mockImplementation(async () => {
-        const evt = {
-          sessionID: "ses_a",
-          kind: "generate",
-          model: { providerID: "anthropic" },
-          request: makeRequest("not json"),
-        };
-        await mock.hook()(evt);
-        sent = evt.request;
-        return {};
-      });
-      jest.advanceTimersByTime(FIFTY_MIN);
-      await flush();
-      expect(await sent!.text()).toBe("not json");
     });
   });
 
@@ -1081,19 +629,6 @@ describe("keepalive wiring", () => {
       expect(mock.store.has("global")).toBe(true);
     });
 
-    test("keeps stored settings when the lookup fails for another reason", async () => {
-      const mock = createMockCtx();
-      mock.store.set("session/ses_a", { mode: "1h" });
-      mock.sessionGet.mockImplementation(async () => {
-        throw new Error("network down");
-      });
-      mock.cleanup = await (plugin as any).setup(mock.ctx);
-      open.push(mock);
-      await flush();
-
-      expect(mock.store.has("session/ses_a")).toBe(true);
-    });
-
     test("a failing scan does not fail setup", async () => {
       const mock = createMockCtx();
       mock.ctx.storage.scan = async () => {
@@ -1120,18 +655,6 @@ describe("cache-manager RPC", () => {
       global: { mode: "5m", keepalive: true, maxPings: 5, minContextTokens: 50_000 },
       session: null,
     });
-  });
-
-  test("getSettings returns both layers for a session", async () => {
-    const mock = createMockCtx();
-    mock.store.set("global", { mode: "hybrid" });
-    mock.store.set("session/ses_x", { mode: "1h" });
-    await (plugin as any).setup(mock.ctx);
-
-    const result = await mock.rpc().getSettings({ sessionID: "ses_x" });
-    expect(result.global.mode).toBe("hybrid");
-    expect(result.session).toEqual({ mode: "1h" });
-    expect((await mock.rpc().getSettings({ sessionID: "ses_none" })).session).toEqual({});
   });
 
   test("getSettings reflects the legacy mode key and defaultMode option", async () => {
@@ -1184,33 +707,4 @@ describe("cache-manager RPC", () => {
     expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
   });
 
-  test("resetSession clears the session patch, emits and returns {}", async () => {
-    const mock = createMockCtx();
-    mock.store.set("session/ses_x", { mode: "1h" });
-    await (plugin as any).setup(mock.ctx);
-
-    const result = await mock.rpc().resetSession({ sessionID: "ses_x" });
-
-    expect(result).toEqual({});
-    expect(mock.store.has("session/ses_x")).toBe(false);
-    expect(mock.emits).toEqual([{ name: "settings.updated", data: { sessionID: "ses_x" } }]);
-    expect((await mock.rpc().getSettings({ sessionID: "ses_x" })).session).toEqual({});
-  });
-
-  test("invalid patch fields are rejected without changing state", async () => {
-    const mock = createMockCtx();
-    await (plugin as any).setup(mock.ctx);
-
-    await expect(
-      mock.rpc().setSession({ sessionID: "ses_x", patch: { mode: "bogus" } }),
-    ).rejects.toThrow();
-    await expect(mock.rpc().setSession({ sessionID: "ses_x", patch: { maxPings: 101 } })).rejects.toThrow();
-    await expect(mock.rpc().setGlobal({ patch: { minContextTokens: -1 } })).rejects.toThrow();
-    await expect(mock.rpc().setGlobal({ patch: { unknown: 1 } })).rejects.toThrow();
-    await expect(mock.rpc().setGlobal({ patch: "1h" })).rejects.toThrow();
-
-    expect(mock.store.size).toBe(0);
-    expect(mock.emits).toHaveLength(0);
-    expect((await mock.rpc().getSettings({})).global.mode).toBe("5m");
-  });
 });

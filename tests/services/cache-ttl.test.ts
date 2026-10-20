@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
 import { hasOneHourCacheControl, mergeBetaHeader, resolveActiveMode, rewriteAnthropicCacheTtl, transformHttpRequest, ttlForMode } from "../../src/services/cache-ttl.ts";
-import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
+import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // ttlForMode / resolveActiveMode
