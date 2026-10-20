@@ -4,7 +4,12 @@ export type Tone = "base" | "muted" | "success" | "warning" | "error";
 export interface SidebarLine {
   text: string;
   tone: Tone;
+  bold?: boolean;
+  /** Second column, rendered right-aligned in the muted tone. */
+  right?: string;
 }
+
+const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
 
 const defaultClock = (ms: number): string =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -28,9 +33,9 @@ export function sidebarLines(
 ): SidebarLine[] {
   if (s === undefined || s.lastRequestAt === null || s.skipReason === "child") return [];
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
-  if (s.ttl === null) return [{ text: "Cache · waiting for first response", tone: "muted" }];
+  if (s.ttl === null) return [HEADER, { text: "waiting for first response", tone: "muted" }];
 
-  const lines: SidebarLine[] = [{ text: `Cache ${s.ttl} · ${s.ttlSource}`, tone: "base" }];
+  const lines: SidebarLine[] = [HEADER, { text: "ttl", tone: "base", right: `${s.ttl} (${s.ttlSource})` }];
   if (s.expiresAt === null) return lines;
 
   if (now >= s.expiresAt) {

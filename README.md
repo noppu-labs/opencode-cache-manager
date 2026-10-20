@@ -178,13 +178,14 @@ The `x-cache-ttl` model-variant header (see [Per-model override](#per-model-over
 Inside a session, the sidebar shows a Cache section. It ticks once a second from timestamps the server sends, so countdowns stay live without server traffic.
 
 ```
-Cache 1h · detected
+Cache
+ttl                      1h (detected)
 ● warm, expires 14:52 (52m)
   next ping   14:42 (42m)
   pings       2/5 ✓ hit
 ```
 
-- The header gives the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response it reads `Cache · waiting for first response`.
+- `ttl` is the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response the section reads `waiting for first response`.
 - `● warm, expires 14:52 (52m)` is the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.

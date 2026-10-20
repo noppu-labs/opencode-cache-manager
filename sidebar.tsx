@@ -25,10 +25,28 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
 
   const lines = () => sidebarLines(props.snapshot(), now());
 
+  const theme = () => props.ctx.theme;
+
   return (
     <box flexDirection="column">
       <Index each={lines()}>
-        {(line) => <text fg={toneColor(props.ctx.theme, line().tone)}>{line().text}</text>}
+        {(line) => (
+          <Show
+            when={line().right !== undefined}
+            fallback={
+              <text fg={toneColor(theme(), line().tone)}>
+                <Show when={line().bold} fallback={line().text}>
+                  <b>{line().text}</b>
+                </Show>
+              </text>
+            }
+          >
+            <box flexDirection="row" justifyContent="space-between">
+              <text fg={toneColor(theme(), line().tone)}>{line().text}</text>
+              <text fg={toneColor(theme(), "muted")}>{line().right}</text>
+            </box>
+          </Show>
+        )}
       </Index>
     </box>
   );
