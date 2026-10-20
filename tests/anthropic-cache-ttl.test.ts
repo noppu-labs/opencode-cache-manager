@@ -33,8 +33,10 @@ type SidebarCall = {
   disposed: boolean;
 };
 const sidebarCalls: SidebarCall[] = [];
+let sidebarThrows = false;
 mock.module("../sidebar.tsx", () => ({
   registerSidebar: (_ctx: unknown, snapshots: SidebarCall["snapshots"], load: SidebarCall["load"]) => {
+    if (sidebarThrows) throw new Error("sidebar unavailable");
     const call: SidebarCall = { snapshots, load, disposed: false };
     sidebarCalls.push(call);
     return () => {
@@ -2175,6 +2177,22 @@ describe("cache-manager TUI plugin", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(lastSidebar().snapshots().get("ses_a")!.pingsUsed).toBe(4);
+    });
+
+    test("a sidebar that fails to register leaves the command and subscription working", async () => {
+      sidebarThrows = true;
+      try {
+        const mock = await setupTui();
+
+        await mock.run("status");
+        expect(mock.toasts).toHaveLength(1);
+        expect(mock.toasts[0].variant).toBe("info");
+        expect(mock.subscriptions.map((s) => s.name)).toEqual(["keepalive.updated"]);
+        expect(() => mock.cleanup!()).not.toThrow();
+        expect(mock.subscriptions[0]!.signal?.aborted).toBe(true);
+      } finally {
+        sidebarThrows = false;
+      }
     });
 
     test("cleanup disposes the slot and aborts the subscription", async () => {

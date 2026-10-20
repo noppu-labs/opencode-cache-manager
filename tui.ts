@@ -3,7 +3,6 @@ import { CacheTtlRpc } from "./rpc.ts";
 import { parseCommandArg, type CacheTtlMode } from "./shared.ts";
 import { mergeSettings, type Settings, type SettingsPatch } from "./settings.ts";
 import type { KeepaliveSnapshot } from "./keepalive.ts";
-import { registerSidebar } from "./sidebar.tsx";
 
 /**
  * Interactive metadata for each cache TTL mode, shown in the picker modal.
@@ -321,11 +320,19 @@ export default Plugin.define({
       }
     })();
 
-    const disposeSidebar = registerSidebar(ctx, () => new Map(Object.entries(sidebar.snapshots)), loadSnapshot);
+    // The sidebar is Solid JSX loaded lazily so a failure there (for example a
+    // host without the Solid transform) cannot take the command or picker down.
+    let disposeSidebar: (() => void) | undefined;
+    try {
+      const { registerSidebar } = await import("./sidebar.tsx");
+      disposeSidebar = registerSidebar(ctx, () => new Map(Object.entries(sidebar.snapshots)), loadSnapshot);
+    } catch {
+      // Sidebar unavailable; the rest of the plugin keeps working.
+    }
 
     return () => {
       abort.abort();
-      disposeSidebar();
+      disposeSidebar?.();
     };
   },
 });

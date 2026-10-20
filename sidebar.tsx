@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode/plugin/tui";
-import { createEffect, createSignal, For, onCleanup } from "solid-js";
+import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { sidebarLines, type Tone } from "./display.ts";
 import type { KeepaliveSnapshot } from "./keepalive.ts";
 
@@ -18,26 +18,38 @@ function toneColor(theme: Plugin.Context["theme"], tone: Tone) {
   }
 }
 
+function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot | undefined }) {
+  const [now, setNow] = createSignal(Date.now());
+  const timer = setInterval(() => setNow(Date.now()), 1000);
+  onCleanup(() => clearInterval(timer));
+
+  const lines = () => sidebarLines(props.snapshot(), now());
+
+  return (
+    <box flexDirection="column">
+      <Index each={lines()}>
+        {(line) => <text fg={toneColor(props.ctx.theme, line().tone)}>{line().text}</text>}
+      </Index>
+    </box>
+  );
+}
+
 function CacheSection(props: {
   ctx: Plugin.Context;
   sessionID: string;
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>;
   load: (sessionID: string) => void;
 }) {
-  const [now, setNow] = createSignal(Date.now());
-  const timer = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(timer));
-
   createEffect(() => props.load(props.sessionID));
 
-  const lines = () => sidebarLines(props.snapshots().get(props.sessionID), now());
+  const snapshot = () => props.snapshots().get(props.sessionID);
+  // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
+  const visible = () => sidebarLines(snapshot(), 0).length > 0;
 
   return (
-    <box flexDirection="column">
-      <For each={lines()}>
-        {(line) => <text fg={toneColor(props.ctx.theme, line.tone)}>{line.text}</text>}
-      </For>
-    </box>
+    <Show when={visible()}>
+      <Lines ctx={props.ctx} snapshot={snapshot} />
+    </Show>
   );
 }
 
