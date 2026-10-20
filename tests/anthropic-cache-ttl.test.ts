@@ -1659,36 +1659,56 @@ describe("cache-manager RPC", () => {
 // TUI plugin (keymap layer + dialog modal + toasts)
 // ---------------------------------------------------------------------------
 
+type TuiMockOptions = {
+  route?: { type: "home" } | { type: "session"; sessionID: string };
+  global?: Record<string, unknown>;
+  session?: Record<string, unknown> | null;
+  selects?: unknown[];
+  prompts?: unknown[];
+  setSessionImpl?: (input: any) => Promise<unknown>;
+};
+
 type TuiMock = {
   ctx: any;
   toasts: any[];
   dialogCalls: any[];
+  promptCalls: any[];
   setSessionCalls: any[];
+  setGlobalCalls: any[];
+  resetCalls: any[];
   layer: () => any;
   run: (input?: string) => Promise<void>;
 };
 
-function createTuiCtx(
-  currentMode: string = "5m",
-  dialogResult?: unknown,
-  setSessionImpl?: (input: any) => Promise<unknown>,
-): TuiMock {
+function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   let layer: any;
   const toasts: any[] = [];
   const dialogCalls: any[] = [];
+  const promptCalls: any[] = [];
   const setSessionCalls: any[] = [];
+  const setGlobalCalls: any[] = [];
+  const resetCalls: any[] = [];
+  const selects = [...(options.selects ?? [])];
+  const prompts = [...(options.prompts ?? [])];
+  const route = options.route ?? { type: "session", sessionID: "ses_tui" };
+  const global = { mode: "5m", keepalive: true, maxPings: 5, minContextTokens: 50_000, ...options.global };
 
   const ctx = {
     client: {
       rpc: () => ({
-        getSettings: async () => ({
-          global: { mode: currentMode, keepalive: true, maxPings: 5, minContextTokens: 50_000 },
-          session: null,
-        }),
+        getSettings: async () => ({ global, session: options.session ?? null }),
         setSession: async (input: any) => {
           setSessionCalls.push(input);
-          if (setSessionImpl) return setSessionImpl(input);
-          return undefined;
+          if (options.setSessionImpl) return options.setSessionImpl(input);
+          return {};
+        },
+        setGlobal: async (input: any) => {
+          setGlobalCalls.push(input);
+          return {};
+        },
+        resetSession: async (input: any) => {
+          resetCalls.push(input);
+          return {};
         },
         events: {
           // eslint-disable-next-line require-yield
@@ -1698,18 +1718,22 @@ function createTuiCtx(
     },
     ui: {
       dialog: {
-        select: async (options: any) => {
-          dialogCalls.push(options);
-          return dialogResult;
+        select: async (dialog: any) => {
+          dialogCalls.push(dialog);
+          return selects.shift();
+        },
+        prompt: async (dialog: any) => {
+          promptCalls.push(dialog);
+          return prompts.shift();
         },
       },
       toast: {
-        show: (options: any) => {
-          toasts.push(options);
+        show: (toast: any) => {
+          toasts.push(toast);
         },
       },
       router: {
-        current: () => ({ type: "session", sessionID: "ses_tui" }),
+        current: () => route,
       },
     },
     keymap: {
@@ -1723,135 +1747,296 @@ function createTuiCtx(
     ctx,
     toasts,
     dialogCalls,
+    promptCalls,
     setSessionCalls,
+    setGlobalCalls,
+    resetCalls,
     layer: () => layer,
     run: (input?: string) => layer.commands[0].run(input),
   };
 }
 
-describe("cache-ttl TUI plugin", () => {
-  test("no-arg run opens a dialog with the current mode and three options", async () => {
-    const mock = createTuiCtx("5m", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
+async function setupTui(options: TuiMockOptions = {}): Promise<TuiMock> {
+  const mock = createTuiCtx(options);
+  await (tuiPlugin as any).setup(mock.ctx);
+  return mock;
+}
+
+const HOME = { type: "home" } as const;
+
+describe("cache-manager TUI plugin", () => {
+  test("registers the cache-manager command", async () => {
+    const mock = await setupTui();
+    const command = mock.layer().commands[0];
+
+    expect(command.id).toBe("cache-manager.open");
+    expect(command.title).toBe("Cache Manager");
+    expect(command.group).toBe("Provider");
+    expect(command.slash).toEqual({ name: "cache-manager", arguments: true });
+  });
+
+  test("the picker inside a session shows Session and Global with global markers", async () => {
+    const mock = await setupTui({
+      global: { mode: "hybrid" },
+      session: { mode: "1h", minContextTokens: 100_000 },
+    });
 
     await mock.run("");
 
     expect(mock.dialogCalls).toHaveLength(1);
     const call = mock.dialogCalls[0];
-    expect(call.current).toBe("5m");
-    expect(call.options.map((option: any) => option.value)).toEqual(["5m", "1h", "hybrid"]);
-    for (const option of call.options) {
-      expect(typeof option.title).toBe("string");
-      expect(option.title.length).toBeGreaterThan(0);
-      expect(typeof option.description).toBe("string");
-      expect(option.description.length).toBeGreaterThan(0);
-    }
+    expect(call.title).toBe("Cache Manager");
+    const rows = call.options.map((o: any) => [o.category, o.value, o.title]);
+    expect(rows).toEqual([
+      ["Session", "session:mode", "TTL mode  1h"],
+      ["Session", "session:keepalive", "Keepalive  on · global"],
+      ["Session", "session:maxPings", "Pings per idle  5 · global"],
+      ["Session", "session:minContextTokens", "Min context  100k"],
+      ["Session", "session:reset", "Reset session to global"],
+      ["Global", "global:mode", "TTL mode  hybrid"],
+      ["Global", "global:keepalive", "Keepalive  on"],
+      ["Global", "global:maxPings", "Pings per idle  5"],
+      ["Global", "global:minContextTokens", "Min context  50k"],
+    ]);
     expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.setGlobalCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
-  test("undefined arg also opens the dialog", async () => {
-    const mock = createTuiCtx("1h", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("the picker on the home route shows only Global", async () => {
+    const mock = await setupTui({ route: HOME });
 
     await mock.run(undefined);
 
-    expect(mock.dialogCalls).toHaveLength(1);
-    expect(mock.dialogCalls[0].current).toBe("1h");
+    const options = mock.dialogCalls[0].options;
+    expect(options.map((o: any) => o.value)).toEqual([
+      "global:mode",
+      "global:keepalive",
+      "global:maxPings",
+      "global:minContextTokens",
+    ]);
+    expect(options.every((o: any) => o.category === "Global")).toBe(true);
   });
 
-  test("dialog selection posts setSession and shows a success toast", async () => {
-    const mock = createTuiCtx("5m", "1h");
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("the mode sub-dialog offers the three modes with the effective one current", async () => {
+    const mock = await setupTui({ session: { mode: "hybrid" }, selects: ["session:mode"] });
+
+    await mock.run("");
+
+    expect(mock.dialogCalls).toHaveLength(2);
+    const sub = mock.dialogCalls[1];
+    expect(sub.current).toBe("hybrid");
+    expect(sub.options.map((o: any) => o.value)).toEqual(["5m", "1h", "hybrid"]);
+    for (const option of sub.options) {
+      expect(option.title.length).toBeGreaterThan(0);
+      expect(option.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("selecting session:mode then 1h writes the session and toasts", async () => {
+    const mock = await setupTui({ selects: ["session:mode", "1h"] });
 
     await mock.run("");
 
     expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { mode: "1h" } }]);
-    expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("success");
-    expect(mock.toasts[0].message).toContain("1h");
+    expect(mock.setGlobalCalls).toHaveLength(0);
+    expect(mock.toasts).toEqual([{ message: "Session cache TTL set to 1h.", variant: "success" }]);
   });
 
-  test("dialog dismissal performs no RPC write and shows no toast", async () => {
-    const mock = createTuiCtx("5m", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("selecting global:keepalive then off writes the global settings", async () => {
+    const mock = await setupTui({ selects: ["global:keepalive", "off"] });
+
+    await mock.run("");
+
+    expect(mock.setGlobalCalls).toEqual([{ patch: { keepalive: false } }]);
+    expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.toasts).toEqual([{ message: "Global keepalive set to off.", variant: "success" }]);
+  });
+
+  test("the pings and min context sub-dialogs list their presets", async () => {
+    const pings = await setupTui({ selects: ["global:maxPings"] });
+    await pings.run("");
+    expect(pings.dialogCalls[1].options.map((o: any) => o.value)).toEqual([0, 1, 3, 5, 10, "custom"]);
+    expect(pings.dialogCalls[1].options.at(-1).title).toBe("Custom…");
+
+    const min = await setupTui({ selects: ["global:minContextTokens"] });
+    await min.run("");
+    expect(min.dialogCalls[1].options.map((o: any) => o.title)).toEqual(["0", "20k", "50k", "100k", "Custom…"]);
+  });
+
+  test("a preset min context value is written in tokens and shown in k", async () => {
+    const mock = await setupTui({ selects: ["session:minContextTokens", 100_000] });
+
+    await mock.run("");
+
+    expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { minContextTokens: 100_000 } }]);
+    expect(mock.toasts[0].message).toBe("Session min context set to 100k.");
+  });
+
+  test("global:maxPings then Custom with 7 writes the global setting", async () => {
+    const mock = await setupTui({ selects: ["global:maxPings", "custom"], prompts: ["7"] });
+
+    await mock.run("");
+
+    expect(mock.promptCalls).toHaveLength(1);
+    expect(mock.setGlobalCalls).toEqual([{ patch: { maxPings: 7 } }]);
+    expect(mock.toasts).toEqual([{ message: "Global pings per idle set to 7.", variant: "success" }]);
+  });
+
+  test("a Custom min context accepts the k suffix", async () => {
+    const mock = await setupTui({ selects: ["global:minContextTokens", "custom"], prompts: ["30k"] });
+
+    await mock.run("");
+
+    expect(mock.setGlobalCalls).toEqual([{ patch: { minContextTokens: 30_000 } }]);
+  });
+
+  test("an invalid Custom value warns and writes nothing", async () => {
+    const mock = await setupTui({ selects: ["global:maxPings", "custom"], prompts: ["abc"] });
+
+    await mock.run("");
+
+    expect(mock.setGlobalCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.toasts).toHaveLength(1);
+    expect(mock.toasts[0].variant).toBe("warning");
+  });
+
+  test("cancelling the Custom prompt writes nothing and shows no toast", async () => {
+    const mock = await setupTui({ selects: ["global:maxPings", "custom"], prompts: [undefined] });
+
+    await mock.run("");
+
+    expect(mock.setGlobalCalls).toHaveLength(0);
+    expect(mock.toasts).toHaveLength(0);
+  });
+
+  test("selecting the value already in effect writes nothing and shows no toast", async () => {
+    const mock = await setupTui({ global: { mode: "hybrid" }, selects: ["session:mode", "hybrid"] });
+
+    await mock.run("");
+
+    expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.toasts).toHaveLength(0);
+  });
+
+  test("dismissing the picker writes nothing and shows no toast", async () => {
+    const mock = await setupTui({ selects: [undefined] });
 
     await mock.run("");
 
     expect(mock.dialogCalls).toHaveLength(1);
     expect(mock.setSessionCalls).toHaveLength(0);
+    expect(mock.setGlobalCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
-  test("selecting the current mode performs no RPC write and shows no toast", async () => {
-    const mock = createTuiCtx("hybrid", "hybrid");
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("dismissing a sub-dialog writes nothing and shows no toast", async () => {
+    const mock = await setupTui({ selects: ["session:mode", undefined] });
 
     await mock.run("");
 
+    expect(mock.dialogCalls).toHaveLength(2);
     expect(mock.setSessionCalls).toHaveLength(0);
     expect(mock.toasts).toHaveLength(0);
   });
 
-  test("status short-circuits to an info toast without a dialog", async () => {
-    const mock = createTuiCtx("hybrid", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("the reset row resets the session", async () => {
+    const mock = await setupTui({ selects: ["session:reset"] });
+
+    await mock.run("");
+
+    expect(mock.resetCalls).toEqual([{ sessionID: "ses_tui" }]);
+    expect(mock.toasts[0].variant).toBe("success");
+  });
+
+  test("typed pings 3 sets the session", async () => {
+    const mock = await setupTui();
+
+    await mock.run("pings 3");
+
+    expect(mock.dialogCalls).toHaveLength(0);
+    expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { maxPings: 3 } }]);
+    expect(mock.toasts).toEqual([{ message: "Session pings per idle set to 3.", variant: "success" }]);
+  });
+
+  test("typed mode, keepalive and min arguments set the session", async () => {
+    const mock = await setupTui();
+
+    await mock.run("hybrid");
+    await mock.run("keepalive off");
+    await mock.run("min 20k");
+
+    expect(mock.setSessionCalls.map((c) => c.patch)).toEqual([
+      { mode: "hybrid" },
+      { keepalive: false },
+      { minContextTokens: 20_000 },
+    ]);
+    expect(mock.toasts.map((t) => t.message)).toEqual([
+      "Session cache TTL set to hybrid.",
+      "Session keepalive set to off.",
+      "Session min context set to 20k.",
+    ]);
+  });
+
+  test("typed reset resets the session", async () => {
+    const mock = await setupTui();
+
+    await mock.run("reset");
+
+    expect(mock.resetCalls).toEqual([{ sessionID: "ses_tui" }]);
+    expect(mock.setSessionCalls).toHaveLength(0);
+  });
+
+  test("typed status shows the effective session values", async () => {
+    const mock = await setupTui({ global: { mode: "hybrid" }, session: { maxPings: 2, keepalive: false } });
 
     await mock.run("status");
 
     expect(mock.dialogCalls).toHaveLength(0);
+    expect(mock.toasts).toEqual([
+      {
+        message: "Session cache: TTL hybrid, keepalive off, pings 2, min context 50k.",
+        variant: "info",
+      },
+    ]);
+  });
+
+  test("a typed argument on the home route warns and writes nothing", async () => {
+    const mock = await setupTui({ route: HOME });
+
+    await mock.run("1h");
+
     expect(mock.setSessionCalls).toHaveLength(0);
-    expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("info");
-    expect(mock.toasts[0].message).toContain("hybrid");
+    expect(mock.setGlobalCalls).toHaveLength(0);
+    expect(mock.toasts).toEqual([
+      { message: "Open a session to change session cache settings.", variant: "warning" },
+    ]);
   });
 
-  test("an explicit valid mode bypasses the dialog", async () => {
-    const mock = createTuiCtx("hybrid", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
-
-    await mock.run("5m");
-
-    expect(mock.dialogCalls).toHaveLength(0);
-    expect(mock.setSessionCalls).toEqual([{ sessionID: "ses_tui", patch: { mode: "5m" } }]);
-    expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("success");
-  });
-
-  test("garbage input shows a warning with usage text", async () => {
-    const mock = createTuiCtx("5m", undefined);
-    await (tuiPlugin as any).setup(mock.ctx);
+  test("garbage input warns with the usage text", async () => {
+    const mock = await setupTui();
 
     await mock.run("garbage");
 
     expect(mock.dialogCalls).toHaveLength(0);
     expect(mock.setSessionCalls).toHaveLength(0);
-    expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("warning");
-    expect(mock.toasts[0].message).toContain("5m");
-    expect(mock.toasts[0].message).toContain("1h");
-    expect(mock.toasts[0].message).toContain("hybrid");
-    expect(mock.toasts[0].message).toContain("status");
-  });
-
-  test("outside a session it warns and performs no RPC write", async () => {
-    const mock = createTuiCtx("5m", "1h");
-    mock.ctx.ui.router.current = () => ({ type: "home" });
-    await (tuiPlugin as any).setup(mock.ctx);
-
-    await mock.run("");
-
-    expect(mock.dialogCalls).toHaveLength(0);
-    expect(mock.setSessionCalls).toHaveLength(0);
-    expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("warning");
+    expect(mock.toasts).toEqual([
+      {
+        message:
+          "Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | reset | status]",
+        variant: "warning",
+      },
+    ]);
   });
 
   test("an RPC failure surfaces as an error toast without throwing", async () => {
-    const mock = createTuiCtx("5m", "1h", async () => {
-      throw new Error("rpc down");
+    const mock = await setupTui({
+      selects: ["session:mode", "1h"],
+      setSessionImpl: async () => {
+        throw new Error("rpc down");
+      },
     });
-    await (tuiPlugin as any).setup(mock.ctx);
 
     await expect(mock.run("")).resolves.toBeUndefined();
 
