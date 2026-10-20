@@ -551,6 +551,47 @@ describe("alignPingMessages", () => {
     expect(primary).toEqual([{ id: "a0" }]);
   });
 
+  test("messages copied from the primary keep their cache_control byte-identical", () => {
+    const primary = [
+      { role: "user", content: [{ type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "1h" } }] },
+      { role: "assistant", cache_control: { type: "ephemeral" }, content: "b" },
+    ];
+    const ping = [{ role: "user", content: "x" }, { role: "assistant", content: "y" }, { role: "user", content: "ping" }];
+    const out = alignPingMessages(ping, primary);
+    expect(JSON.stringify(out.slice(0, 2))).toBe(JSON.stringify(primary));
+    expect(out[0]).toBe(primary[0]);
+  });
+
+  test("the tail and extra entries carry no cache_control at message or part level", () => {
+    const marked = (text: string) => ({
+      role: "user",
+      cache_control: { type: "ephemeral" },
+      content: [
+        { type: "text", text, cache_control: { type: "ephemeral", ttl: "1h" } },
+        { type: "text", text: "plain" },
+      ],
+    });
+    const primary = [marked("a0")];
+    const ping = [marked("p0"), marked("p1"), marked("p2"), marked("ping")];
+    const out = alignPingMessages(ping, primary) as any[];
+
+    expect(out[0]).toBe(primary[0]);
+    for (const message of out.slice(1)) {
+      expect("cache_control" in message).toBe(false);
+      for (const part of message.content) expect("cache_control" in part).toBe(false);
+    }
+    expect(out.map((m) => m.content[0].text)).toEqual(["a0", "p1", "p2", "ping"]);
+    expect(out[3].content[1]).toEqual({ type: "text", text: "plain" });
+    // inputs untouched
+    expect(ping[3].cache_control).toEqual({ type: "ephemeral" });
+    expect(ping[3].content[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+  });
+
+  test("an empty primary still strips cache_control from the ping", () => {
+    const out = alignPingMessages([{ role: "user", content: "x", cache_control: { type: "ephemeral" } }], []);
+    expect(out).toEqual([{ role: "user", content: "x" }]);
+  });
+
   test("an empty ping stays empty", () => {
     expect(alignPingMessages([], [{ id: "a0" }])).toEqual([]);
   });
@@ -1301,18 +1342,62 @@ describe("keepalive wiring", () => {
       expect(sent[3]).toEqual((diverging.messages as unknown[])[3]);
     });
 
+    test("the ping body has exactly the primary's cache_control occurrences in messages", async () => {
+      const mock = await start();
+      await mock.command().execute({ ...invocation("1h"), sessionID: "ses_a" });
+      const { requestEvt: primary } = await roundTrip(mock);
+      const primaryMessages = await messagesOf(primary.request);
+      expect(collectCacheControls(primaryMessages).length).toBeGreaterThan(0);
+
+      const marked = (text: string) => ({
+        role: "user",
+        cache_control: ephemeral(),
+        content: [{ type: "text", text, cache_control: ephemeral() }],
+      });
+      const diverging = sampleBody();
+      diverging.messages = [marked("d0"), marked("d1"), marked("d2"), marked("d3"), marked(PING_PROMPT)];
+      let sent: unknown[] = [];
+      mock.generate.mockImplementation(async () => {
+        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
+        sent = await messagesOf(requestEvt.request);
+        return {};
+      });
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(sent).toHaveLength(5);
+      expect(collectCacheControls(sent)).toHaveLength(collectCacheControls(primaryMessages).length);
+      expect(JSON.stringify(sent.slice(0, 3))).toBe(JSON.stringify(primaryMessages));
+      expect(collectCacheControls(sent.slice(3))).toHaveLength(0);
+    });
+
+    test("a ping with no stored primary is sent as-is, keeping its own cache_control", async () => {
+      const mock = await start();
+      // A compaction request seeds the engine without storing primary messages.
+      await roundTrip(mock, { kind: "compaction" });
+      await flush();
+
+      const body = sampleBody();
+      let sent: unknown[] = [];
+      mock.generate.mockImplementation(async () => {
+        const { requestEvt } = await roundTrip(mock, { kind: "generate", body, usage: READ_HIT });
+        sent = await messagesOf(requestEvt.request);
+        return {};
+      });
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(sent).toEqual(body.messages as unknown[]);
+      expect(collectCacheControls(sent)).toHaveLength(2);
+    });
+
     test("a primary request body is never altered by alignment", async () => {
       const mock = await start();
       await roundTrip(mock);
       const body = sampleBody();
       const { requestEvt } = await roundTrip(mock, { body });
-      expect(await messagesOf(requestEvt.request)).toEqual(body.messages as unknown[]);
-    });
-
-    test("a ping with no stored primary is sent as-is", async () => {
-      const mock = await start();
-      const body = sampleBody();
-      const { requestEvt } = await roundTrip(mock, { sessionID: "ses_fresh", kind: "generate", body });
       expect(await messagesOf(requestEvt.request)).toEqual(body.messages as unknown[]);
     });
   });

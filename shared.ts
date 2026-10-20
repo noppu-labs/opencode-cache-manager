@@ -308,15 +308,30 @@ export async function transformHttpRequest(
   });
 }
 
+/** Copy of a message with `cache_control` removed from it and from its content parts. */
+function withoutCacheControl(message: unknown): unknown {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return message;
+  const { cache_control: _message, ...rest } = message as Record<string, unknown>;
+  if (Array.isArray(rest.content)) {
+    rest.content = rest.content.map((part) => {
+      if (typeof part !== "object" || part === null || Array.isArray(part)) return part;
+      const { cache_control: _part, ...kept } = part as Record<string, unknown>;
+      return kept;
+    });
+  }
+  return rest;
+}
+
 /**
  * Makes a ping's history match the primary request's so the cached prefix is
  * hit: every message but the ping's last is replaced by the primary's message
- * at the same index. Returns a new array; the last element always comes from
- * the ping, and ping entries beyond the primary's length are left untouched.
+ * at the same index, `cache_control` included. Messages that do not come from
+ * the primary (the ping's last, and any ping entries beyond the primary's
+ * length) have their `cache_control` removed so the ping adds no breakpoints
+ * and does not pay to cache itself. Returns a new array; the inputs are not
+ * mutated.
  */
 export function alignPingMessages(pingMessages: unknown[], primaryMessages: unknown[]): unknown[] {
-  const aligned = pingMessages.slice();
-  const shared = Math.min(pingMessages.length - 1, primaryMessages.length);
-  for (let i = 0; i < shared; i++) aligned[i] = primaryMessages[i];
-  return aligned;
+  const shared = Math.max(0, Math.min(pingMessages.length - 1, primaryMessages.length));
+  return pingMessages.map((message, i) => (i < shared ? primaryMessages[i] : withoutCacheControl(message)));
 }
