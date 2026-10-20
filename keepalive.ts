@@ -47,6 +47,10 @@ interface SessionState {
   ttlSource: "detected" | "requested" | null;
   requestedTtl: Ttl | null;
   lastRequestAt: number | null;
+  /** Send time of the latest non-ping request, whether or not it has succeeded yet. */
+  requestSentAt: number | null;
+  /** Send time of the latest request (real or ping) the provider answered ok; the cache expiry is anchored here. */
+  confirmedAt: number | null;
   nextPingAt: number | null;
   pingsUsed: number;
   maxPings: number;
@@ -83,6 +87,7 @@ export class KeepaliveEngine {
     s.generation++;
     s.inflight = null;
     s.lastRequestAt = this.deps.now();
+    s.requestSentAt = s.lastRequestAt;
     s.requestedTtl = info.requestedTtl;
     s.pingsUsed = 0;
     s.lastPing = null;
@@ -111,6 +116,7 @@ export class KeepaliveEngine {
       }
       const usage = info.usage;
       s.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
+      s.confirmedAt = s.lastRequestAt;
       const before = inflight.contextBefore ?? contextTokens(usage);
       const hit = usage.cacheReadTokens >= HIT_RATIO * before;
       s.lastPing = hit ? "hit" : "miss";
@@ -122,9 +128,21 @@ export class KeepaliveEngine {
       return;
     }
 
-    if (!info.ok || !info.usage) return;
-    s.contextTokens = contextTokens(info.usage);
-    this.learn(s, info.usage);
+    if (!info.ok) {
+      // The request did not reach the cache, so the expiry goes back to the last confirmed request.
+      s.lastRequestAt = s.confirmedAt;
+      this.commit(sessionID, s);
+      await this.schedule(sessionID);
+      return;
+    }
+    if (s.requestSentAt !== null) {
+      s.confirmedAt = s.requestSentAt;
+      s.lastRequestAt = s.requestSentAt;
+    }
+    if (info.usage) {
+      s.contextTokens = contextTokens(info.usage);
+      this.learn(s, info.usage);
+    }
     this.commit(sessionID, s);
     await this.schedule(sessionID);
   }
@@ -164,6 +182,8 @@ export class KeepaliveEngine {
       ttlSource: null,
       requestedTtl: null,
       lastRequestAt: null,
+      requestSentAt: null,
+      confirmedAt: null,
       nextPingAt: null,
       pingsUsed: 0,
       maxPings: BUILTIN_DEFAULTS.maxPings,
@@ -231,9 +251,16 @@ export class KeepaliveEngine {
     s.timer = null;
   }
 
+  /** Cached once resolved; a failed lookup counts as a child for this computation only and is retried next time. */
   private isChild(sessionID: string, s: SessionState): Promise<boolean> {
-    s.child ??= this.deps.isChild(sessionID).catch(() => false);
-    return s.child;
+    if (!s.child) {
+      const lookup = Promise.resolve().then(() => this.deps.isChild(sessionID));
+      s.child = lookup;
+      lookup.catch(() => {
+        if (s.child === lookup) s.child = undefined;
+      });
+    }
+    return s.child.catch(() => true);
   }
 
   private async schedule(sessionID: string): Promise<void> {
@@ -247,6 +274,10 @@ export class KeepaliveEngine {
     try {
       [settings, child] = await Promise.all([this.deps.settings(sessionID), this.isChild(sessionID, s)]);
     } catch {
+      if (!this.disposed && s.generation === generation && !s.inflight) {
+        s.nextPingAt = null;
+        this.commit(sessionID, s);
+      }
       return;
     }
     if (this.disposed || s.generation !== generation || s.inflight) return;

@@ -71,7 +71,9 @@ function harness(
   const held: (() => void)[] = [];
   let isChildCalls = 0;
   let isChildResult = options.child ?? false;
+  let isChildFails = false;
   let settingsGate: (() => Promise<void>) | undefined;
+  let settingsFails = false;
   const requested = options.requestedTtl ?? "1h";
   let engine!: KeepaliveEngine;
 
@@ -117,10 +119,12 @@ function harness(
     ping,
     settings: async () => {
       if (settingsGate) await settingsGate();
+      if (settingsFails) throw new Error("settings unavailable");
       return { ...settings };
     },
     isChild: async () => {
       isChildCalls++;
+      if (isChildFails) throw new Error("lookup failed");
       return isChildResult;
     },
     onChange: (snapshot) => changes.push(snapshot),
@@ -155,6 +159,12 @@ function harness(
     },
     setChild(value: boolean) {
       isChildResult = value;
+    },
+    failChildLookup(value: boolean) {
+      isChildFails = value;
+    },
+    failSettings(value: boolean) {
+      settingsFails = value;
     },
     gateSettings(gate: (() => Promise<void>) | undefined) {
       settingsGate = gate;
@@ -610,5 +620,149 @@ describe("keepalive engine: races and lifecycle", () => {
     await h.engine.reevaluate("s1");
     expect(h.changes).toHaveLength(count);
     expect(h.changes.at(-1)).toEqual(h.engine.snapshot("s1"));
+  });
+});
+
+describe("keepalive engine: review fixes", () => {
+  test("a failed real request does not extend expiry", async () => {
+    // maxPings 1: the single allowed ping may fire at 4m (scheduled from the
+    // confirmed t=0 request); nothing may be sent later than expiry - margin.
+    const h = harness({ settings: { maxPings: 1 } });
+    await h.request("s1", write5m, "5m");
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: 0, expiresAt: 5 * MIN });
+
+    await h.advance(3 * MIN);
+    h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
+    await h.flush();
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      lastRequestAt: 0,
+      expiresAt: 5 * MIN,
+      pingsUsed: 0,
+      nextPingAt: 4 * MIN,
+    });
+
+    await h.advance(20 * MIN);
+    expect(h.pings.length).toBeLessThanOrEqual(1);
+    for (const ping of h.pings) expect(ping.at).toBeLessThanOrEqual(TTL_MS["5m"] - EXPIRY_MARGIN_MS);
+  });
+
+  test("a failed real request after expiry schedules nothing", async () => {
+    const h = harness();
+    await h.request("s1", write5m, "5m");
+    await h.jump(6 * MIN);
+    h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
+    await h.flush();
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: 0, nextPingAt: null });
+    await h.advance(30 * MIN);
+    expect(h.pings).toHaveLength(0);
+  });
+
+  test("a failed first request leaves nothing confirmed and an ok one confirms its send time", async () => {
+    const h = harness();
+    h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
+    await h.flush();
+    await h.engine.responseObserved("s1", { usage: undefined, ok: false, isPing: false });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: null, expiresAt: null, nextPingAt: null });
+
+    await h.advance(MIN);
+    h.engine.requestSent("s1", { requestedTtl: "5m", isPing: false });
+    await h.advance(30_000);
+    await h.engine.responseObserved("s1", { usage: write5m, ok: true, isPing: false });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastRequestAt: MIN, expiresAt: 6 * MIN, nextPingAt: 5 * MIN });
+  });
+
+  test("a rejected settings lookup never leaves a stale nextPingAt advertised", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    expect(h.engine.snapshot("s1").nextPingAt).toBe(50 * MIN);
+
+    h.failSettings(true);
+    await h.engine.reevaluate("s1");
+    expect(h.engine.snapshot("s1").nextPingAt).toBeNull();
+    expect(h.timerCount).toBe(0);
+    await h.advance(20 * MIN);
+    expect(h.pings).toHaveLength(0);
+
+    h.failSettings(false);
+    await h.engine.reevaluate("s1");
+    expect(h.engine.snapshot("s1").nextPingAt).toBe(50 * MIN);
+  });
+
+  test("a rejected isChild lookup is treated as child for that computation and retried", async () => {
+    const h = harness();
+    h.failChildLookup(true);
+    await h.request("s1", write1h);
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: "child", nextPingAt: null });
+    expect(h.timerCount).toBe(0);
+    const failedCalls = h.isChildCalls;
+    expect(failedCalls).toBeGreaterThan(1);
+
+    h.failChildLookup(false);
+    await h.engine.reevaluate("s1");
+    expect(h.isChildCalls).toBe(failedCalls + 1);
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: null, nextPingAt: 50 * MIN });
+
+    await h.engine.reevaluate("s1");
+    await h.request("s1", pureRead);
+    expect(h.isChildCalls).toBe(failedCalls + 1);
+  });
+
+  test("dispose while a schedule computation is pending", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    const gates: (() => void)[] = [];
+    h.gateSettings(() => new Promise<void>((resolve) => gates.push(resolve)));
+    h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false });
+    const reevaluation = h.engine.reevaluate("s1");
+    await h.flush();
+    expect(gates.length).toBeGreaterThan(0);
+
+    h.engine.dispose();
+    const changesAtDispose = h.changes.length;
+    for (const open of gates) open();
+    await reevaluation;
+    await h.advance(120 * MIN);
+    expect(h.timerCount).toBe(0);
+    expect(h.pings).toHaveLength(0);
+    expect(h.changes).toHaveLength(changesAtDispose);
+  });
+
+  test("dispose while a ping is in flight", async () => {
+    const h = harness();
+    await h.request("s1", write1h);
+    h.queue.push({ kind: "hold" });
+    await h.advance(50 * MIN);
+    expect(h.pings).toHaveLength(1);
+
+    h.engine.dispose();
+    const changesAtDispose = h.changes.length;
+    h.held[0]!();
+    await h.flush();
+    await h.advance(120 * MIN);
+    expect(h.timerCount).toBe(0);
+    expect(h.pings).toHaveLength(1);
+    expect(h.changes).toHaveLength(changesAtDispose);
+  });
+
+  test("a timer firing inside the last 15s before expiry does not ping", async () => {
+    const h = harness();
+    await h.request("s1", write5m, "5m");
+    await h.jump(TTL_MS["5m"] - 10_000);
+    expect(h.pings).toHaveLength(0);
+    expect(h.engine.snapshot("s1")).toMatchObject({ nextPingAt: null, pingsUsed: 0 });
+    expect(h.timerCount).toBe(0);
+  });
+
+  test("a timer firing exactly at expiry - margin still pings", async () => {
+    const h = harness();
+    await h.request("s1", write5m, "5m");
+    await h.jump(TTL_MS["5m"] - EXPIRY_MARGIN_MS);
+    expect(h.pings).toEqual([{ sessionID: "s1", at: TTL_MS["5m"] - EXPIRY_MARGIN_MS }]);
   });
 });
