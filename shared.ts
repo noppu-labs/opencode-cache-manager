@@ -307,3 +307,16 @@ export async function transformHttpRequest(
     body: JSON.stringify(parsed),
   });
 }
+
+/**
+ * Makes a ping's history match the primary request's so the cached prefix is
+ * hit: every message but the ping's last is replaced by the primary's message
+ * at the same index. Returns a new array; the last element always comes from
+ * the ping, and ping entries beyond the primary's length are left untouched.
+ */
+export function alignPingMessages(pingMessages: unknown[], primaryMessages: unknown[]): unknown[] {
+  const aligned = pingMessages.slice();
+  const shared = Math.min(pingMessages.length - 1, primaryMessages.length);
+  for (let i = 0; i < shared; i++) aligned[i] = primaryMessages[i];
+  return aligned;
+}
