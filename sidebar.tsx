@@ -41,11 +41,13 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
               </text>
             }
           >
-            <text>
-              <span style={{ fg: toneColor(theme(), line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
-              <span style={{ fg: toneColor(theme(), line().tone) }}>{line().text.padEnd(LABEL_WIDTH)}</span>
-              <span style={{ fg: toneColor(theme(), line().rightTone ?? "muted") }}>{line().right}</span>
-            </text>
+            <box flexDirection="row">
+              <text width={LABEL_WIDTH}>
+                <span style={{ fg: toneColor(theme(), line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
+                <span style={{ fg: toneColor(theme(), line().tone) }}>{line().text}</span>
+              </text>
+              <text fg={toneColor(theme(), line().rightTone ?? "muted")}>{line().right}</text>
+            </box>
           </Show>
         )}
       </Index>

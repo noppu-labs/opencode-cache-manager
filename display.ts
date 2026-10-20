@@ -12,8 +12,8 @@ export interface SidebarLine {
   rightTone?: Tone;
 }
 
-/** Width of the label column, so values line up across rows. */
-export const LABEL_WIDTH = 12;
+/** Width of the label column (bullet/indent plus label), so values line up across rows. */
+export const LABEL_WIDTH = 14;
 
 const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
 
