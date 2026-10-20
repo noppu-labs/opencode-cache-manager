@@ -43,7 +43,7 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
           >
             <box flexDirection="row" justifyContent="space-between">
               <text fg={toneColor(theme(), line().tone)}>{line().text}</text>
-              <text fg={toneColor(theme(), "muted")}>{line().right}</text>
+              <text fg={toneColor(theme(), line().rightTone ?? "muted")}>{line().right}</text>
             </box>
           </Show>
         )}

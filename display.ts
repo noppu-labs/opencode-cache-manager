@@ -5,8 +5,9 @@ export interface SidebarLine {
   text: string;
   tone: Tone;
   bold?: boolean;
-  /** Second column, rendered right-aligned in the muted tone. */
+  /** Second column, rendered right-aligned; muted unless `rightTone` is set. */
   right?: string;
+  rightTone?: Tone;
 }
 
 const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
@@ -38,44 +39,49 @@ export function sidebarLines(
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
   if (s.ttl === null) return waiting;
 
-  const lines: SidebarLine[] = [HEADER, { text: "ttl", tone: "base", right: `${s.ttl} (${s.ttlSource})` }];
-  if (s.expiresAt === null) return lines;
+  const ttl: SidebarLine = { text: "ttl", tone: "base", right: `${s.ttl} (${s.ttlSource})` };
+  if (s.expiresAt === null) return [HEADER, ttl];
 
   if (now >= s.expiresAt) {
-    lines.push({ text: `○ expired ${formatRemaining(now - s.expiresAt)} ago`, tone: "error" });
-    return lines;
+    return [HEADER, { text: "• expired", tone: "error", right: `${formatRemaining(now - s.expiresAt)} ago` }, ttl];
   }
-  lines.push({
-    text: `● warm, expires ${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
-    tone: s.skipReason === "exhausted" ? "warning" : "success",
-  });
+  const lines: SidebarLine[] = [
+    HEADER,
+    {
+      text: "• warm",
+      tone: s.skipReason === "exhausted" ? "warning" : "success",
+      right: `expires ${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
+    },
+    ttl,
+  ];
 
   if (s.skipReason === "missed") {
-    lines.push({ text: "  keepalive stopped · last ping missed", tone: "error" });
+    lines.push({ text: "keepalive", tone: "base", right: "stopped · last ping missed", rightTone: "error" });
   } else if (s.skipReason === "busy") {
-    lines.push({ text: "  keepalive   waiting · session busy", tone: "muted" });
+    lines.push({ text: "keepalive", tone: "base", right: "waiting · session busy" });
   } else if (s.skipReason === "small-context") {
     lines.push({
-      text: `  keepalive   off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
-      tone: "muted",
+      text: "keepalive",
+      tone: "base",
+      right: `off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
     });
   } else if (s.skipReason === "disabled") {
-    lines.push({ text: "  keepalive   off · disabled", tone: "muted" });
+    lines.push({ text: "keepalive", tone: "base", right: "off · disabled" });
   } else {
     if (s.nextPingAt !== null) {
       lines.push({
-        text: `  next ping   ${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
-        tone: "muted",
+        text: "next ping",
+        tone: "base",
+        right: `${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
       });
     } else if (s.skipReason === "exhausted") {
-      lines.push({ text: "  next ping   none", tone: "muted" });
+      lines.push({ text: "next ping", tone: "base", right: "none" });
     }
     const outcome =
       s.lastPing === "hit" ? " ✓ hit" : s.lastPing === "miss" ? " ✗ miss" : s.lastPing === "failed" ? " ✗ failed" : "";
-    lines.push({
-      text: `  pings       ${s.pingsUsed}/${s.maxPings}${outcome}`,
-      tone: s.lastPing === "hit" ? "success" : s.lastPing === null ? "muted" : "error",
-    });
+    const pings: SidebarLine = { text: "pings", tone: "base", right: `${s.pingsUsed}/${s.maxPings}${outcome}` };
+    if (s.lastPing !== null) pings.rightTone = s.lastPing === "hit" ? "success" : "error";
+    lines.push(pings);
   }
   return lines;
 }

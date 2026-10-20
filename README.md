@@ -179,18 +179,17 @@ Inside a session, the sidebar shows a Cache section. It ticks once a second from
 
 ```
 Cache
-ttl                      1h (detected)
-● warm, expires 14:52 (52m)
-  next ping   14:42 (42m)
-  pings       2/5 ✓ hit
+• warm              expires 14:52 (52m)
+ttl                       1h (detected)
+next ping                   14:42 (42m)
+pings                         2/5 ✓ hit
 ```
 
+- `• warm` with the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up, and to `• expired 12m ago` once the cache has expired.
 - `ttl` is the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response, including right after a restart, the section reads `waiting for first response`.
-- `● warm, expires 14:52 (52m)` is the clock time and time left until the cache expires. It turns to a warning colour once the pings are used up.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
-- When keepalive isn't running, the last line says why: `keepalive   off · 31k < 50k` (context below the minimum), `keepalive   off · disabled`, `keepalive   waiting · session busy` (waiting on a tool call), or `keepalive stopped · last ping missed`.
-- `○ expired 12m ago` shows when the cache has expired.
+- When keepalive isn't running, a `keepalive` row says why: `off · 31k < 50k` (context below the minimum), `off · disabled`, `waiting · session busy` (waiting on a tool call), or `stopped · last ping missed`.
 
 The section is hidden for subagent sessions and for sessions with no cache activity.
 
