@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, jest, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import plugin from "../server.ts";
@@ -1451,6 +1451,249 @@ describe("keepalive wiring", () => {
       const { requestEvt } = await roundTrip(mock, { body });
       expect(await messagesOf(requestEvt.request)).toEqual(body.messages as unknown[]);
     });
+
+    /** TTLs of every breakpoint in request order: tools, system, then messages. */
+    const breakpointTtls = (body: any): string[] =>
+      collectCacheControls([body.tools, body.system, body.messages]).map((cc) => String(cc.ttl ?? "5m"));
+
+    /** Sends a primary in `from`, switches the session to `to`, fires a ping and returns its final request. */
+    async function pingAfterModeChange(from: string, to: string) {
+      const mock = await start();
+      await mock.command().execute({ ...invocation(from), sessionID: "ses_a" });
+      await roundTrip(mock);
+      await mock.command().execute({ ...invocation(to), sessionID: "ses_a" });
+      await flush();
+      const diverging = sampleBody();
+      (diverging.messages as unknown[]).push({ role: "user", content: [{ type: "text", text: PING_PROMPT }] });
+      let sent: Request | undefined;
+      mock.generate.mockImplementation(async () => {
+        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
+        sent = requestEvt.request;
+        return {};
+      });
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(mock.generate).toHaveBeenCalledTimes(1);
+      return sent!;
+    }
+
+    test("a ping after switching 1h -> 5m carries no 1h breakpoint and no extended beta", async () => {
+      const sent = await pingAfterModeChange("1h", "5m");
+      const body = await parsedBodyOf(sent);
+      expect(breakpointTtls(body).length).toBeGreaterThan(0);
+      expect(breakpointTtls(body).every((ttl) => ttl === "5m")).toBe(true);
+      expect(sent.headers.get("anthropic-beta") ?? "").not.toContain(EXTENDED_CACHE_BETA);
+    });
+
+    test("a ping after switching 5m -> 1h is all 1h and carries the extended beta", async () => {
+      const sent = await pingAfterModeChange("5m", "1h");
+      const body = await parsedBodyOf(sent);
+      expect(breakpointTtls(body).length).toBeGreaterThan(0);
+      expect(breakpointTtls(body).every((ttl) => ttl === "1h")).toBe(true);
+      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(collectCacheControls((body.messages as unknown[]).slice(3))).toHaveLength(0);
+    });
+
+    test("a hybrid ping after a 1h primary keeps 1h breakpoints ahead of 5m ones", async () => {
+      const sent = await pingAfterModeChange("1h", "hybrid");
+      const ttls = breakpointTtls(await parsedBodyOf(sent));
+      const firstShort = ttls.indexOf("5m");
+      expect(firstShort).toBeGreaterThan(0);
+      expect(ttls.slice(firstShort).every((ttl) => ttl === "5m")).toBe(true);
+      expect(sent.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    });
+
+    test("the aligned ping request keeps the original abort signal", async () => {
+      const mock = await start();
+      await roundTrip(mock);
+      await flush();
+      const controller = new AbortController();
+      let sent: Request | undefined;
+      mock.generate.mockImplementation(async () => {
+        const evt = {
+          sessionID: "ses_a",
+          kind: "generate",
+          model: { providerID: "anthropic" },
+          request: new Request("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            body: JSON.stringify(sampleBody()),
+            signal: controller.signal,
+          }),
+        };
+        await mock.hook()(evt);
+        sent = evt.request;
+        return {};
+      });
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(sent!.signal.aborted).toBe(false);
+      controller.abort();
+      expect(sent!.signal.aborted).toBe(true);
+    });
+
+    /** Fires the next ping with a diverging body; true when the ping was aligned to stored messages. */
+    async function nextPingAligned(mock: MockCtx, advance = FIFTY_MIN) {
+      const diverging = sampleBody();
+      diverging.messages = [
+        { role: "user", content: [{ type: "text", text: "rewritten 0" }] },
+        { role: "user", content: [{ type: "text", text: PING_PROMPT }] },
+      ];
+      let sent: unknown[] | undefined;
+      mock.generate.mockImplementation(async () => {
+        const { requestEvt } = await roundTrip(mock, { kind: "generate", body: diverging, usage: READ_HIT });
+        sent = await messagesOf(requestEvt.request);
+        return {};
+      });
+      jest.advanceTimersByTime(advance);
+      await flush();
+      expect(sent).toBeDefined();
+      return JSON.stringify(sent![0]) !== JSON.stringify((diverging.messages as unknown[])[0]);
+    }
+
+    test("a compaction request drops the stored primary messages", async () => {
+      const mock = await start();
+      await roundTrip(mock);
+      await flush();
+      await roundTrip(mock, { kind: "compaction" });
+      await flush();
+      expect(await nextPingAligned(mock)).toBe(false);
+    });
+
+    test("stored messages are kept while pings continue", async () => {
+      const mock = await start();
+      await roundTrip(mock);
+      await flush();
+      expect(await nextPingAligned(mock)).toBe(true);
+    });
+
+    test("stored messages are dropped once the session is exhausted", async () => {
+      const mock = await start();
+      await mock.command().execute({ ...invocation("pings 1"), sessionID: "ses_a" });
+      await roundTrip(mock);
+      await flush();
+      expect(await nextPingAligned(mock)).toBe(true);
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "exhausted" });
+
+      await mock.command().execute({ ...invocation("pings 5"), sessionID: "ses_a" });
+      await flush();
+      expect(await nextPingAligned(mock)).toBe(false);
+    });
+
+    test("messages of a child session are not stored", async () => {
+      const mock = await start();
+      mock.sessionGet.mockImplementation(async () => {
+        throw new Error("lookup failed");
+      });
+      await roundTrip(mock);
+      await flush();
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "child" });
+      await roundTrip(mock);
+      await flush();
+
+      // The failed lookup is retried and now reports a top-level session.
+      mock.sessionGet.mockImplementation(async (input: any) => ({ id: input.sessionID }));
+      await mock.rpc().setSession({ sessionID: "ses_a", patch: { maxPings: 4 } });
+      await flush();
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: null });
+      expect(await nextPingAligned(mock)).toBe(false);
+    });
+
+    test("cleanup clears the stored messages", async () => {
+      const mock = await start();
+      await roundTrip(mock);
+      await flush();
+      const clear = spyOn(Map.prototype, "clear");
+      try {
+        await mock.cleanup!();
+        expect(clear).toHaveBeenCalled();
+      } finally {
+        clear.mockRestore();
+      }
+    });
+  });
+
+  describe("hook failures never fail the host request", () => {
+    test("a response whose body is already locked passes through unchanged", async () => {
+      const mock = await start();
+      const response = new Response(JSON.stringify({ usage: WRITE_1H }), {
+        headers: { "content-type": "application/json" },
+      });
+      response.body!.getReader();
+      const evt = {
+        sessionID: "ses_a",
+        kind: "primary",
+        model: { providerID: "anthropic" },
+        request: new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" }),
+        response,
+      };
+      await mock.responseHook()(evt);
+      expect(evt.response).toBe(response);
+    });
+
+    test("a rejecting storage lookup still rewrites with the global mode", async () => {
+      const mock = await start();
+      await mock.rpc().setGlobal({ patch: { mode: "1h" } });
+      mock.ctx.storage.get = async () => {
+        throw new Error("storage down");
+      };
+      const evt = {
+        sessionID: "ses_never_seen",
+        kind: "primary",
+        model: { providerID: "anthropic" },
+        request: makeRequest(JSON.stringify(sampleBody())),
+      };
+      await mock.hook()(evt);
+      const body = await parsedBodyOf(evt.request);
+      expect(collectCacheControls(body).every((cc) => cc.ttl === "1h")).toBe(true);
+      expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    });
+
+    test("an unparseable ping request still passes through", async () => {
+      const mock = await start();
+      await roundTrip(mock);
+      await flush();
+      let sent: Request | undefined;
+      mock.generate.mockImplementation(async () => {
+        const evt = {
+          sessionID: "ses_a",
+          kind: "generate",
+          model: { providerID: "anthropic" },
+          request: makeRequest("not json"),
+        };
+        await mock.hook()(evt);
+        sent = evt.request;
+        return {};
+      });
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(await sent!.text()).toBe("not json");
+    });
+  });
+
+  test("a primary response stopping for tool_use marks the session busy", async () => {
+    const mock = await start();
+    await roundTrip(mock, { responseText: JSON.stringify({ stop_reason: "tool_use", usage: WRITE_1H }) });
+    await flush();
+    expect(lastSnapshot(mock)).toMatchObject({ skipReason: "busy", nextPingAt: null });
+    jest.advanceTimersByTime(FIFTY_MIN);
+    await flush();
+    expect(mock.generate).not.toHaveBeenCalled();
+
+    await roundTrip(mock, { responseText: JSON.stringify({ stop_reason: "end_turn", usage: WRITE_1H }) });
+    await flush();
+    expect(lastSnapshot(mock)).toMatchObject({ skipReason: null });
+  });
+
+  test("a title response does not overwrite the context size or TTL", async () => {
+    const mock = await start();
+    await roundTrip(mock);
+    await flush();
+    await roundTrip(mock, {
+      kind: "title",
+      usage: { input_tokens: 10, cache_creation_input_tokens: 500, cache_creation: { ephemeral_5m_input_tokens: 500 } },
+    });
+    await flush();
+    expect(lastSnapshot(mock)).toMatchObject({ ttl: "1h", contextTokens: 60_010 });
   });
 
   describe("startup sweep", () => {

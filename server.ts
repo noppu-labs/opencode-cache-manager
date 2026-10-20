@@ -1,8 +1,15 @@
 import { Plugin } from "@opencode/plugin";
-import { PING_PROMPT, KeepaliveEngine, type KeepaliveSnapshot } from "./keepalive.ts";
+import {
+  PING_PROMPT,
+  KeepaliveEngine,
+  type KeepaliveSnapshot,
+  type RequestKind,
+  type SkipReason,
+} from "./keepalive.ts";
 import { CacheTtlRpc } from "./rpc.ts";
 import {
   SENTINEL_HEADER,
+  type CacheTtlMode,
   alignPingMessages,
   parseCommandArg,
   resolveActiveMode,
@@ -96,12 +103,16 @@ export default Plugin.define({
       return {};
     };
 
-    const pingInFlight = new Set<string>();
+    // Pending `ping()` calls per session.
+    const pingsInFlight = new Map<string, number>();
+    const isPingRequest = (kind: string, sessionID: string) =>
+      kind === "generate" && (pingsInFlight.get(sessionID) ?? 0) > 0;
     // Resolves once the ping's response has been reported to the engine; the
     // engine counts a ping as failed if `ping()` settles before that.
     const pingResponse = new Map<string, Promise<void>>();
-    // Latest primary request messages per session, in memory only.
+    // Latest primary request messages per session, in memory only, kept while a ping may still use them.
     const primaryMessages = new Map<string, unknown[]>();
+    const dropsMessages = new Set<SkipReason>(["child", "missed", "exhausted", "disabled"]);
 
     const engine = new KeepaliveEngine({
       now: () => Date.now(),
@@ -110,19 +121,39 @@ export default Plugin.define({
       settings: (sessionID) => store.effective(sessionID),
       isChild: async (sessionID) => Boolean((await ctx.session.get({ sessionID })).parentID),
       onChange: (snapshot: KeepaliveSnapshot) => {
+        const expired = snapshot.expiresAt !== null && snapshot.expiresAt <= Date.now();
+        if (expired || (snapshot.skipReason !== null && dropsMessages.has(snapshot.skipReason))) {
+          primaryMessages.delete(snapshot.sessionID);
+        }
         void Promise.resolve(rpcRegistration?.events.emit("keepalive.updated", snapshot)).catch(() => {});
       },
       ping: async (sessionID) => {
-        pingInFlight.add(sessionID);
+        pingsInFlight.set(sessionID, (pingsInFlight.get(sessionID) ?? 0) + 1);
         try {
           await ctx.session.generate({ sessionID, prompt: PING_PROMPT });
           await pingResponse.get(sessionID);
         } finally {
-          pingInFlight.delete(sessionID);
-          pingResponse.delete(sessionID);
+          const left = (pingsInFlight.get(sessionID) ?? 1) - 1;
+          if (left > 0) {
+            pingsInFlight.set(sessionID, left);
+          } else {
+            pingsInFlight.delete(sessionID);
+            pingResponse.delete(sessionID);
+          }
         }
       },
     });
+
+    /** The ping request with its history replaced by the stored primary messages, or unchanged. */
+    const alignPing = async (request: Request, sessionID: string): Promise<Request> => {
+      const primary = primaryMessages.get(sessionID);
+      const parsed = primary && (await readMessages(request));
+      if (!primary || !parsed) return request;
+      const body = JSON.stringify({ ...parsed.body, messages: alignPingMessages(parsed.messages, primary) });
+      const headers = new Headers(request.headers);
+      headers.delete("content-length");
+      return new Request(request.url, { method: request.method, headers, body, signal: request.signal });
+    };
 
     /** Applies a settings change to the keepalive schedule and tells the TUI. */
     const settingsChanged = async (sessionID: string | null) => {
@@ -201,43 +232,59 @@ export default Plugin.define({
       if (!rewrites && !observed) return;
 
       const sessionID: string = evt.sessionID;
-      const isPing = evt.kind === "generate" && pingInFlight.has(sessionID);
-      const { mode } = await store.effective(sessionID);
-      const requestedTtl = ttlForMode(resolveActiveMode(evt.request, mode));
+      let mode: CacheTtlMode;
+      try {
+        mode = (await store.effective(sessionID)).mode;
+      } catch {
+        mode = store.global().mode;
+      }
+      const original: Request = evt.request;
+      const isPing = observed && isPingRequest(evt.kind, sessionID);
 
-      if (rewrites) evt.request = await transformHttpRequest(evt.request, mode);
-      if (!observed) return;
-
-      if (evt.kind === "primary" || isPing) {
-        const parsed = await readMessages(evt.request);
-        if (parsed && evt.kind === "primary") {
-          primaryMessages.set(sessionID, parsed.messages);
-        } else if (parsed) {
-          const primary = primaryMessages.get(sessionID);
-          if (primary) {
-            const body = JSON.stringify({ ...parsed.body, messages: alignPingMessages(parsed.messages, primary) });
-            const headers = new Headers(evt.request.headers);
-            headers.delete("content-length");
-            evt.request = new Request(evt.request.url, { method: evt.request.method, headers, body });
-          }
+      // Alignment runs before the TTL rewrite so the copied primary messages
+      // take the ping's own mode and beta header, keeping 1h ahead of 5m.
+      let request = original;
+      if (isPing) {
+        try {
+          request = await alignPing(original, sessionID);
+        } catch {
+          request = original;
         }
       }
-      engine.requestSent(sessionID, { requestedTtl, isPing });
+      if (rewrites) request = await transformHttpRequest(request, mode);
+      evt.request = request;
+      if (!observed) return;
+
+      try {
+        if (evt.kind === "compaction") primaryMessages.delete(sessionID);
+        if (evt.kind === "primary" && engine.snapshot(sessionID).skipReason !== "child") {
+          const parsed = await readMessages(request);
+          if (parsed) primaryMessages.set(sessionID, parsed.messages);
+        }
+        engine.requestSent(sessionID, { requestedTtl: ttlForMode(resolveActiveMode(original, mode)), isPing });
+      } catch {
+        // Keepalive bookkeeping must never fail the host's request.
+      }
     });
 
     await ctx.session.hook("http.response", async (evt) => {
-      if (!isAnthropicProvider(evt.model.providerID) && !isAnthropicMessagesRequest(evt.request)) return;
+      try {
+        if (!isAnthropicProvider(evt.model.providerID) && !isAnthropicMessagesRequest(evt.request)) return;
 
-      const sessionID: string = evt.sessionID;
-      const isPing = evt.kind === "generate" && pingInFlight.has(sessionID);
-      const observed = observeResponseUsage(evt.response);
-      evt.response = observed.response;
-      const ok = evt.response.ok;
+        const sessionID: string = evt.sessionID;
+        const kind: RequestKind = evt.kind;
+        const isPing = isPingRequest(kind, sessionID);
+        const ok = evt.response.ok;
+        const observed = observeResponseUsage(evt.response);
+        evt.response = observed.response;
 
-      const reported = observed.usage
-        .then((usage) => engine.responseObserved(sessionID, { usage, ok, isPing }))
-        .catch(() => {});
-      if (isPing) pingResponse.set(sessionID, reported);
+        const reported = Promise.all([observed.usage, observed.stopReason])
+          .then(([usage, stopReason]) => engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason }))
+          .catch(() => {});
+        if (isPing) pingResponse.set(sessionID, reported);
+      } catch {
+        // Observation must never fail the host's response; it passes through unchanged.
+      }
     });
 
     // Drop stored settings for sessions that were deleted while the plugin was not running.
@@ -260,6 +307,9 @@ export default Plugin.define({
     };
     void sweep().catch(() => {});
 
-    return () => engine.dispose();
+    return () => {
+      engine.dispose();
+      primaryMessages.clear();
+    };
   },
 });
