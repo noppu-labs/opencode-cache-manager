@@ -271,7 +271,7 @@ export async function transformHttpRequest(
 
   if (!request.body) {
     return hadSentinel
-      ? new Request(request.url, { method: request.method, headers })
+      ? new Request(request.url, { method: request.method, headers, signal: request.signal })
       : request;
   }
 
@@ -291,7 +291,7 @@ export async function transformHttpRequest(
   ) {
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
-    return new Request(request.url, { method: request.method, headers, body: buffer });
+    return new Request(request.url, { method: request.method, headers, body: buffer, signal: request.signal });
   }
 
   rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
@@ -305,6 +305,7 @@ export async function transformHttpRequest(
     method: request.method,
     headers,
     body: JSON.stringify(parsed),
+    signal: request.signal,
   });
 }
 

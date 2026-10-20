@@ -5,6 +5,8 @@ import {
   hasCacheActivity,
   isAnthropicMessagesRequest,
   observeResponseUsage,
+  parseStopReasonFromJson,
+  parseStopReasonFromSse,
   parseUsageFromJson,
   parseUsageFromSse,
   type CacheUsage,
@@ -174,5 +176,67 @@ describe("observeResponseUsage", () => {
     );
     expect(await response.text()).toBe("not json");
     expect(await usage).toBeUndefined();
+  });
+
+  test("resolves the stop reason of SSE and JSON responses", async () => {
+    const streamed = sse(fullUsage) + `data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n`;
+    const fromSse = observeResponseUsage(
+      new Response(streamed, { headers: { "content-type": "text/event-stream" } }),
+    );
+    await fromSse.response.text();
+    expect(await fromSse.stopReason).toBe("tool_use");
+
+    const fromJson = observeResponseUsage(
+      new Response(JSON.stringify({ stop_reason: "end_turn", usage: fullUsage }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await fromJson.response.text();
+    expect(await fromJson.stopReason).toBe("end_turn");
+
+    const failed = observeResponseUsage(new Response("not json", { headers: { "content-type": "application/json" } }));
+    await failed.response.text();
+    expect(await failed.stopReason).toBeUndefined();
+  });
+
+  test("cancelling the returned body cancels the source stream", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const source = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulled++;
+          if (pulled > 1000) controller.close();
+          else controller.enqueue(new TextEncoder().encode("data: {}\n\n"));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const { response, usage } = observeResponseUsage(
+      new Response(source, { headers: { "content-type": "text/event-stream" } }),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("user abort");
+    expect(cancelled).toBe(true);
+    expect(await usage).toBeUndefined();
+    const pulledAfterCancel = pulled;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(pulled).toBe(pulledAfterCancel);
+  });
+});
+
+describe("parseStopReason", () => {
+  test("reads message_delta.delta.stop_reason from SSE and top-level stop_reason from JSON", () => {
+    expect(parseStopReasonFromSse(`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n\n`)).toBe(
+      "tool_use",
+    );
+    expect(parseStopReasonFromSse(sse(fullUsage))).toBeUndefined();
+    expect(parseStopReasonFromJson({ stop_reason: "end_turn" })).toBe("end_turn");
+    expect(parseStopReasonFromJson({ stop_reason: null })).toBeUndefined();
+    expect(parseStopReasonFromJson(null)).toBeUndefined();
   });
 });

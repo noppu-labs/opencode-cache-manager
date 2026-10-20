@@ -542,6 +542,28 @@ describe("transformHttpRequest", () => {
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(await out.text()).toBe("[1,2,3]");
   });
+
+  test("every rebuilt request keeps the original abort signal", async () => {
+    const cases: Array<[Request, "5m" | "1h"]> = [];
+    const controllers: AbortController[] = [];
+    const build = (init: RequestInit & { url?: string }, mode: "5m" | "1h") => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      const { url, ...rest } = init;
+      cases.push([new Request(url ?? "https://api.anthropic.com/v1/messages", { ...rest, signal: controller.signal }), mode]);
+    };
+    build({ method: "POST", body: JSON.stringify(sampleBody()) }, "1h");
+    build({ method: "GET", url: "https://api.anthropic.com/v1/models", headers: { [SENTINEL_HEADER]: "1h" } }, "5m");
+    build({ method: "POST", body: "not json", headers: { [SENTINEL_HEADER]: "1h" } }, "5m");
+
+    for (const [i, [request, mode]] of cases.entries()) {
+      const out = await transformHttpRequest(request, mode);
+      expect(out).not.toBe(request);
+      expect(out.signal.aborted).toBe(false);
+      controllers[i]!.abort();
+      expect(out.signal.aborted).toBe(true);
+    }
+  });
 });
 
 describe("alignPingMessages", () => {

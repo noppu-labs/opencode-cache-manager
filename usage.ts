@@ -108,6 +108,29 @@ export function parseUsageFromSse(text: string): CacheUsage | undefined {
   return merged && finalize(merged);
 }
 
+/** The top-level `stop_reason` of a non-streaming Messages response. */
+export function parseStopReasonFromJson(body: unknown): string | undefined {
+  return isRecord(body) && typeof body.stop_reason === "string" ? body.stop_reason : undefined;
+}
+
+/** The last `message_delta.delta.stop_reason` of a streamed Messages response. */
+export function parseStopReasonFromSse(text: string): string | undefined {
+  let stopReason: string | undefined;
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      const event: unknown = JSON.parse(line.slice(5).trim());
+      if (isRecord(event) && event.type === "message_delta" && isRecord(event.delta)) {
+        const reason = event.delta.stop_reason;
+        if (typeof reason === "string") stopReason = reason;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return stopReason;
+}
+
 /** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
 export function isAnthropicMessagesRequest(request: Request): boolean {
   if (request.method !== "POST") return false;
@@ -119,16 +142,38 @@ export function isAnthropicMessagesRequest(request: Request): boolean {
 }
 
 /**
- * Tees the response body so usage can be read in the background while the
- * caller receives an unmodified response. The promise never rejects.
+ * Tees the response body so usage and the stop reason can be read in the
+ * background while the caller receives an unmodified response. Cancelling the
+ * caller's body also stops the observer, so the source is cancelled. The
+ * promises never reject.
  */
 export function observeResponseUsage(response: Response): {
   response: Response;
   usage: Promise<CacheUsage | undefined>;
+  stopReason: Promise<string | undefined>;
 } {
-  if (!response.body) return { response, usage: Promise.resolve(undefined) };
+  if (!response.body) {
+    return { response, usage: Promise.resolve(undefined), stopReason: Promise.resolve(undefined) };
+  }
 
-  const [forCaller, forObserver] = response.body.tee();
+  const [callerBranch, observerBranch] = response.body.tee();
+  const callerReader = callerBranch.getReader();
+  const observerReader = observerBranch.getReader();
+  let cancelled = false;
+  const forCaller = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        const { done, value } = await callerReader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      async cancel(reason) {
+        cancelled = true;
+        await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
+      },
+    },
+    { highWaterMark: 0 },
+  );
   const passthrough = new Response(forCaller, {
     status: response.status,
     statusText: response.statusText,
@@ -136,16 +181,30 @@ export function observeResponseUsage(response: Response): {
   });
 
   const contentType = response.headers.get("content-type") ?? "";
-  const usage = (async (): Promise<CacheUsage | undefined> => {
+  const parsed = (async (): Promise<{ usage?: CacheUsage; stopReason?: string }> => {
     try {
-      const text = await new Response(forObserver).text();
-      if (!response.ok) return undefined;
-      if (contentType.includes("text/event-stream")) return parseUsageFromSse(text);
-      return parseUsageFromJson(JSON.parse(text));
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { done, value } = await observerReader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      if (cancelled || !response.ok) return {};
+      if (contentType.includes("text/event-stream")) {
+        return { usage: parseUsageFromSse(text), stopReason: parseStopReasonFromSse(text) };
+      }
+      const body: unknown = JSON.parse(text);
+      return { usage: parseUsageFromJson(body), stopReason: parseStopReasonFromJson(body) };
     } catch {
-      return undefined;
+      return {};
     }
   })();
 
-  return { response: passthrough, usage };
+  return {
+    response: passthrough,
+    usage: parsed.then((p) => p.usage),
+    stopReason: parsed.then((p) => p.stopReason),
+  };
 }
