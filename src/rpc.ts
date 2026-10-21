@@ -127,7 +127,18 @@ export const CacheTtlRpc = {
   },
 } as const;
 
-/** Loose client shape mirroring the `@opencode/plugin` RPC client for this contract. */
+export type RpcLocation = { directory: string };
+export type RpcCallOptions = { location?: RpcLocation };
+
+/** Loose client shape mirroring the `@opencode/client` RPC client for this contract. */
+export type RawCacheTtlRpcClient = {
+  [M in Exclude<keyof CacheTtlRpcClient, "events">]: (
+    input: Parameters<CacheTtlRpcClient[M]>[0],
+    options?: RpcCallOptions,
+  ) => ReturnType<CacheTtlRpcClient[M]>;
+} & Pick<CacheTtlRpcClient, "events">;
+
+/** The RPC client the TUI uses; each call already targets the right location. */
 export type CacheTtlRpcClient = {
   getSettings(input: { sessionID?: string }): Promise<{
     global: Settings;

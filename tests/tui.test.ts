@@ -12,14 +12,20 @@ mock.module("@opencode/plugin/tui", () => ({
 type SidebarCall = {
   snapshots: () => ReadonlyMap<string, any>;
   load: (sessionID: string) => void;
+  refresh: (sessionID: string) => void;
   disposed: boolean;
 };
 const sidebarCalls: SidebarCall[] = [];
 let sidebarThrows = false;
 mock.module("../src/ui/sidebar.tsx", () => ({
-  registerSidebar: (_ctx: unknown, snapshots: SidebarCall["snapshots"], load: SidebarCall["load"]) => {
+  registerSidebar: (
+    _ctx: unknown,
+    snapshots: SidebarCall["snapshots"],
+    load: SidebarCall["load"],
+    refresh: SidebarCall["refresh"],
+  ) => {
     if (sidebarThrows) throw new Error("sidebar unavailable");
-    const call: SidebarCall = { snapshots, load, disposed: false };
+    const call: SidebarCall = { snapshots, load, refresh, disposed: false };
     sidebarCalls.push(call);
     return () => {
       call.disposed = true;
@@ -40,6 +46,10 @@ type TuiMockOptions = {
   prompts?: unknown[];
   setSessionImpl?: (input: any) => Promise<unknown>;
   keepalive?: Record<string, any>;
+  /** Session records the TUI has cached, keyed by ID. */
+  sessions?: Record<string, { location: { directory: string } }>;
+  /** `ctx.location`; unset means the TUI falls back to `data.location.default()`. */
+  location?: { directory: string };
 };
 
 type TuiMock = {
@@ -51,6 +61,8 @@ type TuiMock = {
   setGlobalCalls: any[];
   resetCalls: any[];
   getKeepaliveCalls: any[];
+  /** `[method, options]` for every RPC call, in order. */
+  rpcOptions: [string, any][];
   subscriptions: { name: string; signal: AbortSignal | undefined }[];
   emitKeepalive: (snapshot: any) => Promise<void>;
   cleanup?: () => void;
@@ -67,6 +79,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   const setGlobalCalls: any[] = [];
   const resetCalls: any[] = [];
   const getKeepaliveCalls: any[] = [];
+  const rpcOptions: [string, any][] = [];
   const subscriptions: { name: string; signal: AbortSignal | undefined }[] = [];
   const listeners = new Set<(event: any) => void>();
   const selects = [...(options.selects ?? [])];
@@ -77,21 +90,28 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   const ctx = {
     client: {
       rpc: () => ({
-        getSettings: async () => ({ global, session: options.session ?? null }),
-        setSession: async (input: any) => {
+        getSettings: async (_input: any, opts?: any) => {
+          rpcOptions.push(["getSettings", opts]);
+          return { global, session: options.session ?? null };
+        },
+        setSession: async (input: any, opts?: any) => {
+          rpcOptions.push(["setSession", opts]);
           setSessionCalls.push(input);
           if (options.setSessionImpl) return options.setSessionImpl(input);
           return {};
         },
-        setGlobal: async (input: any) => {
+        setGlobal: async (input: any, opts?: any) => {
+          rpcOptions.push(["setGlobal", opts]);
           setGlobalCalls.push(input);
           return {};
         },
-        resetSession: async (input: any) => {
+        resetSession: async (input: any, opts?: any) => {
+          rpcOptions.push(["resetSession", opts]);
           resetCalls.push(input);
           return {};
         },
-        getKeepalive: async (input: any) => {
+        getKeepalive: async (input: any, opts?: any) => {
+          rpcOptions.push(["getKeepalive", opts]);
           getKeepaliveCalls.push(input);
           return options.keepalive?.[input.sessionID];
         },
@@ -119,6 +139,11 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
           },
         },
       }),
+    },
+    location: options.location,
+    data: {
+      session: { get: (sessionID: string) => options.sessions?.[sessionID] },
+      location: { default: () => ({ directory: "/home/default" }) },
     },
     storage: {
       memory: (_key: string, { initial }: { initial: object }) => {
@@ -162,6 +187,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     setGlobalCalls,
     resetCalls,
     getKeepaliveCalls,
+    rpcOptions,
     subscriptions,
     emitKeepalive: async (snapshot: any) => {
       for (const listener of listeners) listener({ type: "rpc.anthropic-cache-ttl.keepalive.updated", data: snapshot });
@@ -203,6 +229,60 @@ describe("cache-manager TUI plugin", () => {
     expect(mock.toasts).toHaveLength(1);
     expect(mock.toasts[0].variant).toBe("error");
     expect(mock.toasts[0].message).toContain("rpc down");
+  });
+
+  describe("RPC location", () => {
+    const sessions = { ses_tui: { location: { directory: "/work/project" } } };
+
+    test("session commands target the session's directory", async () => {
+      const mock = await setupTui({ sessions });
+
+      await mock.run("1h");
+      await mock.run("reset");
+
+      expect(mock.rpcOptions).toEqual([
+        ["setSession", { location: { directory: "/work/project" } }],
+        ["resetSession", { location: { directory: "/work/project" } }],
+      ]);
+    });
+
+    test("global changes from the home screen use the TUI's location", async () => {
+      const mock = await setupTui({
+        route: { type: "home" },
+        location: { directory: "/work/tui" },
+        selects: ["global:mode", "1h"],
+      });
+
+      await mock.run("");
+
+      expect(mock.rpcOptions).toEqual([
+        ["getSettings", { location: { directory: "/work/tui" } }],
+        ["setGlobal", { location: { directory: "/work/tui" } }],
+      ]);
+    });
+
+    test("falls back to the default location when nothing else is known", async () => {
+      const mock = await setupTui({ selects: [undefined] });
+
+      await mock.run("");
+
+      expect(mock.rpcOptions).toEqual([["getSettings", { location: { directory: "/home/default" } }]]);
+    });
+
+    test("sidebar load and refresh fetch from the session's directory", async () => {
+      const mock = await setupTui({ sessions, keepalive: { ses_tui: { sessionID: "ses_tui" } } });
+      const sidebar = sidebarCalls[sidebarCalls.length - 1]!;
+
+      sidebar.load("ses_tui");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      sidebar.refresh("ses_tui");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mock.rpcOptions).toEqual([
+        ["getKeepalive", { location: { directory: "/work/project" } }],
+        ["getKeepalive", { location: { directory: "/work/project" } }],
+      ]);
+    });
   });
 
   describe("sidebar", () => {

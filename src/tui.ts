@@ -1,5 +1,6 @@
 import { Plugin } from "@opencode/plugin/tui";
-import { CacheTtlRpc, type CacheTtlRpcClient } from "./rpc.ts";
+import { CacheTtlRpc, type RawCacheTtlRpcClient } from "./rpc.ts";
+import { withLocation } from "./ui/located-rpc.ts";
 import { createCommandRunner } from "./ui/command.ts";
 import { createPicker, type Toast } from "./ui/picker.ts";
 import { createSnapshotFeed } from "./ui/snapshot-feed.ts";
@@ -15,7 +16,13 @@ import { createSnapshotFeed } from "./ui/snapshot-feed.ts";
 export default Plugin.define({
   id: "anthropic-cache-ttl",
   async setup(ctx) {
-    const rpc = ctx.client.rpc(CacheTtlRpc as any) as unknown as CacheTtlRpcClient;
+    const rpc = withLocation(
+      ctx.client.rpc(CacheTtlRpc as any) as unknown as RawCacheTtlRpcClient,
+      (sessionID) =>
+        (sessionID === undefined ? undefined : ctx.data.session.get(sessionID)?.location) ??
+        ctx.location ??
+        ctx.data.location.default(),
+    );
 
     const currentSessionID = (): string | undefined => {
       const route = ctx.ui.router.current();
@@ -48,7 +55,7 @@ export default Plugin.define({
     let disposeSidebar: (() => void) | undefined;
     try {
       const { registerSidebar } = await import("./ui/sidebar.tsx");
-      disposeSidebar = registerSidebar(ctx, feed.snapshots, feed.load);
+      disposeSidebar = registerSidebar(ctx, feed.snapshots, feed.load, feed.refresh);
     } catch {
       // Sidebar unavailable; the rest of the plugin keeps working.
     }
