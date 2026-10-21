@@ -2,6 +2,7 @@
 import type { Plugin } from "@opencode/plugin/tui";
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { LABEL_WIDTH, sidebarLines, type Tone } from "./sidebar-lines.ts";
+import { SIDEBAR_REFRESH_MS } from "../constants/keepalive.ts";
 import type { KeepaliveSnapshot } from "../models/keepalive.ts";
 
 function toneColor(theme: Plugin.Context["theme"], tone: Tone) {
@@ -61,12 +62,20 @@ function CacheSection(props: {
   sessionID: string;
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>;
   load: (sessionID: string) => void;
+  refresh: (sessionID: string) => void;
 }) {
-  createEffect(() => props.load(props.sessionID));
-
   const snapshot = () => props.snapshots().get(props.sessionID);
   // Child sessions are never pinged; before a snapshot exists only the TUI's session data can tell.
   const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
+
+  createEffect(() => {
+    const sessionID = props.sessionID;
+    props.load(sessionID);
+    const timer = setInterval(() => {
+      if (!child()) props.refresh(sessionID);
+    }, SIDEBAR_REFRESH_MS);
+    onCleanup(() => clearInterval(timer));
+  });
   // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
   const visible = () => !child() && sidebarLines(snapshot(), 0).length > 0;
 
@@ -82,10 +91,13 @@ export function registerSidebar(
   ctx: Plugin.Context,
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>,
   load: (sessionID: string) => void,
+  refresh: (sessionID: string) => void,
 ): () => void {
   return ctx.ui.slot({
     append: "sidebar.content",
     // `input` is reactive: read `sessionID` through it so the section follows session switches.
-    render: (input) => <CacheSection ctx={ctx} sessionID={input.sessionID} snapshots={snapshots} load={load} />,
+    render: (input) => (
+      <CacheSection ctx={ctx} sessionID={input.sessionID} snapshots={snapshots} load={load} refresh={refresh} />
+    ),
   });
 }
