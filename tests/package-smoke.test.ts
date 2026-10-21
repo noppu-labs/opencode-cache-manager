@@ -90,6 +90,19 @@ describe("npm package manifest", () => {
     expect(peers?.["@opencode/plugin"]).toBe(">=2.0.22 <3");
   });
 
+  // npm skips optional peers, and the OpenCode installer does not provide
+  // these to a plugin's install dir, so the sidebar import fails without them.
+  test("requires the packages the sidebar imports at runtime as peers", () => {
+    const pkg = JSON.parse(readFileSync(join(CWD, "package.json"), "utf8")) as {
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+    for (const name of ["@opentui/core", "@opentui/solid", "solid-js"]) {
+      expect(pkg.peerDependencies?.[name]).toBeDefined();
+      expect(pkg.peerDependenciesMeta?.[name]?.optional).not.toBe(true);
+    }
+  });
+
   test("files whitelist covers exactly the ship set", () => {
     expect([...(manifest.files ?? [])].sort()).toEqual(["LICENSE", "README.md", "src"]);
   });

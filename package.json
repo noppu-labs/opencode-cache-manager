@@ -1,6 +1,6 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Anthropic prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL, keepalive pings for idle sessions, and a sidebar cache status",
   "type": "module",
   "license": "MIT",
@@ -41,17 +41,6 @@
     "@opentui/core": ">=0.5.14",
     "@opentui/solid": ">=0.5.14",
     "solid-js": ">=1.9.0"
-  },
-  "peerDependenciesMeta": {
-    "@opentui/core": {
-      "optional": true
-    },
-    "@opentui/solid": {
-      "optional": true
-    },
-    "solid-js": {
-      "optional": true
-    }
   },
   "keywords": [
     "opencode",
