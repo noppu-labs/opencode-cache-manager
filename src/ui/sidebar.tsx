@@ -1,3 +1,4 @@
+/** @jsxImportSource @opentui/solid */
 import type { Plugin } from "@opencode/plugin/tui";
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { LABEL_WIDTH, sidebarLines, type Tone } from "./sidebar-lines.ts";

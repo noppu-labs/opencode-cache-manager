@@ -146,6 +146,26 @@ describe("Host.resolve against the extracted package", () => {
     expect(bare.endsWith("src/server.ts")).toBe(true);
   });
 
+  // tsconfig.json does not ship, so the extracted tree has no jsxImportSource
+  // to inherit; without a per-file pragma Bun falls back to React JSX.
+  test("shipped .tsx files compile against the OpenTUI Solid JSX runtime", () => {
+    const dir = extract();
+    const tsx = sourceFiles().filter((f) => f.endsWith(".tsx"));
+    expect(tsx.length).toBeGreaterThan(0);
+    for (const file of tsx) {
+      const build = Bun.spawnSync({
+        cmd: ["bun", "build", file, "--no-bundle"],
+        cwd: dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(build.exitCode).toBe(0);
+      const out = build.stdout.toString();
+      expect(out).toContain('from "@opentui/solid/jsx-dev-runtime"');
+      expect(out).not.toContain("react/jsx");
+    }
+  });
+
   test("shipped sources are byte-identical to the tested sources", () => {
     // Loadability of these exact files is covered by the main suite (it
     // imports them from the repo). What the tarball must additionally
