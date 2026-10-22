@@ -104,6 +104,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          bun run build
           npm pack --ignore-scripts --pack-destination artifacts
           set -- artifacts/*.tgz
           [ "$#" -eq 1 ] && [ -f "$1" ]
@@ -196,7 +197,8 @@ jobs:
             (
               cd publish-dir
               npm pkg set name=opencode-cache-manager
-              npm publish . --provenance --access public --tag latest
+              # The extracted artifact already contains the compiled sidebar; prepack would try to rebuild it without scripts/.
+              npm publish . --ignore-scripts --provenance --access public --tag latest
             )
           fi
 

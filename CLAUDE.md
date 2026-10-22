@@ -7,10 +7,11 @@ OpenCode V2 plugin that manages the Anthropic prompt cache: it rewrites outgoing
 ```sh
 bun install
 bun test             # all tests in tests/
-bun run typecheck    # tsc -p . (noEmit, strict), covers src/ and tests/ with Bun types
+bun run typecheck    # tsc -p . (noEmit, strict), covers src/, tests/ and scripts/ with Bun types
+bun run build        # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js (also runs on prepack)
 ```
 
-Runtime is Bun (>= 1.3). There is no build step: the `.ts` sources ship as-is and OpenCode loads them directly.
+Runtime is Bun (>= 1.3). The `.ts` sources ship as-is and OpenCode loads them directly, with one exception: OpenCode only runs the Solid JSX transform on files outside `node_modules`, so `bun run build` compiles `src/ui/sidebar.tsx` into `src/ui/sidebar.compiled.js` (gitignored, shipped in the tarball), and `tui.ts` loads that copy when installed from npm.
 
 Run the tests on Bun 1.4.2 or newer; CI pins 1.4.2, the version OpenCode v2 embeds. On Bun 1.3.x, advancing fake timers further than the machine's uptime freezes the event loop, and the keepalive tests advance 50 minutes, so they hang on freshly booted CI runners while passing on a long-running laptop.
 
@@ -61,10 +62,14 @@ src/
 │   ├── picker.ts              # Session/Global picker
 │   ├── snapshot-feed.ts       # keepalive snapshots for the sidebar, fed by RPC events
 │   ├── sidebar.tsx            # Solid sidebar component; the only JSX file
+│   ├── sidebar.compiled.js    # build output of sidebar.tsx (gitignored, shipped)
+│   ├── sidebar.compiled.d.ts  # types for the compiled output
 │   └── sidebar-lines.ts       # pure sidebar line formatting
 └── utils/
     ├── format.ts              # formatRemaining, formatTokens, errorMessage
     └── is-record.ts
+scripts/
+└── build-sidebar.ts           # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js
 tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts)
 ```
 
@@ -88,7 +93,7 @@ Where new code goes:
 - Each source file with logic gets a unit test file at the matching path under `tests/`; files that only declare types, constants or schemas (`models/keepalive.ts`, `constants/`, `rpc.ts`) need none, and `ui/sidebar.tsx` can only run inside the TUI host, so its logic lives in `sidebar-lines.ts`. Split test files by area rather than growing one large file.
 - Test behaviour in the unit test of the module that owns it. `tests/server.test.ts` and `tests/tui.test.ts` only check what needs the plugin host: registration, setup-time option and storage reads, events emitted, keepalive round trips through both hooks and the engine, and cleanup.
 - A local checkout is loaded by symlinking `src/` (not the repo root) into `~/.config/opencode/plugins/`: OpenCode resolves a plugin directory by file path, not through `package.json` `exports`.
-- No `dist/` and no `@types/`: there is no build step and nothing needs global declarations. Adding a compile step changes how releases work, so it is a separate decision.
+- No `dist/` and no `@types/`. The only build output is `src/ui/sidebar.compiled.js`; keep any further compile step out unless it solves the same problem (code the host will not transform under `node_modules`).
 
 ## Rules
 
@@ -97,6 +102,7 @@ Where new code goes:
 - The `x-cache-ttl` header is a per-model override sentinel: read it, apply it, strip it before the request leaves.
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.
+- The release workflow and the package smoke test pack with `--ignore-scripts`, so they run `bun run build` explicitly. Keep that if the pack command changes.
 - Run `bun test` and `bun run typecheck` before calling work done.
 
 <!-- gitnexus:start -->

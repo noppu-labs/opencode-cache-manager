@@ -8,7 +8,8 @@ mock.module("@opencode/plugin/tui", () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
 // `ui/sidebar.tsx` is Solid JSX that only the live TUI host can compile; stub it and
-// capture what `tui.ts` hands to `registerSidebar`.
+// capture what `tui.ts` hands to `registerSidebar`. The repo is not under
+// node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
 type SidebarCall = {
   snapshots: () => ReadonlyMap<string, any>;
   load: (sessionID: string) => void;

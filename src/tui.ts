@@ -4,6 +4,7 @@ import { withLocation } from "./ui/located-rpc.ts";
 import { createCommandRunner } from "./ui/command.ts";
 import { createPicker, type Toast } from "./ui/picker.ts";
 import { createSnapshotFeed } from "./ui/snapshot-feed.ts";
+import { isInsideNodeModules } from "./utils/node-modules.ts";
 
 /**
  * TUI entrypoint for the Anthropic prompt-cache plugin.
@@ -50,11 +51,15 @@ export default Plugin.define({
 
     const feed = createSnapshotFeed(ctx.storage, rpc);
 
-    // The sidebar is Solid JSX loaded lazily so a failure there (for example a
-    // host without the Solid transform) cannot take the command or picker down.
+    // The sidebar is Solid JSX loaded lazily so a failure there cannot take the
+    // command or picker down. The host only runs the Solid transform outside
+    // node_modules, so an npm install loads the copy compiled at pack time.
+    // Both specifiers stay literal: the host finds imports to rewrite by scanning for them.
     let disposeSidebar: (() => void) | undefined;
     try {
-      const { registerSidebar } = await import("./ui/sidebar.tsx");
+      const { registerSidebar } = isInsideNodeModules(import.meta.url)
+        ? await import("./ui/sidebar.compiled.js")
+        : await import("./ui/sidebar.tsx");
       disposeSidebar = registerSidebar(ctx, feed.snapshots, feed.load, feed.refresh);
     } catch {
       // Sidebar unavailable; the rest of the plugin keeps working.

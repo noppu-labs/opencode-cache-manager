@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildSidebar } from "../scripts/build-sidebar.ts";
 
 const CWD = `${import.meta.dir}/..`;
 
@@ -31,6 +32,10 @@ function packOnce(): string {
     return tgzPath;
   }
   tmpDir = mkdtempSync(join(tmpdir(), "cache-manager-pkg-"));
+  // `npm pack --ignore-scripts` skips `prepack`, so build the compiled
+  // sidebar here, the way CI's `npm publish` would have.
+  const build = Bun.spawnSync({ cmd: ["bun", "run", "build"], cwd: CWD, stdout: "pipe", stderr: "pipe" });
+  expect(build.exitCode).toBe(0);
   const pack = Bun.spawnSync({
     cmd: ["npm", "pack", "--ignore-scripts", "--pack-destination", tmpDir],
     cwd: CWD,
@@ -64,8 +69,10 @@ function sourceFiles(): string[] {
   return [...new Bun.Glob("src/**/*.{ts,tsx}").scanSync({ cwd: CWD })].sort();
 }
 
-/** The exact ship set: metadata, docs and every source file. Nothing else. */
-const SHIP_FILES = ["LICENSE", "README.md", "package.json", ...sourceFiles()].sort();
+const COMPILED_SIDEBAR = "src/ui/sidebar.compiled.js";
+
+/** The exact ship set: metadata, docs, every source file and the compiled sidebar. Nothing else. */
+const SHIP_FILES = ["LICENSE", "README.md", "package.json", COMPILED_SIDEBAR, ...sourceFiles()].sort();
 
 afterAll(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -187,5 +194,31 @@ describe("Host.resolve against the extracted package", () => {
     for (const file of sourceFiles()) {
       expect(readFileSync(join(dir, file))).toEqual(readFileSync(join(CWD, file)));
     }
+  });
+
+  // The host skips the Solid transform under node_modules, so an npm
+  // install renders the sidebar from this file; see scripts/build-sidebar.ts.
+  test("ships a Solid-compiled sidebar that imports only the host runtime", () => {
+    const dir = extract();
+    const code = readFileSync(join(dir, COMPILED_SIDEBAR), "utf8");
+    expect(code).toContain("createComponent");
+    expect(code).not.toContain("jsx-dev-runtime");
+    const allowed = new Set(["@opentui/solid", "solid-js", "solid-js/store"]);
+    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
+      expect(allowed.has(match[1]!)).toBe(true);
+    }
+  });
+
+  test("shipped compiled sidebar matches a fresh build of the shipped source", async () => {
+    const dir = extract();
+    const tmpOut = join(tmpDir!, "sidebar.compiled.fresh.js");
+    await buildSidebar(tmpOut);
+    expect(readFileSync(join(dir, COMPILED_SIDEBAR))).toEqual(readFileSync(tmpOut));
+  });
+
+  test("tui.ts imports the compiled sidebar by a literal specifier", () => {
+    const dir = extract();
+    const tui = readFileSync(join(dir, "src/tui.ts"), "utf8");
+    expect(tui).toContain('import("./ui/sidebar.compiled.js")');
   });
 });
