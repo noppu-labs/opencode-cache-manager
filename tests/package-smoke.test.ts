@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildSidebar } from "../scripts/build-sidebar.ts";
 
 const CWD = `${import.meta.dir}/..`;
 
@@ -206,6 +207,13 @@ describe("Host.resolve against the extracted package", () => {
     for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
       expect(allowed.has(match[1]!)).toBe(true);
     }
+  });
+
+  test("shipped compiled sidebar matches a fresh build of the shipped source", async () => {
+    const dir = extract();
+    const tmpOut = join(tmpDir!, "sidebar.compiled.fresh.js");
+    await buildSidebar(tmpOut);
+    expect(readFileSync(join(dir, COMPILED_SIDEBAR))).toEqual(readFileSync(tmpOut));
   });
 
   test("tui.ts imports the compiled sidebar by a literal specifier", () => {
