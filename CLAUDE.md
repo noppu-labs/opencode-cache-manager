@@ -7,7 +7,7 @@ OpenCode V2 plugin that manages the Anthropic prompt cache: it rewrites outgoing
 ```sh
 bun install
 bun test             # all tests in tests/
-bun run typecheck    # tsc -p . (noEmit, strict), covers src/ and tests/ with Bun types
+bun run typecheck    # tsc -p . (noEmit, strict), covers src/, tests/ and scripts/ with Bun types
 bun run build        # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js (also runs on prepack)
 ```
 
