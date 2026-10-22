@@ -231,7 +231,7 @@ tests/             # mirrors src/
 docs/              # design notes from the original build
 ```
 
-The suite includes a package smoke test: it runs `npm pack`, then replays the exact entrypoint resolution OpenCode performs for a configured npm plugin (`Bun.resolveSync("<name>/server" | "<name>/tui" | "<name>/rpc")` against the extracted tarball) and checks the shipped files are byte-identical to the tested sources.
+The suite includes a package smoke test: it runs `npm pack`, then replays the exact entrypoint resolution OpenCode performs for a configured npm plugin (`Bun.resolveSync("<name>/server" | "<name>/tui" | "<name>/rpc")` against the extracted tarball) and checks the shipped files are byte-identical to the tested sources, including the compiled sidebar matching a fresh build of the shipped source.
 
 Releases are cut by pushing a `v*` tag; the release workflow tests, packs, publishes both npm names via OIDC trusted publishing (no npm token is stored), and opens a GitHub Release.
 
