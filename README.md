@@ -46,6 +46,8 @@ git clone https://github.com/noppu-labs/opencode-cache-manager.git
 ln -s "$(pwd)/opencode-cache-manager/src" ~/.config/opencode/plugins/anthropic-cache-ttl
 ```
 
+A local checkout loads `src/ui/sidebar.tsx` directly, so no build is needed; `bun run build` is only for packaging.
+
 Do not keep both the npm spec and a local copy installed at the same time, or the plugin loads twice.
 
 ## Usage
