@@ -30,7 +30,9 @@
   ],
   "scripts": {
     "test": "bun test tests/",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "build": "bun scripts/build-sidebar.ts",
+    "prepack": "bun run build"
   },
   "engines": {
     "bun": ">=1.3.0",
