@@ -187,7 +187,7 @@ function harness(
     async request(
       sessionID: string,
       usage: CacheUsage | undefined,
-      ttl: Ttl = requested,
+      ttl: Ttl | null = requested,
       extra: { kind?: RequestKind; stopReason?: string } = {},
     ) {
       engine.requestSent(sessionID, { requestedTtl: ttl, isPing: false });
@@ -881,5 +881,58 @@ describe("keepalive engine: final review fixes", () => {
     await h.advance(0);
     expect(h.pings).toHaveLength(2);
     expect(h.pings[1]!.at).toBe(102 * MIN);
+  });
+});
+
+describe("keepalive engine: implicit-cache sessions", () => {
+  test("a null requested TTL skips keepalive as implicit and records the latest cache", async () => {
+    const h = harness();
+    await h.request("s1", pureRead, null);
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: null,
+      ttlSource: null,
+      skipReason: "implicit",
+      nextPingAt: null,
+      lastCache: { read: 80_000, total: 80_100 },
+    });
+    await h.advance(50 * MIN);
+    expect(h.timerCount).toBe(0);
+    expect(h.pings).toHaveLength(0);
+  });
+
+  test("a later request with a TTL clears implicit and schedules", async () => {
+    const h = harness();
+    await h.request("s1", pureRead, null);
+    await h.request("s1", write1h, "1h");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", skipReason: null, nextPingAt: 50 * MIN });
+    expect(h.timerCount).toBe(1);
+  });
+
+  test("implicit is checked right after child", async () => {
+    const h = harness({ child: true });
+    await h.request("s1", pureRead, null);
+    expect(h.engine.snapshot("s1").skipReason).toBe("child");
+  });
+
+  test("lastCache follows every non-ping response and ignores pings", async () => {
+    const h = harness();
+    expect(h.engine.snapshot("s1").lastCache).toBeNull();
+    await h.request("s1", write1h);
+    expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 0, total: 80_100 });
+    await h.request("s1", pureRead);
+    expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 80_000, total: 80_100 });
+    await h.request("s1", { ...pureRead, cacheReadTokens: 500, inputTokens: 100 }, "1h", { kind: "title" });
+    expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 500, total: 600 });
+
+    await h.request("s1", pureRead);
+    await h.advance(50 * MIN);
+    expect(h.pings).toHaveLength(1);
+    expect(h.engine.snapshot("s1")).toMatchObject({ lastPing: "hit", lastCache: { read: 80_000, total: 80_100 } });
+  });
+
+  test("lastCache stays null for a response without tokens", async () => {
+    const h = harness();
+    await h.request("s1", { ...noCache, inputTokens: 0 });
+    expect(h.engine.snapshot("s1").lastCache).toBeNull();
   });
 });

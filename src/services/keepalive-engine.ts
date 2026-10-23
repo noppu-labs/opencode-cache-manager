@@ -24,6 +24,7 @@ interface PingInFlight {
 interface SessionState {
   ttl: Ttl | null;
   ttlSource: "detected" | "requested" | null;
+  /** Null for sessions whose provider manages the cache itself. */
   requestedTtl: Ttl | null;
   lastRequestAt: number | null;
   /** Send time of the latest non-ping request, whether or not it has succeeded yet. */
@@ -37,6 +38,7 @@ interface SessionState {
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
+  lastCache: { read: number; total: number } | null;
   cacheSeen: boolean;
   missed: boolean;
   /** The last primary response stopped for a tool call; cleared by the next real request. */
@@ -60,7 +62,7 @@ export class KeepaliveEngine {
 
   constructor(private readonly deps: EngineDeps) {}
 
-  requestSent(sessionID: string, info: { requestedTtl: Ttl; isPing: boolean }): void {
+  requestSent(sessionID: string, info: { requestedTtl: Ttl | null; isPing: boolean }): void {
     if (this.disposed) return;
     const s = this.state(sessionID);
 
@@ -128,6 +130,10 @@ export class KeepaliveEngine {
       s.confirmedAt = s.requestSentAt;
       s.lastRequestAt = s.requestSentAt;
     }
+    if (info.usage) {
+      const total = contextTokens(info.usage);
+      s.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
+    }
     // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
     if (info.usage && (info.kind === "primary" || info.kind === "compaction")) {
       s.contextTokens = contextTokens(info.usage);
@@ -182,6 +188,7 @@ export class KeepaliveEngine {
       lastPing: null,
       skipReason: "no-cache-seen",
       contextTokens: null,
+      lastCache: null,
       cacheSeen: false,
       missed: false,
       busy: false,
@@ -212,6 +219,7 @@ export class KeepaliveEngine {
       lastPing: s.lastPing,
       skipReason: s.skipReason,
       contextTokens: s.contextTokens,
+      lastCache: s.lastCache,
     };
   }
 
@@ -292,6 +300,7 @@ export class KeepaliveEngine {
 
   private skipReason(s: SessionState, settings: Settings, child: boolean): SkipReason | null {
     if (child) return "child";
+    if (s.requestedTtl === null) return "implicit";
     if (s.busy) return "busy";
     if (!settings.keepalive) return "disabled";
     if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return "no-cache-seen";

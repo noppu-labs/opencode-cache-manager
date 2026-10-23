@@ -24,6 +24,7 @@ function snapshot(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot
     lastPing: null,
     skipReason: null,
     contextTokens: null,
+    lastCache: null,
     ...overrides,
   };
 }

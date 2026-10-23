@@ -4,6 +4,7 @@ export type SkipReason =
   | "disabled"
   | "small-context"
   | "child"
+  | "implicit"
   | "busy"
   | "exhausted"
   | "no-cache-seen"
@@ -25,4 +26,6 @@ export interface KeepaliveSnapshot {
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
+  /** Cache reads and total prompt tokens of the latest non-ping response; null before one arrives. */
+  lastCache: { read: number; total: number } | null;
 }

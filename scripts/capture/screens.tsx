@@ -47,6 +47,7 @@ const BASE: KeepaliveSnapshot = {
   lastPing: "hit",
   skipReason: null,
   contextTokens: 120_000,
+  lastCache: null,
 };
 
 const snapshot = (overrides: Partial<KeepaliveSnapshot>): KeepaliveSnapshot => ({ ...BASE, ...overrides });
@@ -95,6 +96,19 @@ const STATES: readonly Block[] = [
   {
     caption: "Keepalive turned off",
     snapshot: snapshot({ skipReason: "disabled", nextPingAt: null, pingsUsed: 0, lastPing: null }),
+  },
+  {
+    caption: "Provider-managed cache (no TTL to keep warm)",
+    snapshot: snapshot({
+      ttl: null,
+      ttlSource: null,
+      expiresAt: null,
+      nextPingAt: null,
+      pingsUsed: 0,
+      lastPing: null,
+      skipReason: "implicit",
+      lastCache: { read: 14_000, total: 16_000 },
+    }),
   },
   {
     caption: "Cache expired",

@@ -16,6 +16,7 @@ const snapshot = (sessionID: string, overrides: Partial<KeepaliveSnapshot> = {})
   lastPing: null,
   skipReason: null,
   contextTokens: 80_000,
+  lastCache: null,
   ...overrides,
 });
 

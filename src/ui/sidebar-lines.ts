@@ -1,5 +1,5 @@
 import type { KeepaliveSnapshot } from "../models/keepalive.ts";
-import { formatRemaining } from "../utils/format.ts";
+import { formatRemaining, formatTokens } from "../utils/format.ts";
 
 export type Tone = "base" | "muted" | "success" | "warning" | "error";
 export interface SidebarLine {
@@ -24,6 +24,15 @@ const defaultClock = (ms: number): string =>
 
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
+function cachedLine(cache: NonNullable<KeepaliveSnapshot["lastCache"]>): SidebarLine {
+  const percent = Math.round((cache.read / cache.total) * 100);
+  return {
+    text: "cached",
+    tone: "base",
+    right: `${percent}% · ${formatTokens(cache.read)} / ${formatTokens(cache.total)}`,
+  };
+}
+
 /** Lines for the sidebar cache section; an empty array means render nothing. */
 export function sidebarLines(
   s: KeepaliveSnapshot | undefined,
@@ -34,16 +43,26 @@ export function sidebarLines(
   // No snapshot yet (e.g. after a restart) still shows the section, so the user can see the plugin is there.
   if (s === undefined || s.lastRequestAt === null) return waiting;
   if (s.skipReason === "child") return [];
+  if (s.skipReason === "implicit") {
+    if (s.lastCache === null) return waiting;
+    return [
+      HEADER,
+      cachedLine(s.lastCache),
+      { text: "keepalive", tone: "base", right: "n/a · provider-managed cache" },
+    ];
+  }
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
   if (s.ttl === null) return waiting;
 
   const ttl: SidebarLine = { text: "ttl", tone: "base", right: `${s.ttl} (${s.ttlSource})` };
-  if (s.expiresAt === null) return [HEADER, ttl];
+  const cached: SidebarLine[] = s.lastCache === null ? [] : [cachedLine(s.lastCache)];
+  if (s.expiresAt === null) return [HEADER, ttl, ...cached];
 
   if (now >= s.expiresAt) {
     return [
       HEADER,
       { text: "status", tone: "base", bullet: "error", right: "expired" },
+      ...cached,
       { text: "expired", tone: "base", right: `${formatRemaining(now - s.expiresAt)} ago` },
       ttl,
     ];
@@ -51,6 +70,7 @@ export function sidebarLines(
   const lines: SidebarLine[] = [
     HEADER,
     { text: "status", tone: "base", bullet: s.skipReason === "exhausted" ? "warning" : "success", right: "warm" },
+    ...cached,
     { text: "expires", tone: "base", right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})` },
     ttl,
   ];

@@ -20,6 +20,7 @@ function snap(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot {
     lastPing: null,
     skipReason: null,
     contextTokens: 80_000,
+    lastCache: null,
     ...overrides,
   };
 }
@@ -157,5 +158,60 @@ describe("sidebarLines", () => {
   test("default clock renders local 24h HH:MM", () => {
     const out = sidebarLines(snap(), NOW);
     expect(out[2]!.right).toMatch(/^\d{2}:\d{2} \(4m\)$/);
+  });
+});
+
+describe("sidebarLines: cached line", () => {
+  const cache = { read: 14_000, total: 16_000 };
+  const CACHED: SidebarLine = { text: "cached", tone: "base", right: "88% · 14k / 16k" };
+
+  test("sits directly under status on a warm cache", () => {
+    const out = lines(snap({ lastCache: cache }));
+    expect(out.slice(0, 4)).toEqual([TITLE, WARM[0]!, CACHED, WARM[1]!]);
+  });
+
+  test("sits directly under status on an expired cache", () => {
+    const out = lines(snap({ lastCache: cache, expiresAt: NOW - MIN }));
+    expect(out[1]!.right).toBe("expired");
+    expect(out[2]).toEqual(CACHED);
+  });
+
+  test("follows the ttl row when no expiry is known yet", () => {
+    expect(lines(snap({ lastCache: cache, expiresAt: null }))).toEqual([TITLE, TTL, CACHED]);
+  });
+
+  test("a null lastCache adds no cached line", () => {
+    expect(lines(snap()).some((l) => l.text === "cached")).toBe(false);
+  });
+
+  test("shows a zero hit rate", () => {
+    const out = lines(snap({ lastCache: { read: 0, total: 16_100 } }));
+    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "0% · 0 / 16100" });
+  });
+
+  test("formats the percentage and counts with formatTokens", () => {
+    const out = lines(snap({ lastCache: { read: 14_800, total: 16_100 } }));
+    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "92% · 14800 / 16100" });
+  });
+});
+
+describe("sidebarLines: implicit sessions", () => {
+  const implicit = { ttl: null, ttlSource: null, expiresAt: null, nextPingAt: null, skipReason: "implicit" } as const;
+  const KEEPALIVE: SidebarLine = { text: "keepalive", tone: "base", right: "n/a · provider-managed cache" };
+
+  test("shows cached and an n/a keepalive row", () => {
+    expect(lines(snap({ ...implicit, lastCache: { read: 14_000, total: 16_000 } }))).toEqual([
+      TITLE,
+      { text: "cached", tone: "base", right: "88% · 14k / 16k" },
+      KEEPALIVE,
+    ]);
+  });
+
+  test("waits for the first response while lastCache is null", () => {
+    expect(lines(snap(implicit))).toEqual([TITLE, { text: "waiting for first response", tone: "muted" }]);
+  });
+
+  test("renders nothing for a child session", () => {
+    expect(lines(snap({ ...implicit, skipReason: "child" }))).toEqual([]);
   });
 });
