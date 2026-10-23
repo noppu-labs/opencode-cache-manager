@@ -2,7 +2,7 @@ import type { PluginOptions } from "../config/settings.ts";
 import type { ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import { isAnthropicProvider, requestWire, routeRequest } from "../services/classify.ts";
+import { isAnthropicProvider, observedWireFor, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
 import { observeResponseUsage } from "../services/usage.ts";
@@ -28,13 +28,7 @@ export function createResponseHook({ engine, pings, options, strategies }: Respo
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
-      const wireOfRequest = requestWire(evt.request);
-      const { observedWire: wire } = routeRequest({
-        cls: wireOfRequest ? { wire: wireOfRequest } : undefined,
-        anthropicProvider: isAnthropicProvider(ref.providerID),
-        hasSentinel: false,
-        openaiCompatible: options.openaiCompatible,
-      });
+      const wire = observedWireFor(requestWire(evt.request), isAnthropicProvider(ref.providerID), options.openaiCompatible);
       if (!wire) return;
 
       const sessionID = evt.sessionID;

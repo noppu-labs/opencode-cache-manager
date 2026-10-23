@@ -71,8 +71,7 @@ export async function classifyRequestWithBody(
 }
 
 export interface RouteInput {
-  /** The classification; the response hook has no strategy to give, so `strategy` may be left out there. */
-  cls: { wire: Wire; strategy?: CacheStrategy } | undefined;
+  cls: { wire: Wire; strategy: CacheStrategy } | undefined;
   anthropicProvider: boolean;
   hasSentinel: boolean;
   openaiCompatible: boolean;
@@ -91,20 +90,24 @@ export interface Route {
   explicitChat: boolean;
 }
 
+/** The wire whose response is observed, or `undefined` to leave it alone. With the option off, `openai-chat` behaves as before the option existed. */
+export function observedWireFor(
+  wire: Wire | undefined,
+  anthropicProvider: boolean,
+  openaiCompatible: boolean,
+): Wire | undefined {
+  if (wire === "openai-chat" && openaiCompatible) return "openai-chat";
+  return anthropicProvider || wire === "anthropic-messages" ? "anthropic-messages" : undefined;
+}
+
 /** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
 export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible }: RouteInput): Route {
   const chat = cls?.wire === "openai-chat";
   const explicitChat = chat && openaiCompatible && cls.strategy === "explicit";
   const implicit = chat && openaiCompatible && cls.strategy === "implicit";
-  const observedWire: Wire | undefined =
-    chat && openaiCompatible
-      ? "openai-chat"
-      : anthropicProvider || cls?.wire === "anthropic-messages"
-        ? "anthropic-messages"
-        : undefined;
   return {
     rewrites: anthropicProvider || hasSentinel || explicitChat,
-    observedWire,
+    observedWire: observedWireFor(cls?.wire, anthropicProvider, openaiCompatible),
     implicit,
     transformWire: chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined,
     explicitChat,

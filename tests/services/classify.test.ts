@@ -3,6 +3,7 @@ import {
   classifyRequest,
   classifyRequestWithBody,
   isAnthropicMessagesRequest,
+  observedWireFor,
   requestWire,
   routeRequest,
   shouldInject,
@@ -258,11 +259,16 @@ describe("routeRequest", () => {
                     ? "anthropic-messages"
                     : undefined;
               expect(got.observedWire).toBe(responseWire);
+              expect(observedWireFor(cls?.wire, anthropicProvider, openaiCompatible)).toBe(responseWire);
             }
   });
 
-  test("the strategy is irrelevant to routing on the response side", () => {
-    expect(route({ cls: { wire: "openai-chat" }, openaiCompatible: true }).observedWire).toBe("openai-chat");
+  test("observedWireFor needs only the wire, the provider and the option", () => {
+    expect(observedWireFor("openai-chat", false, true)).toBe("openai-chat");
+    expect(observedWireFor("openai-chat", false, false)).toBeUndefined();
+    expect(observedWireFor("openai-chat", true, false)).toBe("anthropic-messages");
+    expect(observedWireFor(undefined, true, true)).toBe("anthropic-messages");
+    expect(observedWireFor(undefined, false, true)).toBeUndefined();
   });
 });
 
