@@ -1,5 +1,5 @@
 import type { KeepaliveSnapshot } from "../models/keepalive.ts";
-import { formatRemaining, formatTokens } from "../utils/format.ts";
+import { formatCompactTokens, formatRemaining } from "../utils/format.ts";
 
 export type Tone = "base" | "muted" | "success" | "warning" | "error";
 export interface SidebarLine {
@@ -29,7 +29,7 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot["lastCache"]>): Sidebar
   return {
     text: "cached",
     tone: "base",
-    right: `${percent}% · ${formatTokens(cache.read)} / ${formatTokens(cache.total)}`,
+    right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
   };
 }
 

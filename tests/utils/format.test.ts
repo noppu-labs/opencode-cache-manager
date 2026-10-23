@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatRemaining } from "../../src/utils/format.ts";
+import { formatCompactTokens, formatRemaining } from "../../src/utils/format.ts";
 
 const MIN = 60_000;
 
@@ -14,5 +14,33 @@ describe("formatRemaining", () => {
 
   test("clamps negative durations to zero seconds", () => {
     expect(formatRemaining(-5)).toBe("0s");
+  });
+});
+
+describe("formatCompactTokens", () => {
+  test("plain numbers below 1,000", () => {
+    expect(formatCompactTokens(0)).toBe("0");
+    expect(formatCompactTokens(732)).toBe("732");
+    expect(formatCompactTokens(999)).toBe("999");
+  });
+
+  test("one decimal in k below 100,000, dropping a trailing .0", () => {
+    expect(formatCompactTokens(1_000)).toBe("1k");
+    expect(formatCompactTokens(14_800)).toBe("14.8k");
+    expect(formatCompactTokens(16_100)).toBe("16.1k");
+    expect(formatCompactTokens(16_000)).toBe("16k");
+    expect(formatCompactTokens(99_949)).toBe("99.9k");
+  });
+
+  test("rounded k below 1,000,000", () => {
+    expect(formatCompactTokens(99_950)).toBe("100k");
+    expect(formatCompactTokens(123_456)).toBe("123k");
+    expect(formatCompactTokens(999_400)).toBe("999k");
+  });
+
+  test("one decimal in M from 1,000,000, dropping a trailing .0", () => {
+    expect(formatCompactTokens(999_500)).toBe("1M");
+    expect(formatCompactTokens(1_200_000)).toBe("1.2M");
+    expect(formatCompactTokens(2_000_000)).toBe("2M");
   });
 });

@@ -186,12 +186,12 @@ describe("sidebarLines: cached line", () => {
 
   test("shows a zero hit rate", () => {
     const out = lines(snap({ lastCache: { read: 0, total: 16_100 } }));
-    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "0% · 0 / 16100" });
+    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "0% · 0 / 16.1k" });
   });
 
-  test("formats the percentage and counts with formatTokens", () => {
+  test("formats the percentage and counts compactly", () => {
     const out = lines(snap({ lastCache: { read: 14_800, total: 16_100 } }));
-    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "92% · 14800 / 16100" });
+    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "92% · 14.8k / 16.1k" });
   });
 });
 
