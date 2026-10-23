@@ -50,6 +50,13 @@ export interface OpenAiIdentity {
   provider?: string;
 }
 
+/** The per-wire parsers the response tee applies to a buffered body (`sse` picks stream or JSON). */
+export interface ResponseParsers {
+  usage(text: string, sse: boolean): CacheUsage | undefined;
+  stopReason(text: string, sse: boolean): string | undefined;
+  identity(text: string, sse: boolean): OpenAiIdentity | undefined;
+}
+
 /** A user-supplied `explicitCacheModels` entry, compiled. */
 export interface ModelPattern {
   test: RegExp;

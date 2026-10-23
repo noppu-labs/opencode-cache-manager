@@ -5,7 +5,8 @@ import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { isAnthropicProvider, observedWireFor, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
-import { observeResponseUsage } from "../services/usage.ts";
+import { ANTHROPIC_PARSERS, observeResponseUsage } from "../services/usage.ts";
+import { OPENAI_PARSERS } from "../services/usage-openai.ts";
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
 export interface HttpResponseEvent {
@@ -35,7 +36,8 @@ export function createResponseHook({ engine, pings, options, strategies }: Respo
       const kind = evt.kind;
       const isPing = pings.isPing(kind, sessionID);
       const ok = evt.response.ok;
-      const observed = observeResponseUsage(evt.response, wire);
+      const parsers = wire === "openai-chat" ? OPENAI_PARSERS : ANTHROPIC_PARSERS;
+      const observed = observeResponseUsage(evt.response, parsers);
       evt.response = observed.response;
 
       const reported = Promise.all([observed.usage, observed.stopReason])

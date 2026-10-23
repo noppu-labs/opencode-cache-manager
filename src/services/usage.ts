@@ -1,14 +1,6 @@
-import type { CacheUsage, OpenAiIdentity, Ttl, Wire } from "../models/cache.ts";
+import type { CacheUsage, OpenAiIdentity, ResponseParsers, Ttl } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
-import {
-  parseOpenAiFinishReasonFromJson,
-  parseOpenAiFinishReasonFromSse,
-  parseOpenAiIdentityFromJson,
-  parseOpenAiIdentityFromSse,
-  parseOpenAiUsageFromJson,
-  parseOpenAiUsageFromSse,
-} from "./usage-openai.ts";
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -122,6 +114,14 @@ export function parseStopReasonFromSse(text: string): string | undefined {
   return stopReason;
 }
 
+/** The Anthropic Messages parsers; the wire reports no resolved model or provider. */
+export const ANTHROPIC_PARSERS: ResponseParsers = {
+  usage: (text, sse) => (sse ? parseUsageFromSse(text) : parseUsageFromJson(JSON.parse(text))),
+  stopReason: (text, sse) =>
+    sse ? parseStopReasonFromSse(text) : parseStopReasonFromJson(JSON.parse(text)),
+  identity: () => undefined,
+};
+
 interface ObservedResponse {
   usage?: CacheUsage;
   stopReason?: string;
@@ -129,14 +129,14 @@ interface ObservedResponse {
 }
 
 /**
- * Tees the response body so usage, the stop reason and (on `openai-chat`) the
- * resolved model and provider can be read in the background while the caller
+ * Tees the response body so usage, the stop reason and, where `parsers`
+ * report it, the resolved model and provider can be read in the background while the caller
  * receives an unmodified response. Cancelling the caller's body also stops the
  * observer, so the source is cancelled. The promises never reject.
  */
 export function observeResponseUsage(
   response: Response,
-  wire: Wire = "anthropic-messages",
+  parsers: ResponseParsers = ANTHROPIC_PARSERS,
 ): {
   response: Response;
   usage: Promise<CacheUsage | undefined>;
@@ -189,24 +189,11 @@ export function observeResponseUsage(
       text += decoder.decode();
       if (cancelled || !response.ok) return {};
       const streamed = contentType.includes("text/event-stream");
-      if (wire === "openai-chat") {
-        if (streamed) {
-          return {
-            usage: parseOpenAiUsageFromSse(text),
-            stopReason: parseOpenAiFinishReasonFromSse(text),
-            identity: parseOpenAiIdentityFromSse(text),
-          };
-        }
-        const body: unknown = JSON.parse(text);
-        return {
-          usage: parseOpenAiUsageFromJson(body),
-          stopReason: parseOpenAiFinishReasonFromJson(body),
-          identity: parseOpenAiIdentityFromJson(body),
-        };
-      }
-      if (streamed) return { usage: parseUsageFromSse(text), stopReason: parseStopReasonFromSse(text) };
-      const body: unknown = JSON.parse(text);
-      return { usage: parseUsageFromJson(body), stopReason: parseStopReasonFromJson(body) };
+      return {
+        usage: parsers.usage(text, streamed),
+        stopReason: parsers.stopReason(text, streamed),
+        identity: parsers.identity(text, streamed),
+      };
     } catch {
       return {};
     }

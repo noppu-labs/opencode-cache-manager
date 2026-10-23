@@ -9,6 +9,7 @@ import {
   parseUsageFromJson,
   parseUsageFromSse,
 } from "../../src/services/usage.ts";
+import { OPENAI_PARSERS } from "../../src/services/usage-openai.ts";
 import type { CacheUsage } from "../../src/models/cache.ts";
 import { openaiSse, openaiUsage } from "../helpers/fixtures.ts";
 
@@ -190,7 +191,7 @@ describe("observeResponseUsage", () => {
     const text = openaiSse(openaiUsage.lunaRead, { finishReason: "tool_calls" });
     const observed = observeResponseUsage(
       new Response(text, { headers: { "content-type": "text/event-stream" } }),
-      "openai-chat",
+      OPENAI_PARSERS,
     );
     expect(await observed.response.text()).toBe(text);
     expect(await observed.usage).toMatchObject({ inputTokens: 3, cacheReadTokens: 8884, cacheWriteTokens: 19 });
@@ -208,7 +209,7 @@ describe("observeResponseUsage", () => {
         }),
         { headers: { "content-type": "application/json" } },
       ),
-      "openai-chat",
+      OPENAI_PARSERS,
     );
     expect(await observed.usage).toMatchObject({ inputTokens: 83, cacheReadTokens: 10112 });
     expect(await observed.stopReason).toBe("stop");

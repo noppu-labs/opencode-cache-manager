@@ -92,6 +92,25 @@ export function rewriteAnthropicCacheTtl(
   return changed || hasOneHourCacheControl(body);
 }
 
+/** Rebuilds the request around a rewritten body, merging the extended-cache beta flag when asked. */
+function finalizeRequest(
+  request: Request,
+  body: Record<string, unknown>,
+  headers: Headers,
+  includeExtendedCacheBeta: boolean,
+): Request {
+  if (includeExtendedCacheBeta) {
+    const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
+    if (merged !== null) headers.set(BETA_HEADER, merged);
+  }
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: JSON.stringify(body),
+    signal: request.signal,
+  });
+}
+
 /**
  * Transforms an outbound Anthropic HTTP request: rewrites cache_control TTLs,
  * strips the internal `x-cache-ttl` sentinel, and adds the extended-cache beta
@@ -141,30 +160,11 @@ export async function transformHttpRequest(
     const chat = parsed as Record<string, unknown>;
     const injected = opts.inject === true && injectOpenAiBreakpoints(chat);
     const rewritten = rewriteOpenAiCacheTtl(chat, activeMode);
-    if (hasOneHourCacheControl(chat)) {
-      const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
-      if (merged !== null) headers.set(BETA_HEADER, merged);
-    }
     if (!hadSentinel && !injected && !rewritten) return request;
-    return new Request(request.url, {
-      method: request.method,
-      headers,
-      body: JSON.stringify(chat),
-      signal: request.signal,
-    });
+    return finalizeRequest(request, chat, headers, hasOneHourCacheControl(chat));
   }
 
-  rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
-
-  if (activeMode === "1h" || activeMode === "hybrid") {
-    const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
-    if (merged !== null) headers.set(BETA_HEADER, merged);
-  }
-
-  return new Request(request.url, {
-    method: request.method,
-    headers,
-    body: JSON.stringify(parsed),
-    signal: request.signal,
-  });
+  const messages = parsed as Record<string, unknown>;
+  rewriteAnthropicCacheTtl(messages, activeMode);
+  return finalizeRequest(request, messages, headers, activeMode === "1h" || activeMode === "hybrid");
 }

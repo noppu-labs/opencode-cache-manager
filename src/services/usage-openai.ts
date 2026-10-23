@@ -1,5 +1,5 @@
 import { FINISH_REASON_MAP } from "../constants/openai.ts";
-import type { CacheUsage, OpenAiIdentity } from "../models/cache.ts";
+import type { CacheUsage, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
 
@@ -105,3 +105,13 @@ export function parseOpenAiIdentityFromSse(text: string): OpenAiIdentity | undef
   }
   return merged;
 }
+
+/** The Chat Completions parsers for the response tee. */
+export const OPENAI_PARSERS: ResponseParsers = {
+  usage: (text, sse) =>
+    sse ? parseOpenAiUsageFromSse(text) : parseOpenAiUsageFromJson(JSON.parse(text)),
+  stopReason: (text, sse) =>
+    sse ? parseOpenAiFinishReasonFromSse(text) : parseOpenAiFinishReasonFromJson(JSON.parse(text)),
+  identity: (text, sse) =>
+    sse ? parseOpenAiIdentityFromSse(text) : parseOpenAiIdentityFromJson(JSON.parse(text)),
+};
