@@ -5,7 +5,9 @@ import { createRequestHook, type HttpRequestEvent } from "../../src/middleware/r
 import type { PluginOptions } from "../../src/config/settings.ts";
 import type { CacheStrategy, ModelRef } from "../../src/models/cache.ts";
 import type { SkipReason } from "../../src/models/keepalive.ts";
-import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
+import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
+import type { CacheUsage } from "../../src/models/cache.ts";
+import { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 import { parseModelPatterns } from "../../src/services/model-patterns.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
@@ -20,14 +22,14 @@ function harness(config: { options?: Partial<PluginOptions>; strategies?: Map<st
   const store = new SettingsStore(kv, {});
   const pings = new PingTracker();
   const primaryMessages = new Map<string, unknown[]>();
-  const sent: Array<{ sessionID: string; info: { requestedTtl: string | null; isPing: boolean } }> = [];
+  const sent: Array<{ sessionID: string; info: { requestedTtl: string | null; isPing: boolean; kind: string } }> = [];
   const fake = { skipReason: null as SkipReason | null, failRequestSent: false, failSnapshot: false };
   const engine = {
     snapshot: () => {
       if (fake.failSnapshot) throw new Error("snapshot failed");
       return { skipReason: fake.skipReason };
     },
-    requestSent: (sessionID: string, info: { requestedTtl: string | null; isPing: boolean }) => {
+    requestSent: (sessionID: string, info: { requestedTtl: string | null; isPing: boolean; kind: string }) => {
       sent.push({ sessionID, info });
       if (fake.failRequestSent) throw new Error("engine down");
     },
@@ -207,7 +209,7 @@ describe("createRequestHook engine reporting", () => {
     });
     const evt = await h.dispatch(request, { providerID: "some-proxy" });
     expect(evt.request).toBe(request);
-    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false } }]);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false, kind: "primary" } }]);
   });
 
   test("a sentinel request on an unobserved URL is rewritten but not reported", async () => {
@@ -245,7 +247,7 @@ describe("createRequestHook engine reporting", () => {
     const request = makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "1h" });
     const evt = await h.dispatch(request);
     expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false } }]);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false, kind: "primary" } }]);
   });
 
   test("reports the session and marks a generate request as a ping only while one is pending", async () => {
@@ -541,7 +543,7 @@ describe("createRequestHook ping alignment", () => {
   test("an unparseable ping request is still reported as a ping", async () => {
     const h = harness();
     await h.duringPing("ses_a", () => h.dispatch(makeRequest("not json"), { kind: "generate" }));
-    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: true } }]);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: true, kind: "generate" } }]);
   });
 
   test("an unparseable primary request is not stored", async () => {
@@ -583,7 +585,14 @@ describe("createRequestHook on openai-chat", () => {
     expect(controls).toHaveLength(3);
     expect(out.tools[0].cache_control.ttl).toBe("1h");
     expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
-    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: false } }]);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: false, kind: "primary" } }]);
+  });
+
+  test("the kind of each request is reported to the engine", async () => {
+    const h = harness();
+    await h.dispatch(chatRequest(chatBody("deepseek/deepseek-v4.1-flash")), deepseek);
+    await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), { ...claude, kind: "title" });
+    expect(h.sent.map((s) => s.info.kind)).toEqual(["primary", "title"]);
   });
 
   test("a non-Claude model keeps its body byte for byte and reports a null TTL", async () => {
@@ -594,7 +603,7 @@ describe("createRequestHook on openai-chat", () => {
     const evt = await h.dispatch(request, deepseek);
     expect(evt.request).toBe(request);
     expect(await evt.request.text()).toBe(raw);
-    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false } }]);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false, kind: "primary" } }]);
     expect(h.primaryMessages.size).toBe(0);
   });
 
@@ -684,5 +693,75 @@ describe("createRequestHook on openai-chat", () => {
     expect(sentinel.request.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(collectCacheControls(await parsedBodyOf(sentinel.request))).toHaveLength(0);
     expect(h.sent).toHaveLength(0);
+  });
+});
+
+describe("createRequestHook with the real keepalive engine", () => {
+  const url = "https://omni.example/v1/chat/completions";
+  const chat = (model: string) =>
+    new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: "You are helpful." },
+          { role: "user", content: "hello" },
+        ],
+      }),
+    });
+  const usage: CacheUsage = {
+    inputTokens: 100,
+    cacheReadTokens: 70_000,
+    cacheWriteTokens: 0,
+    write5mTokens: undefined,
+    write1hTokens: undefined,
+  };
+
+  function real() {
+    const { kv } = memoryKv();
+    const store = new SettingsStore(kv, {});
+    const engine = new KeepaliveEngine({
+      now: () => 0,
+      setTimer: () => 0,
+      clearTimer: () => {},
+      ping: async () => {},
+      settings: async () => ({ ...BUILTIN_DEFAULTS, keepalive: true }),
+      isChild: async () => false,
+      onChange: () => {},
+    });
+    const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [] };
+    const hook = createRequestHook({
+      store,
+      engine,
+      pings: new PingTracker(),
+      options,
+      strategies: { get: () => undefined },
+      primaryMessages: new Map(),
+    });
+    const send = (kind: HttpRequestEvent["kind"], id: string) =>
+      hook({ sessionID: "ses_a", kind, model: { providerID: "omniroute", id }, request: chat(id) });
+    const respond = async () => {
+      await engine.responseObserved("ses_a", { usage, ok: true, isPing: false, kind: "primary" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return engine.snapshot("ses_a");
+    };
+    return { send, respond };
+  }
+
+  test("a Claude title request after a GPT primary request never schedules a ping", async () => {
+    const h = real();
+    await h.send("primary", "openai/gpt-5.5");
+    await h.send("title", "anthropic/claude-haiku-5.5");
+    expect(await h.respond()).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+  });
+
+  test("a GPT title request after a Claude primary request still schedules a ping", async () => {
+    const h = real();
+    await h.send("primary", "anthropic/claude-sonnet-5.5");
+    await h.send("title", "openai/gpt-5-mini");
+    const snapshot = await h.respond();
+    expect(snapshot.skipReason).toBeNull();
+    expect(snapshot.nextPingAt).not.toBeNull();
   });
 });

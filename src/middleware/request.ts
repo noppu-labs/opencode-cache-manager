@@ -87,6 +87,7 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
       engine.requestSent(sessionID, {
         requestedTtl: implicit ? null : ttlForMode(resolveActiveMode(original, mode)),
         isPing,
+        kind: evt.kind,
       });
     } catch {
       // Keepalive bookkeeping must never fail the host's request.

@@ -62,7 +62,8 @@ export class KeepaliveEngine {
 
   constructor(private readonly deps: EngineDeps) {}
 
-  requestSent(sessionID: string, info: { requestedTtl: Ttl | null; isPing: boolean }): void {
+  /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
+  requestSent(sessionID: string, info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }): void {
     if (this.disposed) return;
     const s = this.state(sessionID);
 
@@ -76,7 +77,8 @@ export class KeepaliveEngine {
     s.inflight = null;
     s.lastRequestAt = this.deps.now();
     s.requestSentAt = s.lastRequestAt;
-    s.requestedTtl = info.requestedTtl;
+    const kind = info.kind ?? "primary";
+    if (kind === "primary" || kind === "compaction") s.requestedTtl = info.requestedTtl;
     s.pingsUsed = 0;
     s.lastPing = null;
     s.missed = false;
@@ -243,7 +245,7 @@ export class KeepaliveEngine {
     if (granted) {
       s.ttl = granted;
       s.ttlSource = "detected";
-    } else if (active && s.ttl === null && s.requestedTtl !== null) {
+    } else if (active && s.requestedTtl !== null && s.ttlSource !== "detected") {
       s.ttl = s.requestedTtl;
       s.ttlSource = "requested";
     }

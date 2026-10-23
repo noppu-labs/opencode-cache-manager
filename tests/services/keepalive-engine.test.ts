@@ -190,7 +190,7 @@ function harness(
       ttl: Ttl | null = requested,
       extra: { kind?: RequestKind; stopReason?: string } = {},
     ) {
-      engine.requestSent(sessionID, { requestedTtl: ttl, isPing: false });
+      engine.requestSent(sessionID, { requestedTtl: ttl, isPing: false, kind: extra.kind });
       await flush();
       await engine.responseObserved(sessionID, {
         usage,
@@ -908,6 +908,35 @@ describe("keepalive engine: implicit-cache sessions", () => {
     expect(h.timerCount).toBe(1);
   });
 
+  test("a title request with a TTL does not turn an implicit primary session into a scheduled one", async () => {
+    const h = harness();
+    h.engine.requestSent("s1", { requestedTtl: null, isPing: false, kind: "primary" });
+    h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false, kind: "title" });
+    await h.engine.responseObserved("s1", { usage: pureRead, ok: true, isPing: false, kind: "primary" });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+    expect(h.timerCount).toBe(0);
+  });
+
+  test("a title or generate request without a TTL does not turn a scheduled session implicit", async () => {
+    const h = harness();
+    for (const kind of ["title", "generate"] as const) {
+      const id = `s-${kind}`;
+      h.engine.requestSent(id, { requestedTtl: "1h", isPing: false, kind: "primary" });
+      h.engine.requestSent(id, { requestedTtl: null, isPing: false, kind });
+      await h.engine.responseObserved(id, { usage: write1h, ok: true, isPing: false, kind: "primary" });
+      await h.flush();
+      expect(h.engine.snapshot(id)).toMatchObject({ skipReason: null, nextPingAt: 50 * MIN });
+    }
+  });
+
+  test("a compaction request does decide the requested TTL", async () => {
+    const h = harness();
+    await h.request("s1", pureRead, "1h");
+    await h.request("s1", pureRead, null, { kind: "compaction" });
+    expect(h.engine.snapshot("s1").skipReason).toBe("implicit");
+  });
+
   test("implicit is checked right after child", async () => {
     const h = harness({ child: true });
     await h.request("s1", pureRead, null);
@@ -937,5 +966,49 @@ describe("keepalive engine: implicit-cache sessions", () => {
     const h = harness();
     await h.request("s1", { ...noCache, inputTokens: 0 });
     expect(h.engine.snapshot("s1").lastCache).toBeNull();
+  });
+});
+
+describe("keepalive engine: requested TTL without a write breakdown", () => {
+  const mixedWrite = { ...writeNoBreakdown };
+  const readOnly: CacheUsage = {
+    inputTokens: 100,
+    cacheReadTokens: 80_000,
+    cacheWriteTokens: 500,
+    write5mTokens: undefined,
+    write1hTokens: undefined,
+  };
+
+  test("1h then 5m: the TTL and expiry follow the latest request", async () => {
+    const h = harness();
+    await h.request("s1", mixedWrite, "1h");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", ttlSource: "requested", expiresAt: TTL_MS["1h"] });
+    await h.advance(10 * MIN);
+    await h.request("s1", readOnly, "5m");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "5m",
+      ttlSource: "requested",
+      expiresAt: 10 * MIN + TTL_MS["5m"],
+    });
+  });
+
+  test("5m then 1h: the TTL and expiry follow the latest request", async () => {
+    const h = harness();
+    await h.request("s1", mixedWrite, "5m");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "5m", expiresAt: TTL_MS["5m"] });
+    await h.advance(2 * MIN);
+    await h.request("s1", readOnly, "1h");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "1h",
+      ttlSource: "requested",
+      expiresAt: 2 * MIN + TTL_MS["1h"],
+    });
+  });
+
+  test("a detected TTL is not overridden by a later requested one", async () => {
+    const h = harness();
+    await h.request("s1", write1h, "1h");
+    await h.request("s1", readOnly, "5m");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", ttlSource: "detected" });
   });
 });
