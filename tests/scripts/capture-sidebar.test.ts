@@ -84,7 +84,7 @@ describe("renderScreen", () => {
       "  keepalive   waiting · session busy",
       "  keepalive   off · 31k < 50k",
       "  keepalive   off · disabled",
-      "  cached      88% · 14k / 16k",
+      "  cached      87% · 14k / 16k",
       "  keepalive   n/a · implicit cache",
       "• status      expired",
       "  expired     12m ago",
