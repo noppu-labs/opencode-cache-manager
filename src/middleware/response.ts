@@ -2,10 +2,10 @@ import type { PluginOptions } from "../config/settings.ts";
 import type { ModelRef, Wire } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import { requestWire } from "../services/classify.ts";
+import { isAnthropicProvider, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
-import { isAnthropicProvider, observeResponseUsage } from "../services/usage.ts";
+import { observeResponseUsage } from "../services/usage.ts";
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
 export interface HttpResponseEvent {

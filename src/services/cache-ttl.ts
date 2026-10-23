@@ -1,4 +1,4 @@
-import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
+import { BETA_HEADER, EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
 import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from "../models/cache.ts";
 import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
 import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "./openai-cache-ttl.ts";
@@ -142,8 +142,8 @@ export async function transformHttpRequest(
     const injected = opts.inject === true && injectOpenAiBreakpoints(chat);
     const rewritten = rewriteOpenAiCacheTtl(chat, activeMode);
     if (hasOneHourCacheControl(chat)) {
-      const merged = mergeBetaHeader(headers.get("anthropic-beta"), true);
-      if (merged !== null) headers.set("anthropic-beta", merged);
+      const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
+      if (merged !== null) headers.set(BETA_HEADER, merged);
     }
     if (!hadSentinel && !injected && !rewritten) return request;
     return new Request(request.url, {
@@ -157,8 +157,8 @@ export async function transformHttpRequest(
   rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
 
   if (activeMode === "1h" || activeMode === "hybrid") {
-    const merged = mergeBetaHeader(headers.get("anthropic-beta"), true);
-    if (merged !== null) headers.set("anthropic-beta", merged);
+    const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
+    if (merged !== null) headers.set(BETA_HEADER, merged);
   }
 
   return new Request(request.url, {

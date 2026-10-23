@@ -2,14 +2,13 @@ import { SENTINEL_HEADER } from "../constants/anthropic.ts";
 import type { PluginOptions } from "../config/settings.ts";
 import type { CacheTtlMode, ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
-import { classifyRequest, classifyRequestWithBody } from "../services/classify.ts";
+import { classifyRequest, classifyRequestWithBody, isAnthropicProvider } from "../services/classify.ts";
 import { resolveActiveMode, transformHttpRequest, ttlForMode } from "../services/cache-ttl.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { SettingsStore } from "../services/settings-store.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
-import { isAnthropicProvider } from "../services/usage.ts";
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 export interface HttpRequestEvent {

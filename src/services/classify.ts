@@ -1,9 +1,18 @@
+import { ANTHROPIC_PROVIDER_IDS, MESSAGES_SUFFIX } from "../constants/anthropic.ts";
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
 import type { CacheStrategy, ModelPattern, ModelRef, Wire } from "../models/cache.ts";
 import { matchModelPatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
-import { isAnthropicMessagesRequest } from "./usage.ts";
+
+export function isAnthropicProvider(providerID: string): boolean {
+  return ANTHROPIC_PROVIDER_IDS.includes(providerID);
+}
+
+/** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
+export function isAnthropicMessagesRequest(request: Request): boolean {
+  return isPostToPathSuffix(request, MESSAGES_SUFFIX);
+}
 
 export interface ClassifyDeps {
   patterns: readonly ModelPattern[];

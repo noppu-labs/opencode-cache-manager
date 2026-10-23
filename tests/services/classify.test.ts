@@ -1,5 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { classifyRequest, classifyRequestWithBody, requestWire } from "../../src/services/classify.ts";
+import {
+  classifyRequest,
+  classifyRequestWithBody,
+  isAnthropicMessagesRequest,
+  requestWire,
+} from "../../src/services/classify.ts";
 import { parseModelPatterns } from "../../src/config/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
@@ -127,5 +132,18 @@ describe("classifyRequestWithBody", () => {
       await classifyRequestWithBody(request, ref, { patterns: parseModelPatterns([pattern]) });
       expect(spy).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("isAnthropicMessagesRequest", () => {
+  test("matches POST to a /messages path on any host", () => {
+    const post = (url: string) => new Request(url, { method: "POST", body: "{}" });
+    expect(isAnthropicMessagesRequest(post("https://api.anthropic.com/v1/messages"))).toBe(true);
+    expect(isAnthropicMessagesRequest(post("https://omniroute.linksy.au/v1/messages"))).toBe(true);
+    expect(isAnthropicMessagesRequest(post("https://omniroute.linksy.au/v1/chat/completions"))).toBe(false);
+  });
+
+  test("rejects non-POST", () => {
+    expect(isAnthropicMessagesRequest(new Request("https://api.anthropic.com/v1/messages"))).toBe(false);
   });
 });

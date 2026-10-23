@@ -3,7 +3,6 @@ import {
   contextTokens,
   grantedTtl,
   hasCacheActivity,
-  isAnthropicMessagesRequest,
   observeResponseUsage,
   parseStopReasonFromJson,
   parseStopReasonFromSse,
@@ -112,19 +111,6 @@ describe("parseUsageFromSse", () => {
   test("returns undefined without any usage", () => {
     expect(parseUsageFromSse("event: ping\ndata: {}\n\n")).toBeUndefined();
     expect(parseUsageFromSse("")).toBeUndefined();
-  });
-});
-
-describe("isAnthropicMessagesRequest", () => {
-  test("matches POST to a /messages path on any host", () => {
-    const post = (url: string) => new Request(url, { method: "POST", body: "{}" });
-    expect(isAnthropicMessagesRequest(post("https://api.anthropic.com/v1/messages"))).toBe(true);
-    expect(isAnthropicMessagesRequest(post("https://omniroute.linksy.au/v1/messages"))).toBe(true);
-    expect(isAnthropicMessagesRequest(post("https://omniroute.linksy.au/v1/chat/completions"))).toBe(false);
-  });
-
-  test("rejects non-POST", () => {
-    expect(isAnthropicMessagesRequest(new Request("https://api.anthropic.com/v1/messages"))).toBe(false);
   });
 });
 

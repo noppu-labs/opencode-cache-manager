@@ -6,3 +6,9 @@ export const SENTINEL_HEADER = "x-cache-ttl";
 
 /** Provider IDs whose requests are always rewritten and observed. */
 export const ANTHROPIC_PROVIDER_IDS: readonly string[] = ["anthropic", "omniroute-anthropic"];
+
+/** Path suffix of the Anthropic Messages endpoint. */
+export const MESSAGES_SUFFIX = "/messages";
+
+/** Request header carrying Anthropic beta flags. */
+export const BETA_HEADER = "anthropic-beta";
