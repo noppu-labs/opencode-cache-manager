@@ -10,7 +10,7 @@ An [OpenCode](https://opencode.ai) plugin for Claude's prompt cache. Pick the ca
 It works with Claude through the Anthropic API, through proxies that speak the Anthropic Messages API, and through OpenAI-compatible endpoints such as OpenRouter and proxies like OmniRoute. For models that aren't Claude, it shows how much of each prompt was cached and leaves the cache alone.
 
 <p align="center">
-  <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit" width="420">
+  <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, cached 92% · 141k / 153k, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit" width="420">
 </p>
 
 ## Why
@@ -218,6 +218,7 @@ Inside a session, the sidebar shows a Cache section. It ticks once a second from
 ```
 Cache
 • status      warm
+  cached      92% · 141k / 153k
   expires     14:52 (52m)
   ttl         1h (detected)
   next ping   14:42 (42m)
@@ -235,7 +236,7 @@ Cache
 Every other state the section can show:
 
 <p align="center">
-  <img src="docs/images/sidebar-states.svg" alt="Nine captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; and an expired cache (expired 12m ago)" width="520">
+  <img src="docs/images/sidebar-states.svg" alt="Ten captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; a provider-managed cache with cached 87% · 14k / 16k and keepalive n/a · implicit cache; and an expired cache (expired 12m ago)" width="520">
 </p>
 
 For a model with an implicit cache (anything that isn't Claude, see [Supported endpoints](#supported-endpoints)) there's no TTL or expiry to show, so the section is the `cached` row and a keepalive row:

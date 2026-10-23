@@ -12,7 +12,7 @@ export const CAPTURE_NOW = Date.UTC(2026, 9, 23, 14, 0, 0);
 
 const MINUTE = 60_000;
 const COLUMNS = 40;
-/** Rows of the test terminal; the section is at most 6 lines tall. */
+/** Rows of the test terminal; the section is at most 7 lines tall. */
 const HEIGHT = 8;
 
 /** OpenCode's default theme ("opencode"), dark mode, from packages/tui/src/theme/assets/opencode.json. */
@@ -47,7 +47,7 @@ const BASE: KeepaliveSnapshot = {
   lastPing: "hit",
   skipReason: null,
   contextTokens: 120_000,
-  lastCache: null,
+  lastCache: { read: 141_300, total: 152_900 },
 };
 
 const snapshot = (overrides: Partial<KeepaliveSnapshot>): KeepaliveSnapshot => ({ ...BASE, ...overrides });
