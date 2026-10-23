@@ -208,7 +208,7 @@ Cache
 Every other state the section can show:
 
 <p align="center">
-  <img src="docs/images/sidebar-states.svg" alt="Ten captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; a provider-managed cache with cached 87% · 14k / 16k and keepalive n/a · implicit cache; and an expired cache (expired 12m ago)" width="520">
+  <img src="docs/images/sidebar-states.svg" alt="Eleven captioned Cache sections: before the first response; a 5m cache with the first ping pending; an OpenAI GPT-5.6+ 30m cache (ttl 30m (requested), cached 90% · 88k / 97k, next ping 14:21 (21m)); a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; a provider-managed cache with cached 87% · 14k / 16k and keepalive n/a · implicit cache; and an expired cache (expired 12m ago)" width="520">
 </p>
 
 For a model with an implicit cache (anything that isn't Claude, see [Supported providers and endpoints](docs/SUPPORTED_PROVIDERS.md)) there's no TTL or expiry to show, so the section is the `cached` row and a keepalive row:
