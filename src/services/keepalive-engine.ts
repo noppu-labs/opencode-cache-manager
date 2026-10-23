@@ -1,7 +1,7 @@
 import { BUILTIN_DEFAULTS, type Settings } from "../config/settings.ts";
 import { EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
 import type { CacheUsage, Ttl } from "../models/cache.ts";
-import type { KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
+import type { CacheReadout, KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
 import { contextTokens, grantedTtl, hasCacheActivity } from "./usage.ts";
 
 export interface EngineDeps {
@@ -38,7 +38,7 @@ interface SessionState {
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
-  lastCache: { read: number; total: number } | null;
+  lastCache: CacheReadout | null;
   cacheSeen: boolean;
   missed: boolean;
   /** The last primary response stopped for a tool call; cleared by the next real request. */

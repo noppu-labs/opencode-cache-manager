@@ -12,7 +12,7 @@ import { OPENAI_PARSERS } from "../services/usage-openai.ts";
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
 export interface HttpResponseEvent {
   readonly sessionID: string;
-  readonly model: ModelRef & { readonly variant?: string };
+  readonly model: ModelRef;
   readonly kind: RequestKind;
   readonly request: Request;
   response: Response;

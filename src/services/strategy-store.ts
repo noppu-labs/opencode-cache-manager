@@ -1,7 +1,7 @@
 import { ANTHROPIC_UPSTREAM, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
 import type { CacheStrategy, ModelRef, OpenAiIdentity } from "../models/cache.ts";
+import type { KV } from "../models/storage.ts";
 import { isRecord } from "../utils/is-record.ts";
-import type { KV } from "./settings-store.ts";
 
 const STORAGE_KEY = "learned-models";
 const key = (ref: ModelRef) => `${ref.providerID}/${ref.id}`;

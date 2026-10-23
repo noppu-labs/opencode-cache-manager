@@ -1,5 +1,11 @@
 import type { Ttl } from "./cache.ts";
 
+/** Cache reads and total prompt tokens of one response. */
+export interface CacheReadout {
+  read: number;
+  total: number;
+}
+
 export type SkipReason =
   | "disabled"
   | "small-context"
@@ -27,5 +33,5 @@ export interface KeepaliveSnapshot {
   skipReason: SkipReason | null;
   contextTokens: number | null;
   /** Cache reads and total prompt tokens of the latest non-ping response; null before one arrives. */
-  lastCache: { read: number; total: number } | null;
+  lastCache: CacheReadout | null;
 }

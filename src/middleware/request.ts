@@ -19,7 +19,7 @@ import type { StrategyStore } from "../services/strategy-store.ts";
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 export interface HttpRequestEvent {
   readonly sessionID: string;
-  readonly model: ModelRef & { readonly variant?: string };
+  readonly model: ModelRef;
   readonly kind: RequestKind;
   request: Request;
 }

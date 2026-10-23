@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { KV } from "../../src/models/storage.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
-import type { KV } from "../../src/services/settings-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
 const ref = { providerID: "omniroute", id: "auto/opus-5" };
