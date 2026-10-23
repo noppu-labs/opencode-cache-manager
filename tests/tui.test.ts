@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
 
 // `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
 // `solid-js` peer that is only present in the live TUI host. `define` is an
@@ -7,9 +8,12 @@ import { describe, expect, mock, test } from "bun:test";
 mock.module("@opencode/plugin/tui", () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
-// `ui/sidebar.tsx` is Solid JSX that only the live TUI host can compile; stub it and
-// capture what `tui.ts` hands to `registerSidebar`. The repo is not under
+// Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
 // node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
+// Bun shares module mocks across test files, so the rest of the module stays
+// real for tests/scripts/capture-sidebar.test.ts, which renders the component.
+ensureSolidTransformPlugin();
+const { CacheLines, paletteFromTheme } = await import("../src/ui/sidebar.tsx");
 type SidebarCall = {
   snapshots: () => ReadonlyMap<string, any>;
   load: (sessionID: string) => void;
@@ -19,6 +23,8 @@ type SidebarCall = {
 const sidebarCalls: SidebarCall[] = [];
 let sidebarThrows = false;
 mock.module("../src/ui/sidebar.tsx", () => ({
+  CacheLines,
+  paletteFromTheme,
   registerSidebar: (
     _ctx: unknown,
     snapshots: SidebarCall["snapshots"],

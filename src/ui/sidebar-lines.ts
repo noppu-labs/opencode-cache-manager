@@ -16,7 +16,8 @@ export interface SidebarLine {
 /** Width of the label column (bullet/indent plus label), so values line up across rows. */
 export const LABEL_WIDTH = 14;
 
-const HEADER: SidebarLine = { text: "Cache", tone: "base", bold: true };
+export const SECTION_HEADER = "Cache";
+const HEADER: SidebarLine = { text: SECTION_HEADER, tone: "base", bold: true };
 
 const defaultClock = (ms: number): string =>
   new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });

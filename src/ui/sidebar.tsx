@@ -1,33 +1,32 @@
 /** @jsxImportSource @opentui/solid */
 import type { Plugin } from "@opencode/plugin/tui";
+import type { RGBA } from "@opentui/core";
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import { LABEL_WIDTH, sidebarLines, type Tone } from "./sidebar-lines.ts";
 import { SIDEBAR_REFRESH_MS } from "../constants/keepalive.ts";
 import type { KeepaliveSnapshot } from "../models/keepalive.ts";
 
-function toneColor(theme: Plugin.Context["theme"], tone: Tone) {
-  switch (tone) {
-    case "muted":
-      return theme.text.muted;
-    case "success":
-      return theme.text.feedback.success.base;
-    case "warning":
-      return theme.text.feedback.warning.base;
-    case "error":
-      return theme.text.feedback.error.base;
-    default:
-      return theme.text.base;
-  }
+/** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
+export type SidebarPalette = Readonly<Record<Tone, RGBA>>;
+
+export function paletteFromTheme(theme: Plugin.Context["theme"]): SidebarPalette {
+  return {
+    base: theme.text.base,
+    muted: theme.text.muted,
+    success: theme.text.feedback.success.base,
+    warning: theme.text.feedback.warning.base,
+    error: theme.text.feedback.error.base,
+  };
 }
 
-function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot | undefined }) {
+export function CacheLines(props: { palette: () => SidebarPalette; snapshot: () => KeepaliveSnapshot | undefined }) {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(timer));
 
   const lines = () => sidebarLines(props.snapshot(), now());
 
-  const theme = () => props.ctx.theme;
+  const toneColor = (tone: Tone) => props.palette()[tone];
 
   return (
     <box flexDirection="column">
@@ -36,7 +35,7 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
           <Show
             when={line().right !== undefined}
             fallback={
-              <text fg={toneColor(theme(), line().tone)}>
+              <text fg={toneColor(line().tone)}>
                 <Show when={line().bold} fallback={line().text}>
                   <b>{line().text}</b>
                 </Show>
@@ -45,10 +44,10 @@ function Lines(props: { ctx: Plugin.Context; snapshot: () => KeepaliveSnapshot |
           >
             <box flexDirection="row">
               <text width={LABEL_WIDTH}>
-                <span style={{ fg: toneColor(theme(), line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
-                <span style={{ fg: toneColor(theme(), line().tone) }}>{line().text}</span>
+                <span style={{ fg: toneColor(line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
+                <span style={{ fg: toneColor(line().tone) }}>{line().text}</span>
               </text>
-              <text fg={toneColor(theme(), line().rightTone ?? "muted")}>{line().right}</text>
+              <text fg={toneColor(line().rightTone ?? "muted")}>{line().right}</text>
             </box>
           </Show>
         )}
@@ -65,6 +64,7 @@ function CacheSection(props: {
   refresh: (sessionID: string) => void;
 }) {
   const snapshot = () => props.snapshots().get(props.sessionID);
+  const palette = () => paletteFromTheme(props.ctx.theme);
   // Child sessions are never pinged; before a snapshot exists only the TUI's session data can tell.
   const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
 
@@ -81,7 +81,7 @@ function CacheSection(props: {
 
   return (
     <Show when={visible()}>
-      <Lines ctx={props.ctx} snapshot={snapshot} />
+      <CacheLines palette={palette} snapshot={snapshot} />
     </Show>
   );
 }
