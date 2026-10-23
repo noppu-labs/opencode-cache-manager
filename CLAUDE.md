@@ -80,7 +80,7 @@ Other top-level files:
 - `tests/opencode-config.test.ts` - checks the `-1h` variants in `opencode.jsonc`.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
-- `docs/` - design notes from the original build.
+- `docs/` - `CONTRIBUTING.md`, `UPGRADE.md`, screenshots in `images/`, and design notes from the original build under `superpowers/`.
 
 Where new code goes:
 
