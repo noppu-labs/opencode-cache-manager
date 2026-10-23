@@ -674,6 +674,25 @@ describe("createRequestHook on openai-chat", () => {
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
   });
 
+  test("a /responses request is observed but never handed to the Anthropic rewriter", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const body = JSON.stringify({
+      model: "claude-opus-5-5",
+      instructions: "You are helpful.",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
+    });
+    const request = new Request("https://omni.example/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+    const evt = await h.dispatch(request, claude);
+    expect(await evt.request.text()).toBe(body);
+    expect(evt.request.headers.has("anthropic-beta")).toBe(false);
+    expect(h.sent).toHaveLength(1);
+  });
+
   test("with the option off the body is never parsed for classification", async () => {
     const h = harness({ options: { openaiCompatible: false } });
     const request = chatRequest(chatBody("anthropic/claude-opus-5"));

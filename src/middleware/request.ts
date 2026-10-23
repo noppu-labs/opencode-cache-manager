@@ -45,8 +45,11 @@ export function createRequestHook({ store, engine, pings, options, profiles, pri
       : classifyRequest(evt.request, ref, deps);
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
-    // Until the request path rewrites through the profiles, an `openai` profile is only observed.
-    const rewrites = route.rewrites && (route.profile !== "openai" || anthropicProvider || hasSentinel);
+    // Until the request path rewrites through the profiles, a `/responses` request and an `openai` profile are only observed.
+    const rewrites =
+      route.rewrites &&
+      route.transformWire !== "openai-responses" &&
+      (route.profile !== "openai" || anthropicProvider || hasSentinel);
     const observed = route.observedWire !== undefined;
     const implicit = observed && route.observedWire !== "anthropic-messages" && route.profile !== "anthropic";
     if (!rewrites && !observed) return;

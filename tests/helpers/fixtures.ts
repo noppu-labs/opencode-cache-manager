@@ -162,21 +162,21 @@ export function sse(usage: unknown): string {
   );
 }
 
-/** Usage objects from OpenRouter's `/responses` endpoint on `openai/gpt-6-luna` (probe notes, "Responses wire"). */
+/** Usage objects captured from OpenRouter's `/responses` endpoint on `openai/gpt-6-luna` (probe notes, "Responses wire"). */
 export const responsesUsage = {
   write: {
-    input_tokens: 8887,
+    input_tokens: 8888,
     input_tokens_details: { cached_tokens: 0, cache_write_tokens: 8885 },
     output_tokens: 5,
     output_tokens_details: { reasoning_tokens: 0 },
-    total_tokens: 8892,
+    total_tokens: 8893,
   },
   read: {
-    input_tokens: 8906,
+    input_tokens: 8907,
     input_tokens_details: { cached_tokens: 8885, cache_write_tokens: 19 },
-    output_tokens: 61,
-    output_tokens_details: { reasoning_tokens: 53 },
-    total_tokens: 8967,
+    output_tokens: 16,
+    output_tokens_details: { reasoning_tokens: 8 },
+    total_tokens: 8923,
   },
 };
 

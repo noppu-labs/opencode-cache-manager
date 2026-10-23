@@ -3,14 +3,14 @@ import { RESPONSES_PARSERS } from "../../src/services/usage-responses.ts";
 import { responsesSse, responsesUsage } from "../helpers/fixtures.ts";
 
 const writeParsed = {
-  inputTokens: 2,
+  inputTokens: 3,
   cacheReadTokens: 0,
   cacheWriteTokens: 8885,
   write5mTokens: undefined,
   write1hTokens: undefined,
 };
 const readParsed = {
-  inputTokens: 2,
+  inputTokens: 3,
   cacheReadTokens: 8885,
   cacheWriteTokens: 19,
   write5mTokens: undefined,

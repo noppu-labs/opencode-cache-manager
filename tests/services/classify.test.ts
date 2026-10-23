@@ -311,6 +311,7 @@ describe("routeRequest", () => {
     });
   });
 
+  // The former `implicit` flag is derived in the middleware now; request.test.ts covers it.
   test("matches the former inline expressions for every input", () => {
     const wires = [undefined, "anthropic-messages", "openai-chat"] as const;
     const profiles = ["anthropic", "implicit"] as const;
@@ -327,7 +328,10 @@ describe("routeRequest", () => {
               const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
               expect(got.profile).toBe(cls?.profile);
               expect(got.managed).toBe(explicitChat);
-              expect(shouldInject(got, "primary", false)).toBe(explicitChat);
+              for (const kind of ["primary", "compaction", "title", "generate"] as const) {
+                expect(shouldInject(got, kind, false)).toBe(explicitChat && (kind === "primary" || kind === "compaction"));
+                expect(shouldInject(got, kind, true)).toBe(false);
+              }
               expect(got.rewrites).toBe(anthropicProvider || hasSentinel || explicitChat);
               expect(got.observedWire !== undefined).toBe(observed);
               expect(got.transformWire).toBe(chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined);

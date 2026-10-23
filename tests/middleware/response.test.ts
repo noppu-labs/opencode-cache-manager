@@ -405,7 +405,7 @@ describe("createResponseHook on openai-responses", () => {
     expect(observed[0]?.info).toMatchObject({
       ok: true,
       stopReason: "stop",
-      usage: { inputTokens: 2, cacheReadTokens: 8885, cacheWriteTokens: 19 },
+      usage: { inputTokens: 3, cacheReadTokens: 8885, cacheWriteTokens: 19 },
     });
     expect(learnCalls).toEqual([{ ref: { providerID: "omniroute", id: "auto/fast" }, identity: { model: "openai/gpt-6-luna" } }]);
   });
