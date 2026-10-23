@@ -31,17 +31,17 @@ describe("requestWire", () => {
 describe("classifyRequest", () => {
   test("chat completions with a Claude model is openai-chat / explicit", () => {
     const ref = { providerID: "openrouter", id: "anthropic/claude-haiku-5.5" };
-    expect(classifyRequest(chat(), ref, noDeps)).toEqual({ wire: "openai-chat", strategy: "explicit" });
+    expect(classifyRequest(chat(), ref, noDeps)).toEqual({ wire: "openai-chat", strategy: "anthropic" });
   });
 
   test("an auto/claude-* alias is explicit", () => {
     const ref = { providerID: "omniroute", id: "auto/claude-opus-5-5" };
-    expect(classifyRequest(chat(), ref, noDeps)?.strategy).toBe("explicit");
+    expect(classifyRequest(chat(), ref, noDeps)?.strategy).toBe("anthropic");
   });
 
   test("the built-in regex also checks the body model", () => {
     const ref = { providerID: "omniroute", id: "auto/opus-5" };
-    expect(classifyRequest(chat(), ref, noDeps, "anthropic/claude-opus-5")?.strategy).toBe("explicit");
+    expect(classifyRequest(chat(), ref, noDeps, "anthropic/claude-opus-5")?.strategy).toBe("anthropic");
   });
 
   test("a non-Claude model is implicit", () => {
@@ -57,7 +57,7 @@ describe("classifyRequest", () => {
 
     expect(classifyRequest(chat(), ref, { patterns: [], learned })?.strategy).toBe("implicit");
     await store.learnFromResponse(ref, { model: "claude-opus-5-5" });
-    expect(classifyRequest(chat(), ref, { patterns: [], learned })?.strategy).toBe("explicit");
+    expect(classifyRequest(chat(), ref, { patterns: [], learned })?.strategy).toBe("anthropic");
     expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["!opus"]), learned })?.strategy).toBe("implicit");
   });
 
@@ -68,12 +68,12 @@ describe("classifyRequest", () => {
 
   test("the built-in regex outranks a learned implicit value", () => {
     const ref = { providerID: "omniroute", id: "auto/claude-opus-5-5" };
-    expect(classifyRequest(chat(), ref, { patterns: [], learned: () => "implicit" })?.strategy).toBe("explicit");
+    expect(classifyRequest(chat(), ref, { patterns: [], learned: () => "implicit" })?.strategy).toBe("anthropic");
   });
 
   test("a pattern can make a non-Claude model explicit", () => {
     const ref = { providerID: "omniroute", id: "auto/opus-5" };
-    expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["opus"]) })?.strategy).toBe("explicit");
+    expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["opus"]) })?.strategy).toBe("anthropic");
   });
 
   test("POST …/messages is anthropic-messages / explicit regardless of model or patterns", () => {
@@ -81,7 +81,7 @@ describe("classifyRequest", () => {
     const ref = { providerID: "anthropic", id: "whatever" };
     expect(classifyRequest(request, ref, { patterns: parseModelPatterns(["!whatever"]) })).toEqual({
       wire: "anthropic-messages",
-      strategy: "explicit",
+      strategy: "anthropic",
     });
   });
 
@@ -103,7 +103,7 @@ describe("classifyRequestWithBody", () => {
     new Request("https://omni.example/v1/chat/completions", { method: "POST", body: JSON.stringify({ model }) });
 
   test("reads body.model when the model ID alone is implicit", async () => {
-    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, noDeps))?.strategy).toBe("explicit");
+    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, noDeps))?.strategy).toBe("anthropic");
   });
 
   test("leaves the request body readable", async () => {
@@ -164,7 +164,7 @@ describe("routeRequest", () => {
   });
 
   test("an Anthropic provider on /messages is rewritten and observed as anthropic-messages", () => {
-    const cls = { wire: "anthropic-messages", strategy: "explicit" } as const;
+    const cls = { wire: "anthropic-messages", strategy: "anthropic" } as const;
     for (const openaiCompatible of [false, true]) {
       expect(route({ cls, anthropicProvider: true, openaiCompatible })).toEqual({
         ...none,
@@ -175,12 +175,12 @@ describe("routeRequest", () => {
   });
 
   test("a proxied /messages request is observed but not rewritten", () => {
-    const cls = { wire: "anthropic-messages", strategy: "explicit" } as const;
+    const cls = { wire: "anthropic-messages", strategy: "anthropic" } as const;
     expect(route({ cls })).toEqual({ ...none, observedWire: "anthropic-messages" });
   });
 
   test("an Anthropic provider on /chat/completions with the option off is rewritten as an Anthropic body", () => {
-    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    const cls = { wire: "openai-chat", strategy: "anthropic" } as const;
     expect(route({ cls, anthropicProvider: true })).toEqual({
       ...none,
       rewrites: true,
@@ -189,7 +189,7 @@ describe("routeRequest", () => {
   });
 
   test("openai-chat explicit with the option on is rewritten, injected and observed as openai-chat", () => {
-    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    const cls = { wire: "openai-chat", strategy: "anthropic" } as const;
     expect(route({ cls, openaiCompatible: true })).toEqual({
       rewrites: true,
       observedWire: "openai-chat",
@@ -200,7 +200,7 @@ describe("routeRequest", () => {
   });
 
   test("openai-chat explicit with the option off is untouched", () => {
-    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    const cls = { wire: "openai-chat", strategy: "anthropic" } as const;
     expect(route({ cls })).toEqual(none);
   });
 
@@ -226,7 +226,7 @@ describe("routeRequest", () => {
       rewrites: true,
       transformWire: "openai-chat",
     });
-    expect(route({ hasSentinel: true, cls: { wire: "anthropic-messages", strategy: "explicit" } })).toEqual({
+    expect(route({ hasSentinel: true, cls: { wire: "anthropic-messages", strategy: "anthropic" } })).toEqual({
       ...none,
       rewrites: true,
       observedWire: "anthropic-messages",
@@ -235,7 +235,7 @@ describe("routeRequest", () => {
 
   test("matches the former inline expressions for every input", () => {
     const wires = [undefined, "anthropic-messages", "openai-chat"] as const;
-    const strategies = ["explicit", "implicit"] as const;
+    const strategies = ["anthropic", "implicit"] as const;
     const bools = [false, true];
     for (const wire of wires)
       for (const strategy of strategies)
@@ -244,7 +244,7 @@ describe("routeRequest", () => {
             for (const openaiCompatible of bools) {
               const cls = wire ? { wire, strategy } : undefined;
               const chat = cls?.wire === "openai-chat";
-              const explicitChat = chat && openaiCompatible && cls.strategy === "explicit";
+              const explicitChat = chat && openaiCompatible && cls.strategy === "anthropic";
               const observed = anthropicProvider || cls?.wire === "anthropic-messages" || (chat && openaiCompatible);
               const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
               expect(got.explicitChat).toBe(explicitChat);
@@ -274,7 +274,7 @@ describe("routeRequest", () => {
 
 describe("shouldInject", () => {
   const explicit = routeRequest({
-    cls: { wire: "openai-chat", strategy: "explicit" },
+    cls: { wire: "openai-chat", strategy: "anthropic" },
     anthropicProvider: false,
     hasSentinel: false,
     openaiCompatible: true,

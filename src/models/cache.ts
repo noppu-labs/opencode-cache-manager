@@ -14,8 +14,8 @@ export function isCacheTtlMode(value: unknown): value is CacheTtlMode {
   return value === "5m" || value === "1h" || value === "hybrid";
 }
 
-/** Cache TTL granted by Anthropic for a cache write. */
-export type Ttl = "5m" | "1h";
+/** Cache TTL a provider grants for a cache write: Anthropic `5m` / `1h`, OpenAI `30m` / `12h`. */
+export type Ttl = "5m" | "1h" | "30m" | "12h";
 
 /** Token counts from an Anthropic `usage` block, relevant to prompt caching. */
 export interface CacheUsage {
@@ -28,15 +28,19 @@ export interface CacheUsage {
 }
 
 /** Request wire format the plugin understands. */
-export type Wire = "anthropic-messages" | "openai-chat";
+export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
 
 /**
  * How a model's prompt cache is controlled.
  *
- * - `"explicit"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
- * - `"implicit"` — provider-managed caching; observed only, never pinged.
+ * - `"anthropic"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
+ * - `"openai"`    — OpenAI models with `prompt_cache_options` / `prompt_cache_breakpoint`.
+ * - `"implicit"`  — provider-managed caching; observed only, never pinged.
  */
-export type CacheStrategy = "explicit" | "implicit";
+export type CacheProfileId = "anthropic" | "openai" | "implicit";
+
+/** Temporary alias of `CacheProfileId`, removed once the profiles replace every strategy use. */
+export type CacheStrategy = CacheProfileId;
 
 /** Identifies an OpenCode model: provider plus model ID. */
 export interface ModelRef {
@@ -63,8 +67,14 @@ export interface ResponseParsers {
   fromSse(text: string): ObservedResponse;
 }
 
-/** A user-supplied `explicitCacheModels` entry, compiled. */
+/** A user-supplied `explicitCacheModels` entry, compiled. Replaced by `ProfilePattern` when `cacheProfiles` lands. */
 export interface ModelPattern {
   test: RegExp;
   strategy: CacheStrategy;
+}
+
+/** A user-supplied `cacheProfiles` entry, compiled. */
+export interface ProfilePattern {
+  matches(ref: ModelRef): boolean;
+  profile: CacheProfileId;
 }

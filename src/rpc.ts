@@ -27,7 +27,7 @@ const keepaliveSnapshotSchema = {
   type: "object",
   properties: {
     sessionID: { type: "string" },
-    ttl: nullableString(["5m", "1h"]),
+    ttl: nullableString(["5m", "1h", "30m", "12h"]),
     ttlSource: nullableString(["detected", "requested"]),
     lastRequestAt: nullableNumber,
     expiresAt: nullableNumber,

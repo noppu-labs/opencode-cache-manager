@@ -97,7 +97,7 @@ describe("pluginOptions", () => {
 
   test("compiles explicitCacheModels and drops invalid entries", () => {
     const { explicitCacheModels } = pluginOptions({ explicitCacheModels: ["auto/opus", "!deepseek", 5, ""] });
-    expect(explicitCacheModels.map((p) => p.strategy)).toEqual(["explicit", "implicit"]);
+    expect(explicitCacheModels.map((p) => p.strategy)).toEqual(["anthropic", "implicit"]);
     expect(pluginOptions({ explicitCacheModels: "auto" }).explicitCacheModels).toEqual([]);
   });
 });

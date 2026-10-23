@@ -442,7 +442,7 @@ describe("keepalive wiring", () => {
       await flush();
       expect(collectCacheControls(await parsedBodyOf(first.requestEvt.request))).toHaveLength(0);
       expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit" });
-      expect(mock.store.get("learned-models")).toEqual({ "omniroute/auto/opus-5": "explicit" });
+      expect(mock.store.get("learned-models")).toEqual({ "omniroute/auto/opus-5": "anthropic" });
 
       const second = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
       await flush();

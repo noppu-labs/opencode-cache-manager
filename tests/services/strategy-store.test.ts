@@ -15,13 +15,13 @@ describe("StrategyStore", () => {
   test("a Claude model in the response is learned as explicit", async () => {
     const store = await loaded(memoryKv().kv);
     await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
-    expect(store.get(ref)).toBe("explicit");
+    expect(store.get(ref)).toBe("anthropic");
   });
 
   test("an Anthropic provider in the response is learned as explicit", async () => {
     const store = await loaded(memoryKv().kv);
     await store.learnFromResponse(ref, { provider: "Claude Platform on AWS" });
-    expect(store.get(ref)).toBe("explicit");
+    expect(store.get(ref)).toBe("anthropic");
   });
 
   test("any other model and provider is learned as implicit", async () => {
@@ -49,7 +49,7 @@ describe("StrategyStore", () => {
   test("the value persists across a new store instance after load()", async () => {
     const { kv } = memoryKv();
     await (await loaded(kv)).learnFromResponse(ref, { model: "claude-haiku-5-5" });
-    expect((await loaded(kv)).get(ref)).toBe("explicit");
+    expect((await loaded(kv)).get(ref)).toBe("anthropic");
   });
 
   test("an unchanged value does not write storage again", async () => {
@@ -70,7 +70,7 @@ describe("StrategyStore", () => {
     const failing: KV = { ...kv, set: async () => { throw new Error("disk full"); } };
     const store = await loaded(failing);
     await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
-    expect(store.get(ref)).toBe("explicit");
+    expect(store.get(ref)).toBe("anthropic");
   });
 
   test("a storage read error leaves load() resolved with an empty map", async () => {
@@ -79,11 +79,17 @@ describe("StrategyStore", () => {
     expect(store.get(ref)).toBeUndefined();
   });
 
+  test("a 0.4.0 stored \"explicit\" loads as anthropic", async () => {
+    const { kv, data } = memoryKv();
+    data.set("learned-models", { "a/b": "explicit" });
+    expect((await loaded(kv)).get({ providerID: "a", id: "b" })).toBe("anthropic");
+  });
+
   test("garbage in storage is ignored on load", async () => {
     const { kv, data } = memoryKv();
-    data.set("learned-models", { "a/b": "explicit", "c/d": "bogus", "e/f": 3 });
+    data.set("learned-models", { "a/b": "anthropic", "c/d": "bogus", "e/f": 3 });
     const store = await loaded(kv);
-    expect(store.get({ providerID: "a", id: "b" })).toBe("explicit");
+    expect(store.get({ providerID: "a", id: "b" })).toBe("anthropic");
     expect(store.get({ providerID: "c", id: "d" })).toBeUndefined();
     expect(store.get({ providerID: "e", id: "f" })).toBeUndefined();
     data.set("learned-models", "nope");

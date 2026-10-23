@@ -6,11 +6,11 @@ const ref = { providerID: "omniroute", id: "auto/opus-5" };
 
 describe("matchModelPatterns", () => {
   test("a plain string is a case-insensitive substring match", () => {
-    expect(matchModelPatterns(parseModelPatterns(["OPUS"]), ref)).toBe("explicit");
+    expect(matchModelPatterns(parseModelPatterns(["OPUS"]), ref)).toBe("anthropic");
   });
 
   test("a /…/flags string is a regex", () => {
-    expect(matchModelPatterns(parseModelPatterns(["/^omniroute\\/auto\\//i"]), ref)).toBe("explicit");
+    expect(matchModelPatterns(parseModelPatterns(["/^omniroute\\/auto\\//i"]), ref)).toBe("anthropic");
   });
 
   test("a leading ! forces implicit", () => {
@@ -24,7 +24,7 @@ describe("matchModelPatterns", () => {
 
   test("the first matching pattern wins", () => {
     expect(matchModelPatterns(parseModelPatterns(["!opus", "omniroute"]), ref)).toBe("implicit");
-    expect(matchModelPatterns(parseModelPatterns(["omniroute", "!opus"]), ref)).toBe("explicit");
+    expect(matchModelPatterns(parseModelPatterns(["omniroute", "!opus"]), ref)).toBe("anthropic");
   });
 
   test("no match returns undefined", () => {
@@ -37,7 +37,7 @@ describe("parseModelPatterns with matchModelPatterns", () => {
   test("a /…/x string with invalid regex flags falls back to a substring match", () => {
     const patterns = parseModelPatterns(["/auto/opus"]);
     expect(patterns).toHaveLength(1);
-    expect(matchModelPatterns(patterns, ref)).toBe("explicit");
+    expect(matchModelPatterns(patterns, ref)).toBe("anthropic");
     expect(matchModelPatterns(patterns, { providerID: "omniroute", id: "auto/haiku-5" })).toBeUndefined();
   });
 });

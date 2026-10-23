@@ -34,7 +34,7 @@ export function parseModelPatterns(value: unknown): ModelPattern[] {
     const negated = entry.startsWith("!");
     const test = compile(negated ? entry.slice(1) : entry);
     if (test === undefined || entry === "" || entry === "!") continue;
-    patterns.push({ test, strategy: negated ? "implicit" : "explicit" });
+    patterns.push({ test, strategy: negated ? "implicit" : "anthropic" });
   }
   return patterns;
 }

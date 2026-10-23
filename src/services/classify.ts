@@ -39,11 +39,11 @@ export function classifyRequest(
 ): { wire: Wire; strategy: CacheStrategy } | undefined {
   const wire = requestWire(request);
   if (wire === undefined) return undefined;
-  if (wire === "anthropic-messages") return { wire, strategy: "explicit" };
+  if (wire === "anthropic-messages") return { wire, strategy: "anthropic" };
 
   const builtin = EXPLICIT_CACHE_MODEL.test(ref.id) || (bodyModel !== undefined && EXPLICIT_CACHE_MODEL.test(bodyModel));
   const strategy =
-    matchModelPatterns(deps.patterns, ref) ?? (builtin ? "explicit" : undefined) ?? deps.learned?.(ref) ?? "implicit";
+    matchModelPatterns(deps.patterns, ref) ?? (builtin ? "anthropic" : undefined) ?? deps.learned?.(ref) ?? "implicit";
   return { wire: "openai-chat", strategy };
 }
 
@@ -103,7 +103,7 @@ export function observedWireFor(
 /** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
 export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible }: RouteInput): Route {
   const chat = cls?.wire === "openai-chat";
-  const explicitChat = chat && openaiCompatible && cls.strategy === "explicit";
+  const explicitChat = chat && openaiCompatible && cls.strategy === "anthropic";
   const implicit = chat && openaiCompatible && cls.strategy === "implicit";
   return {
     rewrites: anthropicProvider || hasSentinel || explicitChat,

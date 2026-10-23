@@ -22,7 +22,8 @@ export class StrategyStore {
     }
     if (!isRecord(stored)) return;
     for (const [name, strategy] of Object.entries(stored)) {
-      if (strategy === "explicit" || strategy === "implicit") this.learned.set(name, strategy);
+      if (strategy === "explicit") this.learned.set(name, "anthropic");
+      else if (strategy === "anthropic" || strategy === "implicit") this.learned.set(name, strategy);
     }
   }
 
@@ -41,7 +42,7 @@ export class StrategyStore {
       const strategy: CacheStrategy =
         (model !== undefined && EXPLICIT_CACHE_MODEL.test(model)) ||
         (provider !== undefined && ANTHROPIC_UPSTREAM.test(provider))
-          ? "explicit"
+          ? "anthropic"
           : "implicit";
       if (this.learned.get(key(ref)) === strategy) return;
       this.learned.set(key(ref), strategy);

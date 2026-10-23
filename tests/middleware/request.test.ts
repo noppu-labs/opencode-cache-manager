@@ -626,7 +626,7 @@ describe("createRequestHook on openai-chat", () => {
 
   test("a learned strategy makes an alias explicit, and a user pattern can force it back", async () => {
     const alias = { providerID: "omniroute", modelID: "auto/opus-5" };
-    const learned = new Map<string, CacheStrategy>([["omniroute/auto/opus-5", "explicit"]]);
+    const learned = new Map<string, CacheStrategy>([["omniroute/auto/opus-5", "anthropic"]]);
 
     const h = harness({ strategies: learned });
     const evt = await h.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
