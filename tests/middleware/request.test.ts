@@ -8,7 +8,7 @@ import type { SkipReason } from "../../src/models/keepalive.ts";
 import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
 import type { CacheUsage } from "../../src/models/cache.ts";
 import { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
-import { parseModelPatterns } from "../../src/services/model-patterns.ts";
+import { parseModelPatterns } from "../../src/config/model-patterns.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
 import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";

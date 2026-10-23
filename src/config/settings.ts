@@ -1,5 +1,5 @@
-import { isCacheTtlMode, type CacheTtlMode } from "../models/cache.ts";
-import { parseModelPatterns, type ModelPattern } from "../services/model-patterns.ts";
+import { isCacheTtlMode, type CacheTtlMode, type ModelPattern } from "../models/cache.ts";
+import { parseModelPatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 
 /** Effective plugin settings after layering built-in defaults, options, global and session. */

@@ -1,6 +1,6 @@
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy, ModelRef, Wire } from "../models/cache.ts";
-import { matchModelPatterns, type ModelPattern } from "./model-patterns.ts";
+import type { CacheStrategy, ModelPattern, ModelRef, Wire } from "../models/cache.ts";
+import { matchModelPatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 import { isAnthropicMessagesRequest } from "./usage.ts";

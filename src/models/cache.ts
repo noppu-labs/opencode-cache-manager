@@ -49,3 +49,9 @@ export interface OpenAiIdentity {
   model?: string;
   provider?: string;
 }
+
+/** A user-supplied `explicitCacheModels` entry, compiled. */
+export interface ModelPattern {
+  test: RegExp;
+  strategy: CacheStrategy;
+}

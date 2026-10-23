@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { classifyRequest, classifyRequestWithBody, requestWire } from "../../src/services/classify.ts";
-import { parseModelPatterns } from "../../src/services/model-patterns.ts";
+import { parseModelPatterns } from "../../src/config/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
