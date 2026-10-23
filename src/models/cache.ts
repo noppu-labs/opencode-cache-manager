@@ -26,3 +26,14 @@ export interface CacheUsage {
   write5mTokens: number | undefined;
   write1hTokens: number | undefined;
 }
+
+/** Request wire format the plugin understands. */
+export type Wire = "anthropic-messages" | "openai-chat";
+
+/**
+ * How a model's prompt cache is controlled.
+ *
+ * - `"explicit"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
+ * - `"implicit"` — provider-managed caching; observed only, never pinged.
+ */
+export type CacheStrategy = "explicit" | "implicit";
