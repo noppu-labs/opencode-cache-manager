@@ -40,14 +40,14 @@ The same three modes drive both providers. OpenAI caches automatically for 30 mi
 | Mode | Claude | OpenAI GPT-5.6+ |
 | --- | --- | --- |
 | `5m` | 5m breakpoints on tools, system and messages | Automatic 30m cache; nothing added to the request |
-| `1h` | 1h breakpoints everywhere | A 12h breakpoint on the last message |
+| `1h` | 1h breakpoints everywhere | A 12h breakpoint on the last message or tool output |
 | `hybrid` | 1h on tools + system, 5m on messages | A 12h breakpoint at the end of the system prompt; the message tail keeps the automatic 30m cache |
 
-One-off requests (titles and other one-off generate calls) also stop paying for cache writes on OpenAI models: the plugin sends them with caching turned off. Keepalive pings follow the lifetime of the mode: every 25 minutes on the 30m cache, every 10 hours on the 12h cache.
+One-off requests (titles and other one-off generate calls) also stop paying for cache writes on OpenAI models: the plugin sends them with caching turned off. Keepalive pings follow the shortest-lived part of the cache: every 25 minutes in `5m` and `hybrid` (the 30m cache and the 30m tail), every 10 hours in `1h`.
 
 ## Supported providers and endpoints
 
-The plugin handles the Anthropic Messages API (`POST …/messages`), OpenAI Chat Completions (`POST …/chat/completions`) and the OpenAI Responses API (`POST …/responses`). Claude models get the full treatment on the first two, and GPT-5.6+ on the last two. Other models (older GPT, DeepSeek, Gemini, …) manage their own cache, so the plugin only shows how much of each prompt was cached.
+The plugin handles the Anthropic Messages API (`POST …/messages`), OpenAI Chat Completions (`POST …/chat/completions`) and the OpenAI Responses API (`POST …/responses`). Claude models get the full treatment on the first two (on `/responses` they are only observed), and GPT-5.6+ on the last two. Other models (older GPT, DeepSeek, Gemini, …) manage their own cache, so the plugin only shows how much of each prompt was cached.
 
 [docs/SUPPORTED_PROVIDERS.md](docs/SUPPORTED_PROVIDERS.md) covers what the plugin does on each wire, how it decides a model is Claude, the example provider configs, and how each provider caches, with links to their docs.
 
@@ -119,7 +119,7 @@ Keepalive sends a hidden request shortly before a session's cache expires. The r
 
 The ping is a transient request that uses the session's context. Nothing is added to the conversation history, and the model is told to reply `OK` without using tools. It reuses the exact conversation bytes of the session's last agent request, so it hits the cache even when other plugins rewrite the history. Those bytes stay in memory and are never written to disk.
 
-On a 5m cache the ping goes out 4 minutes after the last request; on a 1h cache, 50 minutes after it. `hybrid` follows the 5m schedule on Claude, because its message tail is cached for 5 minutes. On OpenAI the schedule follows the lifetime of the mode: 25 minutes on the 30m cache (`5m`), 10 hours on the 12h cache (`1h` and `hybrid`). A ping is itself a request, so it restarts the clock and the next ping is scheduled the same way. Any real request on the session (your prompt, a tool-loop request, compaction) cancels the pending ping and resets the ping count to 0.
+On a 5m cache the ping goes out 4 minutes after the last request; on a 1h cache, 50 minutes after it. `hybrid` follows the 5m schedule on Claude, because its message tail is cached for 5 minutes. On OpenAI it is 25 minutes in `5m` and `hybrid` (the automatic 30m cache, and in `hybrid` the 30m tail after the 12h prefix) and 10 hours in `1h`. A ping is itself a request, so it restarts the clock and the next ping is scheduled the same way. Any real request on the session (your prompt, a tool-loop request, compaction) cancels the pending ping and resets the ping count to 0.
 
 After `maxPings` pings (default 5) in one idle stretch, keepalive stops and the cache expires. Failed pings count towards the limit. A ping is never sent after the cache would have expired; a failed ping is retried after 30 seconds, but only if it can still land before the original expiry.
 

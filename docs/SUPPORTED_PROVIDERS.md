@@ -7,21 +7,21 @@ The plugin handles three wire formats: the Anthropic Messages API (`POST …/mes
 | | Claude (`anthropic`) | GPT-5.6+ (`openai`) | Everything else (`implicit`) |
 | --- | --- | --- | --- |
 | Cache control it rewrites | `cache_control` breakpoints | `prompt_cache_breakpoint` on text parts | none |
-| TTL by mode | 5m / 1h / hybrid | 30m (automatic) / 12h / 12h at the end of the system prompt | none |
+| TTL by mode | 5m / 1h / hybrid | 30m (automatic) / 12h / 12h breakpoint on the prefix with the automatic 30m tail | none |
 | Breakpoint injection when OpenCode sent none | yes (your prompts and compaction, not pings or titles) | only the 12h breakpoint for `1h` / `hybrid` | no |
 | One-off calls (titles and other one-off generate calls) | unchanged | sent with `prompt_cache_options: { mode: "explicit" }` and no breakpoints, so they write nothing to the cache | unchanged |
 | `x-cache-ttl` sentinel header stripped | yes | yes | yes |
 | Cache usage observed (sidebar `cached` row) | yes | yes | yes |
-| Keepalive pings | yes (5m, 1h) | yes (30m, 12h) | never |
+| Keepalive pings | yes (5m, 1h; hybrid follows its 5m tail) | yes (30m, 12h; hybrid follows its 30m tail) | never |
 
-Claude models cache only where a request marks a breakpoint. OpenCode's `openrouter` provider marks them for `anthropic/*` models, but its `openai-compatible` provider marks none, so the plugin adds the same three (the last tool, the system prompt, the last message) when the request has no `cache_control` at all. Other models, such as DeepSeek's, cache on the provider's side with no breakpoints to rewrite. The plugin only reads the usage in their responses.
+The Claude column applies on the Anthropic Messages and Chat Completions wires; a Claude model on the Responses API is only observed, like an implicit one. Claude models cache only where a request marks a breakpoint. OpenCode's `openrouter` provider marks them for `anthropic/*` models, but its `openai-compatible` provider marks none, so the plugin adds the same three (the last tool, the system prompt, the last message) when the request has no `cache_control` at all. Other models, such as DeepSeek's, cache on the provider's side with no breakpoints to rewrite. The plugin only reads the usage in their responses.
 
 ### What the plugin sends to GPT-5.6+
 
 | Mode | Chat Completions | Responses |
 | --- | --- | --- |
 | `5m` | nothing (automatic 30m cache) | nothing (automatic 30m cache) |
-| `1h` | `prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" }` on the last text part of the last user, system, developer or tool message | the same breakpoint on the last `input_text` part of `input` |
+| `1h` | `prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" }` on the last text part of the last user, system, developer or tool message | the same breakpoint on the last `input_text` part of a user or system message, or of a trailing tool output (`function_call_output`, whose string `output` is turned into an `input_text` part first), walking back past tool calls and assistant output |
 | `hybrid` | the 12h breakpoint on the last text part of the leading system messages; the tail keeps the automatic 30m cache | the same breakpoint on the first `input` item |
 | titles and other one-off generate calls | `prompt_cache_options: { mode: "explicit" }`, no breakpoints | the same |
 
@@ -35,15 +35,15 @@ A model counts as Claude or GPT-5.6+, in this order:
 
 1. Your `cacheProfiles` patterns (see [Settings](../README.md#settings)): `"anthropic"`, `"openai"` or `"implicit"`.
 2. Its name: the OpenCode model ID or the `model` in the request body contains `claude`, or has an `anthropic/` prefix (as in `openrouter/anthropic/…`) for Claude; matches the GPT-5.6+ pattern above for OpenAI.
-3. What the first response says it ran on: the response's `model` or `provider` field names Anthropic or Claude, or its `model` is a GPT-5.6+ name. This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so an alias is unmanaged for its first turn only.
+3. What the first response says it ran on, for Claude only: the response's `model` or `provider` field names Anthropic or Claude. This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so a Claude alias is unmanaged for its first turn only. A response naming a GPT-5.6+ model never makes an alias `openai`: a router alias can send its next turn to an older model, which answers the OpenAI cache fields with a 400. Map an alias that always lands on GPT-5.6+ yourself with `"openai"` in `cacheProfiles`, for example `"auto/coding": "openai"`.
 
 Anything else is treated as implicit. A `-1h` variant on an implicit model has its `x-cache-ttl` header stripped and nothing else changed.
 
-On the OpenAI wires, Claude requests in `1h` and `hybrid` carry the same `anthropic-beta: extended-cache-ttl-2025-04-11` header as on the Anthropic wire. OpenRouter adds it itself, but some proxies need it before they honour the 1h TTL. GPT requests never get that header. The OpenAI usage format doesn't say which TTL the provider granted, so the sidebar shows `ttl 1h (requested)` for Claude there, and `30m` or `12h` for GPT.
+On Chat Completions, Claude requests in `1h` and `hybrid` carry the same `anthropic-beta: extended-cache-ttl-2025-04-11` header as on the Anthropic wire. OpenRouter adds it itself, but some proxies need it before they honour the 1h TTL. GPT requests never get that header. The OpenAI usage format doesn't say which TTL the provider granted, so the sidebar shows `ttl 1h (requested)` for Claude there, and `30m` or `12h` for GPT.
 
 ### OmniRoute and other proxies
 
-OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is expected to be billed as the automatic 30m cache (observed in the probe, not measured for every route). This is not yet reported upstream; until it is fixed, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. Keepalive still pings on the 12h schedule, so on OmniRoute those pings are expected to arrive after the 30m cache is gone and miss (expected, not measured). Use `5m` for GPT sessions on such a proxy.
+OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is expected to be billed as the automatic 30m cache (observed in the probe, not measured for every route). This is not yet reported upstream; until it is fixed, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. In `1h` keepalive still pings on the 12h schedule, so on OmniRoute those pings are expected to arrive after the 30m cache is gone and miss (expected, not measured). Use `5m` for GPT sessions on such a proxy.
 
 Example provider configs with `-1h` variants:
 

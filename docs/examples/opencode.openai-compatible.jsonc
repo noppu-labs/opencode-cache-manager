@@ -13,9 +13,9 @@
 // anthropic-beta: extended-cache-ttl-2025-04-11, which some proxies need before
 // they honour the 1h TTL.
 //
-// The plugin tells Claude models and GPT-5.6+ from the rest by their model ID, or
-// by the model the first response names. If your proxy uses aliases the ID
-// doesn't reveal, map them in cacheProfiles. Entries are matched against
+// The plugin tells Claude models and GPT-5.6+ from the rest by their model ID, and
+// Claude also by the model the first response names. If your proxy uses aliases
+// the ID doesn't reveal, map them in cacheProfiles (GPT-5.6+ aliases always need it). Entries are matched against
 // "<providerID>/<modelID>": plain text is a case-insensitive substring and
 // /regex/flags is a regex. The value is "anthropic" (manage as Claude), "openai"
 // (manage as GPT-5.6+) or "implicit" (observe only, never rewrite or ping).

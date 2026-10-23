@@ -4,7 +4,7 @@
 
 Update the version range in your `plugins` entry to `^0.5.0`: on 0.x, `^0.4.0` does not pick up 0.5.
 
-0.5.0 adds OpenAI GPT-5.6 and later as a managed provider, on Chat Completions and on the Responses API (OpenCode's native `openai` provider). The session's TTL mode now applies to them: `5m` leaves OpenAI's automatic 30-minute cache alone, `1h` and `hybrid` add a 12-hour breakpoint, one-off calls (titles and other one-off generate calls) stop writing to the cache, and keepalive pings on the 25-minute or 10-hour schedule. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
+0.5.0 adds OpenAI GPT-5.6 and later as a managed provider, on Chat Completions and on the Responses API (OpenCode's native `openai` provider). The session's TTL mode now applies to them: `5m` leaves OpenAI's automatic 30-minute cache alone, `1h` and `hybrid` add a 12-hour breakpoint, one-off calls (titles and other one-off generate calls) stop writing to the cache, and keepalive pings every 25 minutes (`5m`, `hybrid`) or 10 hours (`1h`). See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
 
 **`explicitCacheModels` is replaced by `cacheProfiles`.** The old option is ignored. It was a list of patterns where a leading `!` meant "never manage"; the new one maps each pattern to a profile (`"anthropic"`, `"openai"` or `"implicit"`):
 
