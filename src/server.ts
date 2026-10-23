@@ -26,7 +26,7 @@ import { SettingsStore, sweepDeletedSessions } from "./services/settings-store.t
  * per-session state through `getKeepalive` and the `keepalive.updated` event.
  */
 export default Plugin.define({
-  id: "anthropic-cache-ttl",
+  id: "opencode-cache-manager",
   async setup(ctx) {
     const store = new SettingsStore(ctx.storage, settingsFromOptions(ctx.options));
     await store.load();

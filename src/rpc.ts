@@ -59,7 +59,7 @@ const keepaliveSnapshotSchema = {
 const emptyOutput = { type: "object", additionalProperties: false } as const;
 
 export const CacheTtlRpc = {
-  id: "anthropic-cache-ttl",
+  id: "opencode-cache-manager",
   methods: {
     getSettings: {
       input: {

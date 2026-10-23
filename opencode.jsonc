@@ -1,4 +1,4 @@
-// Sample opencode.jsonc for the anthropic-cache-ttl plugin (opencode-cache-manager).
+// Sample opencode.jsonc for the opencode-cache-manager plugin.
 //
 // This fixture is also used by the test suite (tests/opencode-config.test.ts).
 // To use the plugin with your own setup, copy the "omniroute-anthropic" provider
