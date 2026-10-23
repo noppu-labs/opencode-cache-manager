@@ -2,7 +2,8 @@ import { OPENAI_TTL_FOR_MODE } from "../../constants/openai.ts";
 import type { CacheProfile, RewriteContext } from "../../models/profile.ts";
 import { isRecord } from "../../utils/is-record.ts";
 import { lastTextPart, leadingPrefixEnd } from "../openai-cache-ttl.ts";
-import { firstInputItem, lastInputText, lastInputTextPart, stripBreakpoints } from "../openai-responses-cache.ts";
+import { stripBreakpoints } from "../openai-breakpoints.ts";
+import { firstInputItem, lastInputText, lastInputTextPart } from "../openai-responses-cache.ts";
 
 type Rec = Record<string, unknown>;
 

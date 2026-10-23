@@ -1,4 +1,4 @@
-import type { CacheProfileId, ProfilePattern } from "../models/cache.ts";
+import { isCacheProfileId, type ProfilePattern } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 
 const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
@@ -24,10 +24,6 @@ function compile(source: string): RegExp | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isCacheProfileId(value: unknown): value is CacheProfileId {
-  return value === "anthropic" || value === "openai" || value === "implicit";
 }
 
 /** Compiles the `cacheProfiles` option; empty patterns, invalid regexes and unknown profile values are dropped. */

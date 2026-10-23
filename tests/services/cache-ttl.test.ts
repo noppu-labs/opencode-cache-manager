@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
-import { mergeBetaHeader, resolveActiveMode, rewriteAnthropicCacheTtl, transformHttpRequest, ttlForMode } from "../../src/services/cache-ttl.ts";
+import { betaTokens, mergeBetaHeader, resolveActiveMode, rewriteAnthropicCacheTtl, transformHttpRequest, ttlForMode } from "../../src/services/cache-ttl.ts";
 import { hasOneHourCacheControl } from "../../src/services/cache-control.ts";
 import type { CacheProfile } from "../../src/models/profile.ts";
 import { implicitProfile } from "../../src/services/profiles/implicit.ts";
@@ -32,6 +32,18 @@ describe("resolveActiveMode", () => {
 
   test("uses the fallback when the header is absent", () => {
     expect(resolveActiveMode(makeRequest("{}"), "1h")).toBe("1h");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// betaTokens
+// ---------------------------------------------------------------------------
+
+describe("betaTokens", () => {
+  test("splits, trims and drops empty tokens", () => {
+    expect(betaTokens(null)).toEqual([]);
+    expect(betaTokens("")).toEqual([]);
+    expect(betaTokens(" a, ,b ,,c")).toEqual(["a", "b", "c"]);
   });
 });
 

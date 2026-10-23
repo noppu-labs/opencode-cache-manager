@@ -5,7 +5,7 @@ import { implicitProfile } from "./implicit.ts";
 import { openaiProfile } from "./openai.ts";
 
 /** Every cache profile by ID. */
-export const PROFILES: Record<CacheProfileId, CacheProfile> = {
+const PROFILES: Record<CacheProfileId, CacheProfile> = {
   anthropic: anthropicProfile,
   openai: openaiProfile,
   implicit: implicitProfile,

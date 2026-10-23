@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isCacheTtlMode } from "../../src/models/cache.ts";
+import { isCacheProfileId, isCacheTtlMode } from "../../src/models/cache.ts";
 
 // ---------------------------------------------------------------------------
 // isCacheTtlMode
@@ -20,5 +20,15 @@ describe("isCacheTtlMode", () => {
     expect(isCacheTtlMode(null)).toBe(false);
     expect(isCacheTtlMode(5)).toBe(false);
     expect(isCacheTtlMode({ text: "1h" })).toBe(false);
+  });
+});
+
+describe("isCacheProfileId", () => {
+  test("accepts the three profile IDs", () => {
+    for (const id of ["anthropic", "openai", "implicit"]) expect(isCacheProfileId(id)).toBe(true);
+  });
+
+  test("rejects anything else, including the 0.4 strategy name", () => {
+    for (const value of ["explicit", "", "OpenAI", undefined, null, 1]) expect(isCacheProfileId(value)).toBe(false);
   });
 });

@@ -61,7 +61,8 @@ src/
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)
 │   ├── cache-control.ts       # cache_control block helpers shared by both wires
 │   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
-│   ├── openai-responses-cache.ts # openai-responses input walking and breakpoint helpers
+│   ├── openai-breakpoints.ts  # stripBreakpoints: prompt_cache_breakpoint removal on both OpenAI wires
+│   ├── openai-responses-cache.ts # openai-responses input walking: breakpoint targets on messages and tool output
 │   ├── profiles/              # one CacheProfile per provider: anthropic.ts, openai.ts, implicit.ts; index.ts maps profile ID -> profile
 │   ├── classify.ts            # wire + cache profile (anthropic/openai/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
 │   ├── model-patterns.ts      # matchProfilePatterns: first pattern matching <providerID>/<id> gives the profile

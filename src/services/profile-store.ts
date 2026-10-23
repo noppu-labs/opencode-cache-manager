@@ -1,5 +1,5 @@
 import { ANTHROPIC_UPSTREAM, CLAUDE_MODEL, OPENAI_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheProfileId, ModelRef, OpenAiIdentity } from "../models/cache.ts";
+import { isCacheProfileId, type CacheProfileId, type ModelRef, type OpenAiIdentity } from "../models/cache.ts";
 import type { KV } from "../models/storage.ts";
 import { isRecord } from "../utils/is-record.ts";
 
@@ -23,7 +23,7 @@ export class ProfileStore {
     if (!isRecord(stored)) return;
     for (const [name, profile] of Object.entries(stored)) {
       if (profile === "explicit") this.learned.set(name, "anthropic");
-      else if (profile === "anthropic" || profile === "openai" || profile === "implicit") this.learned.set(name, profile);
+      else if (isCacheProfileId(profile)) this.learned.set(name, profile);
     }
   }
 

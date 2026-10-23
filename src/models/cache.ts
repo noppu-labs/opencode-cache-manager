@@ -39,6 +39,11 @@ export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
  */
 export type CacheProfileId = "anthropic" | "openai" | "implicit";
 
+/** Returns true when `value` is a known cache profile ID. */
+export function isCacheProfileId(value: unknown): value is CacheProfileId {
+  return value === "anthropic" || value === "openai" || value === "implicit";
+}
+
 /** Identifies an OpenCode model: provider plus model ID. */
 export interface ModelRef {
   providerID: string;

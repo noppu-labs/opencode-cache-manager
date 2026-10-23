@@ -5,7 +5,7 @@ import type { CacheProfile } from "../models/profile.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
 
-/** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
+/** Anthropic TTL for a mode: the TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
 export function ttlForMode(mode: CacheTtlMode): Ttl {
   return mode === "1h" ? "1h" : "5m";
 }
@@ -16,6 +16,14 @@ export function resolveActiveMode(request: Request, fallback: CacheTtlMode): Cac
   return isCacheTtlMode(normalized) ? normalized : fallback;
 }
 
+/** The non-empty, trimmed tokens of a comma-separated `anthropic-beta` header value. */
+export function betaTokens(value: string | null): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
 /**
  * Merges the extended-cache beta flag into an `anthropic-beta` header value,
  * preserving the existing order and never introducing duplicates.
@@ -24,10 +32,7 @@ export function mergeBetaHeader(
   existing: string | null,
   includeExtendedCacheBeta: boolean,
 ): string | null {
-  const tokens = (existing ?? "")
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const tokens = betaTokens(existing);
 
   if (includeExtendedCacheBeta && !tokens.includes(EXTENDED_CACHE_BETA)) {
     tokens.push(EXTENDED_CACHE_BETA);
@@ -120,9 +125,9 @@ function applyProfileHeaders(headers: Headers, extra: Record<string, string>): v
       headers.set(name, value);
       continue;
     }
-    const tokens = (mergeBetaHeader(headers.get(BETA_HEADER), false) ?? "").split(",").filter((t) => t !== "");
-    for (const token of value.split(",").map((t) => t.trim())) {
-      if (token !== "" && !tokens.includes(token)) tokens.push(token);
+    const tokens = betaTokens(headers.get(BETA_HEADER));
+    for (const token of betaTokens(value)) {
+      if (!tokens.includes(token)) tokens.push(token);
     }
     if (tokens.length > 0) headers.set(BETA_HEADER, tokens.join(","));
   }
