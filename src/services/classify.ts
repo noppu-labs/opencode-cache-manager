@@ -1,6 +1,7 @@
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
 import type { CacheStrategy, ModelRef, Wire } from "../models/cache.ts";
 import { matchModelPatterns, type ModelPattern } from "./model-patterns.ts";
+import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 import { isAnthropicMessagesRequest } from "./usage.ts";
 
@@ -26,4 +27,25 @@ export function classifyRequest(
   const strategy =
     matchModelPatterns(deps.patterns, ref) ?? (builtin ? "explicit" : undefined) ?? deps.learned?.(ref) ?? "implicit";
   return { wire: "openai-chat", strategy };
+}
+
+/**
+ * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
+ * body carries the upstream ID. The body is read from a clone, and only when the first pass is
+ * `implicit` on `openai-chat`, so a pattern, a Claude ID or a learned value never costs a parse.
+ */
+export async function classifyRequestWithBody(
+  request: Request,
+  ref: ModelRef,
+  deps: ClassifyDeps,
+): Promise<{ wire: Wire; strategy: CacheStrategy } | undefined> {
+  const first = classifyRequest(request, ref, deps);
+  if (first?.wire !== "openai-chat" || first.strategy !== "implicit") return first;
+  try {
+    const body: unknown = await request.clone().json();
+    const model = isRecord(body) && typeof body.model === "string" ? body.model : undefined;
+    return model === undefined ? first : classifyRequest(request, ref, deps, model);
+  } catch {
+    return first;
+  }
 }

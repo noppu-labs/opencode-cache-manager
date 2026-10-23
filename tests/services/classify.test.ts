@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyRequest } from "../../src/services/classify.ts";
+import { classifyRequest, classifyRequestWithBody } from "../../src/services/classify.ts";
 import { parseModelPatterns } from "../../src/services/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
@@ -73,5 +73,39 @@ describe("classifyRequest", () => {
   test("a bad URL is not classified", () => {
     const request = { method: "POST", url: "not a url" } as Request;
     expect(classifyRequest(request, { providerID: "p", id: "m" }, noDeps)).toBeUndefined();
+  });
+});
+
+describe("classifyRequestWithBody", () => {
+  const ref = { providerID: "omniroute", id: "auto/opus-5" };
+  const withBody = (model: unknown) =>
+    new Request("https://omni.example/v1/chat/completions", { method: "POST", body: JSON.stringify({ model }) });
+
+  test("reads body.model when the model ID alone is implicit", async () => {
+    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, noDeps))?.strategy).toBe("explicit");
+  });
+
+  test("leaves the request body readable", async () => {
+    const request = withBody("anthropic/claude-opus-5");
+    await classifyRequestWithBody(request, ref, noDeps);
+    expect(await request.json()).toEqual({ model: "anthropic/claude-opus-5" });
+  });
+
+  test("a non-Claude body model, a missing model and an unparseable body stay implicit", async () => {
+    expect((await classifyRequestWithBody(withBody("deepseek/v4"), ref, noDeps))?.strategy).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody(7), ref, noDeps))?.strategy).toBe("implicit");
+    const broken = new Request("https://omni.example/v1/chat/completions", { method: "POST", body: "{" });
+    expect((await classifyRequestWithBody(broken, ref, noDeps))?.strategy).toBe("implicit");
+  });
+
+  test("does not read the body for anthropic-messages or unclassified requests", async () => {
+    const messages = new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
+    expect((await classifyRequestWithBody(messages, ref, noDeps))?.wire).toBe("anthropic-messages");
+    expect(await classifyRequestWithBody(new Request("https://x.test/v1/embeddings", { method: "POST" }), ref, noDeps)).toBeUndefined();
+  });
+
+  test("a pattern still outranks the body model", async () => {
+    const deps = { patterns: parseModelPatterns(["!opus"]) };
+    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, deps))?.strategy).toBe("implicit");
   });
 });
