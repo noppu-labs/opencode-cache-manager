@@ -390,7 +390,7 @@ describe("transformHttpRequest on the openai-chat wire", () => {
   });
 
   test("inject is skipped when the option is absent or false", async () => {
-    for (const opts of [transformOpts(transformOpts({ wire: "openai-chat" })), transformOpts(transformOpts({ wire: "openai-chat", inject: false }))]) {
+    for (const opts of [transformOpts({ wire: "openai-chat" }), transformOpts({ wire: "openai-chat", inject: false })]) {
       const out = await transformHttpRequest(chatRequest(plainBody()), "1h", opts);
       expect(hasCacheControl(await bodyOf(out))).toBe(false);
       expect(out.headers.get("anthropic-beta")).toBeNull();
