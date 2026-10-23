@@ -23,7 +23,7 @@ export class StrategyStore {
     if (!isRecord(stored)) return;
     for (const [name, strategy] of Object.entries(stored)) {
       if (strategy === "explicit") this.learned.set(name, "anthropic");
-      else if (strategy === "anthropic" || strategy === "implicit") this.learned.set(name, strategy);
+      else if (strategy === "anthropic" || strategy === "openai" || strategy === "implicit") this.learned.set(name, strategy);
     }
   }
 

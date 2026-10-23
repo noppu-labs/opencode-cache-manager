@@ -85,6 +85,12 @@ describe("StrategyStore", () => {
     expect((await loaded(kv)).get({ providerID: "a", id: "b" })).toBe("anthropic");
   });
 
+  test("a stored openai loads as openai", async () => {
+    const { kv, data } = memoryKv();
+    data.set("learned-models", { "a/b": "openai" });
+    expect((await loaded(kv)).get({ providerID: "a", id: "b" })).toBe("openai");
+  });
+
   test("garbage in storage is ignored on load", async () => {
     const { kv, data } = memoryKv();
     data.set("learned-models", { "a/b": "anthropic", "c/d": "bogus", "e/f": 3 });
