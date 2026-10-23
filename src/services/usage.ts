@@ -134,11 +134,17 @@ export function isAnthropicMessagesRequest(request: Request): boolean {
   return isPostToPathSuffix(request, "/messages");
 }
 
+interface ObservedResponse {
+  usage?: CacheUsage;
+  stopReason?: string;
+  identity?: OpenAiIdentity;
+}
+
 /**
  * Tees the response body so usage, the stop reason and (on `openai-chat`) the
- * resolved model and provider can be read in the background while the caller receives an unmodified response. Cancelling the
- * caller's body also stops the observer, so the source is cancelled. The
- * promises never reject.
+ * resolved model and provider can be read in the background while the caller
+ * receives an unmodified response. Cancelling the caller's body also stops the
+ * observer, so the source is cancelled. The promises never reject.
  */
 export function observeResponseUsage(
   response: Response,
@@ -183,7 +189,7 @@ export function observeResponseUsage(
   });
 
   const contentType = response.headers.get("content-type") ?? "";
-  const parsed = (async (): Promise<{ usage?: CacheUsage; stopReason?: string; identity?: OpenAiIdentity }> => {
+  const parsed = (async (): Promise<ObservedResponse> => {
     try {
       const decoder = new TextDecoder();
       let text = "";

@@ -14,6 +14,8 @@ export interface OpenAiIdentity {
  */
 function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
   if (!isRecord(raw)) return undefined;
+  const promptTokens = num(raw.prompt_tokens);
+  if (promptTokens === undefined) return undefined;
   const details = isRecord(raw.prompt_tokens_details) ? raw.prompt_tokens_details : {};
   const read =
     num(details.cached_tokens) ??
@@ -24,7 +26,7 @@ function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
   const write = num(details.cache_write_tokens) ?? num(raw.cache_creation_input_tokens) ?? 0;
   const writeInPrompt = details.cache_creation_in_prompt === false ? 0 : write;
   return {
-    inputTokens: Math.max(0, (num(raw.prompt_tokens) ?? 0) - read - writeInPrompt),
+    inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
     cacheReadTokens: read,
     cacheWriteTokens: write,
     write5mTokens: undefined,

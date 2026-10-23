@@ -87,6 +87,7 @@ describe("parseOpenAiUsageFromJson", () => {
   test("returns undefined without a usage object", () => {
     expect(parseOpenAiUsageFromJson({})).toBeUndefined();
     expect(parseOpenAiUsageFromJson({ usage: null })).toBeUndefined();
+    expect(parseOpenAiUsageFromJson({ usage: {} })).toBeUndefined();
     expect(parseOpenAiUsageFromJson(null)).toBeUndefined();
   });
 });
@@ -109,6 +110,12 @@ describe("parseOpenAiUsageFromSse", () => {
       `data: {"choices":[{"delta":{"content":"x"}}]}\n\n` +
       `data: [DONE]\n\n`;
     expect(parseOpenAiUsageFromSse(text)).toMatchObject({ inputTokens: 83, cacheReadTokens: 10112 });
+  });
+
+  test("a usage chunk without prompt_tokens does not overwrite a valid one", () => {
+    const text =
+      `data: ${JSON.stringify({ usage: openaiUsage.lunaRead })}\n\n` + `data: ${JSON.stringify({ usage: {} })}\n\n`;
+    expect(parseOpenAiUsageFromSse(text)).toMatchObject({ inputTokens: 3, cacheReadTokens: 8884 });
   });
 
   test("returns undefined when no chunk carries usage", () => {
