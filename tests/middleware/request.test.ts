@@ -2,38 +2,50 @@ import { describe, expect, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
 import { PING_PROMPT } from "../../src/constants/keepalive.ts";
 import { createRequestHook, type HttpRequestEvent } from "../../src/middleware/request.ts";
+import type { PluginOptions } from "../../src/config/settings.ts";
+import type { CacheStrategy, ModelRef } from "../../src/models/cache.ts";
 import type { SkipReason } from "../../src/models/keepalive.ts";
 import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
+import { parseModelPatterns } from "../../src/services/model-patterns.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
 import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
-function harness() {
+function harness(config: { options?: Partial<PluginOptions>; strategies?: Map<string, CacheStrategy> } = {}) {
+  const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [], ...config.options };
+  const learned = config.strategies ?? new Map<string, CacheStrategy>();
+  const strategies = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
   const { kv } = memoryKv();
   const store = new SettingsStore(kv, {});
   const pings = new PingTracker();
   const primaryMessages = new Map<string, unknown[]>();
-  const sent: Array<{ sessionID: string; info: { requestedTtl: string; isPing: boolean } }> = [];
+  const sent: Array<{ sessionID: string; info: { requestedTtl: string | null; isPing: boolean } }> = [];
   const fake = { skipReason: null as SkipReason | null, failRequestSent: false, failSnapshot: false };
   const engine = {
     snapshot: () => {
       if (fake.failSnapshot) throw new Error("snapshot failed");
       return { skipReason: fake.skipReason };
     },
-    requestSent: (sessionID: string, info: { requestedTtl: string; isPing: boolean }) => {
+    requestSent: (sessionID: string, info: { requestedTtl: string | null; isPing: boolean }) => {
       sent.push({ sessionID, info });
       if (fake.failRequestSent) throw new Error("engine down");
     },
   } as unknown as KeepaliveEngine;
-  const hook = createRequestHook({ store, engine, pings, primaryMessages });
+  const hook = createRequestHook({ store, engine, pings, options, strategies, primaryMessages });
 
   async function dispatch(
     request: Request,
-    overrides: Partial<Pick<HttpRequestEvent, "sessionID" | "kind">> & { providerID?: string } = {},
+    overrides: Partial<Pick<HttpRequestEvent, "sessionID" | "kind">> & { providerID?: string; modelID?: string } = {},
   ) {
-    const { providerID = "anthropic", ...rest } = overrides;
-    const evt: HttpRequestEvent = { sessionID: "ses_a", kind: "primary", model: { providerID }, request, ...rest };
+    const { providerID = "anthropic", modelID = "claude-sonnet-5-5", ...rest } = overrides;
+    const evt: HttpRequestEvent = {
+      sessionID: "ses_a",
+      kind: "primary",
+      model: { providerID, id: modelID },
+      request,
+      ...rest,
+    };
     await hook(evt);
     return evt;
   }
@@ -156,12 +168,14 @@ describe("createRequestHook TTL rewrite", () => {
       store,
       engine: { snapshot: () => ({ skipReason: null }), requestSent: () => {} } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
+      options: { openaiCompatible: true, explicitCacheModels: [] },
+      strategies: { get: () => undefined },
       primaryMessages: new Map(),
     });
     const evt: HttpRequestEvent = {
       sessionID: "ses_never_seen",
       kind: "primary",
-      model: { providerID: "anthropic" },
+      model: { providerID: "anthropic", id: "claude-sonnet-5-5" },
       request: body(),
     };
     await hook(evt);
@@ -174,7 +188,7 @@ describe("createRequestHook TTL rewrite", () => {
 describe("createRequestHook engine reporting", () => {
   test("a non-Anthropic provider and URL are neither rewritten nor reported", async () => {
     const h = harness();
-    const request = new Request("https://api.openai.com/v1/chat/completions", {
+    const request = new Request("https://api.openai.com/v1/embeddings", {
       method: "POST",
       body: JSON.stringify(sampleBody()),
     });
@@ -535,5 +549,124 @@ describe("createRequestHook ping alignment", () => {
     await h.dispatch(makeRequest("not json"));
     expect(h.primaryMessages.has("ses_a")).toBe(false);
     expect(h.sent).toHaveLength(1);
+  });
+});
+
+describe("createRequestHook on openai-chat", () => {
+  const CHAT_URL = "https://omni.example/v1/chat/completions";
+  const chatBody = (model: string, extra: Record<string, unknown> = {}) => ({
+    model,
+    tools: [{ type: "function", function: { name: "tool_a" } }],
+    messages: [
+      { role: "system", content: "You are helpful." },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "again" },
+    ],
+    ...extra,
+  });
+  const chatRequest = (value: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    new Request(CHAT_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(value),
+    });
+  const claude = { providerID: "omniroute", modelID: "auto/claude-opus-5-5" };
+  const deepseek = { providerID: "omniroute", modelID: "deepseek/deepseek-v4.1-flash" };
+
+  test("a Claude model without breakpoints is injected, with 1h on the tools in hybrid", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "hybrid" });
+    const evt = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), claude);
+    const out = (await parsedBodyOf(evt.request)) as { tools: any[] };
+    const controls = collectCacheControls(out);
+    expect(controls).toHaveLength(3);
+    expect(out.tools[0].cache_control.ttl).toBe("1h");
+    expect(evt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "5m", isPing: false } }]);
+  });
+
+  test("a non-Claude model keeps its body byte for byte and reports a null TTL", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const raw = JSON.stringify(chatBody("deepseek/deepseek-v4.1-flash"));
+    const request = new Request(CHAT_URL, { method: "POST", body: raw });
+    const evt = await h.dispatch(request, deepseek);
+    expect(evt.request).toBe(request);
+    expect(await evt.request.text()).toBe(raw);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false } }]);
+    expect(h.primaryMessages.size).toBe(0);
+  });
+
+  test("an implicit request carrying the sentinel is stripped but not injected", async () => {
+    const h = harness();
+    const evt = await h.dispatch(chatRequest(chatBody("deepseek/v4"), { [SENTINEL_HEADER]: "1h" }), deepseek);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(collectCacheControls(await parsedBodyOf(evt.request))).toHaveLength(0);
+    expect(h.sent[0]?.info.requestedTtl).toBeNull();
+  });
+
+  test("the built-in check also reads body.model for an alias", async () => {
+    const h = harness();
+    const evt = await h.dispatch(chatRequest(chatBody("anthropic/claude-opus-5")), {
+      providerID: "omniroute",
+      modelID: "auto/opus-5",
+    });
+    expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
+  });
+
+  test("a learned strategy makes an alias explicit, and a user pattern can force it back", async () => {
+    const alias = { providerID: "omniroute", modelID: "auto/opus-5" };
+    const learned = new Map<string, CacheStrategy>([["omniroute/auto/opus-5", "explicit"]]);
+
+    const h = harness({ strategies: learned });
+    const evt = await h.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
+    expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
+
+    const forced = harness({ strategies: learned, options: { explicitCacheModels: parseModelPatterns(["!opus"]) } });
+    const untouched = await forced.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
+    expect(collectCacheControls(await parsedBodyOf(untouched.request))).toHaveLength(0);
+  });
+
+  test("a user pattern makes an unknown model explicit", async () => {
+    const h = harness({ options: { explicitCacheModels: parseModelPatterns(["omniroute/mystery"]) } });
+    const evt = await h.dispatch(chatRequest(chatBody("mystery-1")), { providerID: "omniroute", modelID: "mystery-1" });
+    expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
+  });
+
+  test("a ping is aligned with the primary request and gets no injected tail", async () => {
+    const h = harness();
+    const primary = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), claude);
+    const primaryMessages = ((await parsedBodyOf(primary.request)) as any).messages as any[];
+    expect(h.primaryMessages.get("ses_a")).toEqual(primaryMessages);
+
+    const ping = chatRequest({
+      ...chatBody("claude-opus-5-5"),
+      messages: [...chatBody("claude-opus-5-5").messages.slice(0, 3), { role: "user", content: PING_PROMPT }],
+    });
+    const evt = await h.duringPing("ses_a", () => h.dispatch(ping, { ...claude, kind: "generate" }));
+    const messages = ((await parsedBodyOf(evt.request)) as any).messages as any[];
+    expect(messages.slice(0, 3)).toEqual(primaryMessages.slice(0, 3));
+    expect(messages[3]).toEqual({ role: "user", content: PING_PROMPT });
+    expect(h.sent.at(-1)?.info.isPing).toBe(true);
+  });
+
+  test("a title request is not injected", async () => {
+    const h = harness();
+    const evt = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), { ...claude, kind: "title" });
+    expect(collectCacheControls(await parsedBodyOf(evt.request))).toHaveLength(0);
+  });
+
+  test("with the option off the request is skipped, or only sentinel-stripped", async () => {
+    const h = harness({ options: { openaiCompatible: false } });
+    const request = chatRequest(chatBody("claude-opus-5-5"));
+    const evt = await h.dispatch(request, claude);
+    expect(evt.request).toBe(request);
+    expect(h.sent).toHaveLength(0);
+
+    const sentinel = await h.dispatch(chatRequest(chatBody("claude-opus-5-5"), { [SENTINEL_HEADER]: "1h" }), claude);
+    expect(sentinel.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(collectCacheControls(await parsedBodyOf(sentinel.request))).toHaveLength(0);
+    expect(h.sent).toHaveLength(0);
   });
 });

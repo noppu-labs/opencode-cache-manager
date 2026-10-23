@@ -3,7 +3,7 @@ import plugin from "../src/server.ts";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../src/constants/anthropic.ts";
 import { PING_PROMPT } from "../src/constants/keepalive.ts";
 import { CacheTtlRpc } from "../src/rpc.ts";
-import { makeRequest, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
+import { collectCacheControls, makeRequest, openaiSse, openaiUsage, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Plugin.setup(ctx) integration
@@ -205,6 +205,8 @@ describe("keepalive wiring", () => {
     sessionID?: string;
     kind?: string;
     providerID?: string;
+    modelID?: string;
+    contentType?: string;
     url?: string;
     usage?: Record<string, number | Record<string, number>>;
     status?: number;
@@ -216,7 +218,7 @@ describe("keepalive wiring", () => {
   async function roundTrip(mock: MockCtx, turn: Turn = {}) {
     const sessionID = turn.sessionID ?? "ses_a";
     const kind = turn.kind ?? "primary";
-    const model = { providerID: turn.providerID ?? "anthropic" };
+    const model = { providerID: turn.providerID ?? "anthropic", id: turn.modelID ?? "claude-sonnet-5-5" };
     const request = new Request(turn.url ?? "https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -232,7 +234,7 @@ describe("keepalive wiring", () => {
       request: requestEvt.request,
       response: new Response(original, {
         status: turn.status ?? 200,
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": turn.contentType ?? "application/json" },
       }),
     } as { response: Response } & Record<string, unknown>;
     await mock.responseHook()(responseEvt);
@@ -345,6 +347,134 @@ describe("keepalive wiring", () => {
     release();
     await flush();
     expect(lastSnapshot(mock, "ses_a")).toMatchObject({ lastPing: "hit" });
+  });
+
+  describe("openai-chat", () => {
+    const CHAT_URL = "https://omni.example/v1/chat/completions";
+    const WRITE_CHAT = { ...openaiUsage.lunaWrite, prompt_tokens: 60_000, cache_creation_input_tokens: 59_000 };
+    const READ_CHAT = {
+      ...openaiUsage.lunaRead,
+      prompt_tokens: 60_100,
+      prompt_tokens_details: { cached_tokens: 59_000 },
+    };
+    const chatMessages = (last: string) => [
+      { role: "system", content: "You are helpful." },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: last },
+    ];
+    const chatBody = (model: string, last = "again") => ({
+      model,
+      tools: [{ type: "function", function: { name: "tool_a" } }],
+      messages: chatMessages(last),
+    });
+    const chatTurn = (modelID: string, turn: Turn & { sse?: Parameters<typeof openaiSse> } = {}): Turn => ({
+      providerID: "omniroute",
+      modelID,
+      url: CHAT_URL,
+      contentType: "text/event-stream",
+      body: chatBody(modelID),
+      responseText: openaiSse(...(turn.sse ?? [WRITE_CHAT])),
+      ...turn,
+    });
+
+    test("a Claude model is injected, pinged with an aligned request and the ping is a hit", async () => {
+      const mock = await start({ defaultMode: "1h" });
+      const pings: Array<Record<string, any>> = [];
+      mock.generate.mockImplementation(async (input: any) => {
+        const ping = await roundTrip(mock, {
+          ...chatTurn("claude-opus-5-5", { sse: [READ_CHAT, { model: "claude-opus-5-5", provider: "Anthropic" }] }),
+          sessionID: input.sessionID,
+          kind: "generate",
+          body: chatBody("claude-opus-5-5", PING_PROMPT),
+        });
+        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
+        return {};
+      });
+
+      const first = await roundTrip(mock, chatTurn("claude-opus-5-5"));
+      await flush();
+      const primary = (await parsedBodyOf(first.requestEvt.request)) as Record<string, any>;
+      expect(collectCacheControls(primary).length).toBeGreaterThan(0);
+      expect(first.requestEvt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(lastSnapshot(mock)).toMatchObject({
+        ttl: "1h",
+        ttlSource: "requested",
+        contextTokens: 60_000,
+        skipReason: null,
+        nextPingAt: T0 + FIFTY_MIN,
+      });
+
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(pings[0]?.messages.slice(0, 3)).toEqual(primary.messages.slice(0, 3));
+      expect(pings[0]?.messages[3]).toEqual({ role: "user", content: PING_PROMPT });
+      expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
+    });
+
+    test("a DeepSeek session is observed but never pings", async () => {
+      const mock = await start({ defaultMode: "1h" });
+      const model = "deepseek/deepseek-v4.1-flash";
+      const turn = chatTurn(model, { sse: [{ ...openaiUsage.deepseekRead, prompt_tokens: 60_000 }, { model, provider: "DeepSeek" }] });
+      const raw = JSON.stringify(turn.body);
+      const { requestEvt } = await roundTrip(mock, turn);
+      await flush();
+
+      expect(await requestEvt.request.text()).toBe(raw);
+      expect(lastSnapshot(mock)).toMatchObject({
+        skipReason: "implicit",
+        nextPingAt: null,
+        lastCache: { read: 10_112, total: 60_000 },
+      });
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(mock.generate).not.toHaveBeenCalled();
+    });
+
+    test("an alias is unmanaged on turn 1 and injected on turn 2 once learned", async () => {
+      const mock = await start({ defaultMode: "1h" });
+      const alias = "auto/opus-5";
+      const learnedResponse: Parameters<typeof openaiSse> = [WRITE_CHAT, { model: "claude-opus-5-5", provider: "Anthropic" }];
+
+      const first = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
+      await flush();
+      expect(collectCacheControls(await parsedBodyOf(first.requestEvt.request))).toHaveLength(0);
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit" });
+      expect(mock.store.get("learned-models")).toEqual({ "omniroute/auto/opus-5": "explicit" });
+
+      const second = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
+      await flush();
+      expect(collectCacheControls(await parsedBodyOf(second.requestEvt.request)).length).toBeGreaterThan(0);
+      expect(lastSnapshot(mock)).toMatchObject({ ttl: "1h", skipReason: null });
+    });
+
+    test("a learned strategy survives a restart", async () => {
+      const before = await start({ defaultMode: "1h" });
+      const learned: Parameters<typeof openaiSse> = [WRITE_CHAT, { model: "claude-opus-5-5", provider: "Anthropic" }];
+      await roundTrip(before, chatTurn("auto/opus-5", { sse: learned }));
+      await flush();
+
+      const after = createMockCtx({ defaultMode: "1h" });
+      before.store.forEach((value, key) => after.store.set(key, value));
+      after.cleanup = await (plugin as any).setup(after.ctx);
+      open.push(after);
+
+      const { requestEvt } = await roundTrip(after, chatTurn("auto/opus-5"));
+      expect(collectCacheControls(await parsedBodyOf(requestEvt.request)).length).toBeGreaterThan(0);
+    });
+
+    test("openaiCompatible: false leaves chat completions alone", async () => {
+      const mock = await start({ openaiCompatible: false });
+      const turn = chatTurn("claude-opus-5-5");
+      const raw = JSON.stringify(turn.body);
+      const { requestEvt } = await roundTrip(mock, turn);
+      await flush();
+      expect(await requestEvt.request.text()).toBe(raw);
+      expect(snapshots(mock)).toHaveLength(0);
+      expect(mock.store.has("learned-models")).toBe(false);
+    });
   });
 
   test("an Anthropic-shaped URL on an unknown provider is still observed", async () => {
