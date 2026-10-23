@@ -1,5 +1,6 @@
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
-import { isCacheTtlMode, type CacheTtlMode, type Ttl } from "../models/cache.ts";
+import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from "../models/cache.ts";
+import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "./openai-cache-ttl.ts";
 
 /** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
 export function ttlForMode(mode: CacheTtlMode): Ttl {
@@ -33,7 +34,7 @@ export function mergeBetaHeader(
 }
 
 /** Applies a TTL (or removes it, when `undefined`) to a single cache_control block. */
-function applyTtlToBlock(block: unknown, ttl: "1h" | undefined): boolean {
+export function applyTtlToBlock(block: unknown, ttl: "1h" | undefined): boolean {
   if (!block || typeof block !== "object") return false;
   const rec = block as Record<string, unknown>;
   const cacheControl = rec.cache_control;
@@ -155,11 +156,14 @@ export function rewriteAnthropicCacheTtl(
 /**
  * Transforms an outbound Anthropic HTTP request: rewrites cache_control TTLs,
  * strips the internal `x-cache-ttl` sentinel, and adds the extended-cache beta
- * flag when 1h breakpoints are emitted.
+ * flag when 1h breakpoints are emitted. On the `openai-chat` wire it can also
+ * inject breakpoints first (`opts.inject`) and only re-serializes the body when
+ * something changed.
  */
 export async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
+  opts: { wire?: Wire; inject?: boolean } = {},
 ): Promise<Request> {
   const hadSentinel = request.headers.has(SENTINEL_HEADER);
   const activeMode = resolveActiveMode(request, fallbackMode);
@@ -192,6 +196,23 @@ export async function transformHttpRequest(
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
     return new Request(request.url, { method: request.method, headers, body: buffer, signal: request.signal });
+  }
+
+  if (opts.wire === "openai-chat") {
+    const chat = parsed as Record<string, unknown>;
+    const injected = opts.inject === true && injectOpenAiBreakpoints(chat);
+    const rewritten = rewriteOpenAiCacheTtl(chat, activeMode);
+    if (hasOneHourCacheControl(chat)) {
+      const merged = mergeBetaHeader(headers.get("anthropic-beta"), true);
+      if (merged !== null) headers.set("anthropic-beta", merged);
+    }
+    if (!hadSentinel && !injected && !rewritten) return request;
+    return new Request(request.url, {
+      method: request.method,
+      headers,
+      body: JSON.stringify(chat),
+      signal: request.signal,
+    });
   }
 
   rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
