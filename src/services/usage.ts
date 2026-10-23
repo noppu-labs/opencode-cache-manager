@@ -1,7 +1,17 @@
 import { ANTHROPIC_PROVIDER_IDS } from "../constants/anthropic.ts";
-import type { CacheUsage, Ttl } from "../models/cache.ts";
+import type { CacheUsage, Ttl, Wire } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
+import { num } from "../utils/num.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
+import {
+  type OpenAiIdentity,
+  parseOpenAiFinishReasonFromJson,
+  parseOpenAiFinishReasonFromSse,
+  parseOpenAiIdentityFromJson,
+  parseOpenAiIdentityFromSse,
+  parseOpenAiUsageFromJson,
+  parseOpenAiUsageFromSse,
+} from "./usage-openai.ts";
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -24,10 +34,6 @@ export function grantedTtl(u: CacheUsage): Ttl | undefined {
 }
 
 type PartialUsage = Partial<CacheUsage>;
-
-function num(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
 
 /** Reads only the fields actually present so later events can override selectively. */
 function readUsage(raw: unknown): PartialUsage | undefined {
@@ -129,18 +135,27 @@ export function isAnthropicMessagesRequest(request: Request): boolean {
 }
 
 /**
- * Tees the response body so usage and the stop reason can be read in the
- * background while the caller receives an unmodified response. Cancelling the
+ * Tees the response body so usage, the stop reason and (on `openai-chat`) the
+ * resolved model and provider can be read in the background while the caller receives an unmodified response. Cancelling the
  * caller's body also stops the observer, so the source is cancelled. The
  * promises never reject.
  */
-export function observeResponseUsage(response: Response): {
+export function observeResponseUsage(
+  response: Response,
+  wire: Wire = "anthropic-messages",
+): {
   response: Response;
   usage: Promise<CacheUsage | undefined>;
   stopReason: Promise<string | undefined>;
+  identity: Promise<OpenAiIdentity | undefined>;
 } {
   if (!response.body) {
-    return { response, usage: Promise.resolve(undefined), stopReason: Promise.resolve(undefined) };
+    return {
+      response,
+      usage: Promise.resolve(undefined),
+      stopReason: Promise.resolve(undefined),
+      identity: Promise.resolve(undefined),
+    };
   }
 
   const [callerBranch, observerBranch] = response.body.tee();
@@ -168,7 +183,7 @@ export function observeResponseUsage(response: Response): {
   });
 
   const contentType = response.headers.get("content-type") ?? "";
-  const parsed = (async (): Promise<{ usage?: CacheUsage; stopReason?: string }> => {
+  const parsed = (async (): Promise<{ usage?: CacheUsage; stopReason?: string; identity?: OpenAiIdentity }> => {
     try {
       const decoder = new TextDecoder();
       let text = "";
@@ -179,9 +194,23 @@ export function observeResponseUsage(response: Response): {
       }
       text += decoder.decode();
       if (cancelled || !response.ok) return {};
-      if (contentType.includes("text/event-stream")) {
-        return { usage: parseUsageFromSse(text), stopReason: parseStopReasonFromSse(text) };
+      const streamed = contentType.includes("text/event-stream");
+      if (wire === "openai-chat") {
+        if (streamed) {
+          return {
+            usage: parseOpenAiUsageFromSse(text),
+            stopReason: parseOpenAiFinishReasonFromSse(text),
+            identity: parseOpenAiIdentityFromSse(text),
+          };
+        }
+        const body: unknown = JSON.parse(text);
+        return {
+          usage: parseOpenAiUsageFromJson(body),
+          stopReason: parseOpenAiFinishReasonFromJson(body),
+          identity: parseOpenAiIdentityFromJson(body),
+        };
       }
+      if (streamed) return { usage: parseUsageFromSse(text), stopReason: parseStopReasonFromSse(text) };
       const body: unknown = JSON.parse(text);
       return { usage: parseUsageFromJson(body), stopReason: parseStopReasonFromJson(body) };
     } catch {
@@ -193,5 +222,6 @@ export function observeResponseUsage(response: Response): {
     response: passthrough,
     usage: parsed.then((p) => p.usage),
     stopReason: parsed.then((p) => p.stopReason),
+    identity: parsed.then((p) => p.identity),
   };
 }

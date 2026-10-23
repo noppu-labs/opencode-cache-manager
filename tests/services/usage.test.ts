@@ -11,6 +11,7 @@ import {
   parseUsageFromSse,
 } from "../../src/services/usage.ts";
 import type { CacheUsage } from "../../src/models/cache.ts";
+import { openaiSse, openaiUsage } from "../helpers/fixtures.ts";
 
 const fullUsage = {
   input_tokens: 10,
@@ -197,6 +198,43 @@ describe("observeResponseUsage", () => {
     const failed = observeResponseUsage(new Response("not json", { headers: { "content-type": "application/json" } }));
     await failed.response.text();
     expect(await failed.stopReason).toBeUndefined();
+  });
+
+  test("openai-chat wire resolves usage, finish reason and identity from SSE", async () => {
+    const text = openaiSse(openaiUsage.lunaRead, { finishReason: "tool_calls" });
+    const observed = observeResponseUsage(
+      new Response(text, { headers: { "content-type": "text/event-stream" } }),
+      "openai-chat",
+    );
+    expect(await observed.response.text()).toBe(text);
+    expect(await observed.usage).toMatchObject({ inputTokens: 3, cacheReadTokens: 8884, cacheWriteTokens: 19 });
+    expect(await observed.stopReason).toBe("tool_use");
+    expect(await observed.identity).toEqual({ model: "openai/gpt-6-luna", provider: "OpenAI" });
+  });
+
+  test("openai-chat wire parses a JSON body", async () => {
+    const observed = observeResponseUsage(
+      new Response(
+        JSON.stringify({
+          model: "claude-haiku-5-5",
+          choices: [{ finish_reason: "stop" }],
+          usage: openaiUsage.deepseekRead,
+        }),
+        { headers: { "content-type": "application/json" } },
+      ),
+      "openai-chat",
+    );
+    expect(await observed.usage).toMatchObject({ inputTokens: 83, cacheReadTokens: 10112 });
+    expect(await observed.stopReason).toBe("stop");
+    expect(await observed.identity).toEqual({ model: "claude-haiku-5-5" });
+  });
+
+  test("identity is undefined on the Anthropic wire", async () => {
+    const observed = observeResponseUsage(
+      new Response(sse(fullUsage), { headers: { "content-type": "text/event-stream" } }),
+    );
+    expect(await observed.identity).toBeUndefined();
+    expect(await observed.usage).toMatchObject({ inputTokens: 10 });
   });
 
   test("cancelling the returned body cancels the source stream", async () => {
