@@ -7,9 +7,5 @@ export const EXPLICIT_CACHE_MODEL = /(^|\/)~?anthropic\/|claude/i;
 /** Resolved upstream `provider` values that identify Anthropic. */
 export const ANTHROPIC_UPSTREAM = /anthropic|claude/i;
 
-
 /** Chat Completions `finish_reason` values renamed to their Messages `stop_reason` equivalent. */
 export const FINISH_REASON_MAP: Readonly<Record<string, string>> = { tool_calls: "tool_use" };
-
-/** Anthropic's limit on `cache_control` breakpoints per request. */
-export const MAX_BREAKPOINTS = 4;

@@ -1,7 +1,6 @@
-import { MAX_BREAKPOINTS } from "../constants/openai.ts";
 import type { CacheTtlMode } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
-import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-ttl.ts";
+import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
 
 type Rec = Record<string, unknown>;
 
@@ -74,17 +73,17 @@ function lastTextPart(message: Rec): Rec | undefined {
 
 /**
  * Adds breakpoints to a Chat Completions body that has none: the last tool, the
- * last text part of the leading `system`/`developer` messages, and the last
- * cacheable part of the final message. Returns true when any were added.
+ * last text part of the leading `system`/`developer` messages, and the last text
+ * part of the final message that has one (at most 3, under Anthropic's limit of
+ * 4). Returns true when any were added.
  */
 export function injectOpenAiBreakpoints(body: Rec): boolean {
   if (hasCacheControl(body)) return false;
 
-  const marked = new Set<Rec>();
-  const mark = (target: Rec | undefined): void => {
-    if (!target || marked.has(target) || marked.size >= MAX_BREAKPOINTS) return;
+  let injected = false;
+  const mark = (target: Rec): void => {
     target.cache_control = ephemeral();
-    marked.add(target);
+    injected = true;
   };
 
   if (Array.isArray(body.tools) && body.tools.length > 0) {
@@ -95,23 +94,23 @@ export function injectOpenAiBreakpoints(body: Rec): boolean {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const prefixEnd = leadingPrefixEnd(messages);
 
-  for (let index = prefixEnd - 1; index >= 0 && marked.size < MAX_BREAKPOINTS; index--) {
-    const part = lastTextPart(messages[index] as Rec);
+  for (let index = prefixEnd - 1; index >= 0; index--) {
+    const message = messages[index];
+    const part = isRecord(message) ? lastTextPart(message) : undefined;
     if (part) {
       mark(part);
       break;
     }
   }
 
-  for (let index = messages.length - 1; index >= prefixEnd && marked.size < MAX_BREAKPOINTS; index--) {
+  for (let index = messages.length - 1; index >= prefixEnd; index--) {
     const message = messages[index];
-    if (!isRecord(message)) continue;
-    const target = message.role === "tool" ? message : lastTextPart(message);
-    if (target) {
-      mark(target);
+    const part = isRecord(message) ? lastTextPart(message) : undefined;
+    if (part) {
+      mark(part);
       break;
     }
   }
 
-  return marked.size > 0;
+  return injected;
 }

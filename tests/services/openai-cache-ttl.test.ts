@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
-import { MAX_BREAKPOINTS } from "../../src/constants/openai.ts";
 import {
   hasCacheControl,
   injectOpenAiBreakpoints,
@@ -209,7 +208,7 @@ describe("injectOpenAiBreakpoints", () => {
     expect(messages[4].content).toEqual([textPart("tail", { type: "ephemeral" })]);
   });
 
-  test("a final role:tool message gets a message-level cache_control", () => {
+  test("a final role:tool message gets the breakpoint on a text part", () => {
     const body = plainBody({
       messages: [
         { role: "system", content: "s" },
@@ -220,9 +219,36 @@ describe("injectOpenAiBreakpoints", () => {
     });
     injectOpenAiBreakpoints(body);
     const messages = body.messages as Rec[];
-    expect(messages[3].cache_control).toEqual({ type: "ephemeral" });
-    expect(messages[3].content).toBe("result");
+    expect(messages[3].content).toEqual([textPart("result", { type: "ephemeral" })]);
+    expect("cache_control" in messages[3]).toBe(false);
     expect(messages[1].content).toBe("q");
+  });
+
+  test("a final role:tool message with array content marks its last text part", () => {
+    const body = plainBody({
+      messages: [
+        { role: "user", content: "q" },
+        { role: "tool", tool_call_id: "c1", content: [textPart("a"), textPart("b")] },
+      ],
+    });
+    injectOpenAiBreakpoints(body);
+    const content = (body.messages as Rec[])[1].content as Rec[];
+    expect(content[0].cache_control).toBeUndefined();
+    expect(content[1].cache_control).toEqual({ type: "ephemeral" });
+    expect("cache_control" in (body.messages as Rec[])[1]).toBe(false);
+  });
+
+  test("a final role:tool message with empty content falls back to the previous message", () => {
+    const body = plainBody({
+      messages: [
+        { role: "user", content: "q" },
+        { role: "tool", tool_call_id: "c1", content: "" },
+      ],
+    });
+    injectOpenAiBreakpoints(body);
+    const messages = body.messages as Rec[];
+    expect(messages[0].content).toEqual([textPart("q", { type: "ephemeral" })]);
+    expect(messages[1].content).toBe("");
   });
 
   test("a final assistant message with null content falls back to the previous message", () => {
@@ -273,7 +299,7 @@ describe("injectOpenAiBreakpoints", () => {
     expect(JSON.stringify(withPart)).toBe(beforePart);
   });
 
-  test("never exceeds the breakpoint limit", () => {
+  test("adds exactly 3 breakpoints on a large body", () => {
     const body = plainBody({
       tools: Array.from({ length: 12 }, (_, i) => tool(`t${i}`)),
       messages: [
@@ -283,7 +309,7 @@ describe("injectOpenAiBreakpoints", () => {
       ],
     });
     injectOpenAiBreakpoints(body);
-    expect(breakpointsInOrder(body).length).toBeLessThanOrEqual(MAX_BREAKPOINTS);
+    expect(breakpointsInOrder(body)).toHaveLength(3);
   });
 
   test("injected breakpoints keep 1h ahead of 5m after a hybrid rewrite", () => {
