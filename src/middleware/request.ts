@@ -67,8 +67,8 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
       }
     }
     if (rewrites) {
-      // With the option off an `openai-chat` request keeps the Anthropic-shaped behaviour, except that a
-      // sentinel is still stripped and honoured.
+      // With the option off an `openai-chat` request is rewritten as an Anthropic body (`opts` stays empty),
+      // unless it carries the sentinel: then it goes through the OpenAI rewriter so the header is applied.
       const opts =
         chat && (options.openaiCompatible || hasSentinel)
           ? { wire: "openai-chat" as const, inject: explicitChat && !isPing && (evt.kind === "primary" || evt.kind === "compaction") }

@@ -187,7 +187,7 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 | `keepalive.enabled` | `true` | Whether keepalive runs |
 | `keepalive.maxPings` | `5` | Pings per idle stretch |
 | `keepalive.minContextTokens` | `50000` | Smallest context worth pinging |
-| `openaiCompatible` | `true` | Handle OpenAI Chat Completions requests. `false` leaves them untouched |
+| `openaiCompatible` | `true` | Handle OpenAI Chat Completions requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped |
 | `explicitCacheModels` | `[]` | Patterns that decide which models are managed as Claude (explicit cache) |
 
 `explicitCacheModels` entries are matched against `<providerID>/<modelID>`, in order, and the first match wins:

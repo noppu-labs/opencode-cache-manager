@@ -10,6 +10,12 @@ export interface ClassifyDeps {
   learned?: (ref: ModelRef) => CacheStrategy | undefined;
 }
 
+/** The wire of an outgoing request, or `undefined` when it is neither an Anthropic Messages nor a chat completions call. */
+export function requestWire(request: Request): Wire | undefined {
+  if (isAnthropicMessagesRequest(request)) return "anthropic-messages";
+  return isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX) ? "openai-chat" : undefined;
+}
+
 /**
  * Decides the wire and cache strategy of an outgoing request, or `undefined` when it is neither.
  * Precedence on `openai-chat`: user patterns, built-in Claude regex, learned, implicit.
@@ -20,8 +26,9 @@ export function classifyRequest(
   deps: ClassifyDeps,
   bodyModel?: string,
 ): { wire: Wire; strategy: CacheStrategy } | undefined {
-  if (isAnthropicMessagesRequest(request)) return { wire: "anthropic-messages", strategy: "explicit" };
-  if (!isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX)) return undefined;
+  const wire = requestWire(request);
+  if (wire === undefined) return undefined;
+  if (wire === "anthropic-messages") return { wire, strategy: "explicit" };
 
   const builtin = EXPLICIT_CACHE_MODEL.test(ref.id) || (bodyModel !== undefined && EXPLICIT_CACHE_MODEL.test(bodyModel));
   const strategy =
@@ -32,8 +39,8 @@ export function classifyRequest(
 /**
  * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
  * body carries the upstream ID. The body is read from a clone, and only when the first pass is
- * `implicit` on `openai-chat` and no user pattern matched, so a pattern, a Claude ID or a learned value
- * never costs a parse.
+ * `implicit` on `openai-chat` and no user pattern matched, so a pattern, a Claude ID or a learned
+ * `explicit` never costs a parse.
  */
 export async function classifyRequestWithBody(
   request: Request,

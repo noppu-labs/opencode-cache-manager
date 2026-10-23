@@ -43,3 +43,9 @@ export interface ModelRef {
   providerID: string;
   id: string;
 }
+
+/** The resolved `model` / `provider` an OpenAI-format response reports. */
+export interface OpenAiIdentity {
+  model?: string;
+  provider?: string;
+}

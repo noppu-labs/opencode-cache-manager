@@ -1,10 +1,9 @@
 import { ANTHROPIC_PROVIDER_IDS } from "../constants/anthropic.ts";
-import type { CacheUsage, Ttl, Wire } from "../models/cache.ts";
+import type { CacheUsage, OpenAiIdentity, Ttl, Wire } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 import {
-  type OpenAiIdentity,
   parseOpenAiFinishReasonFromJson,
   parseOpenAiFinishReasonFromSse,
   parseOpenAiIdentityFromJson,

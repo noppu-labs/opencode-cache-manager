@@ -45,12 +45,8 @@ export function sidebarLines(
   if (s === undefined || s.lastRequestAt === null) return waiting;
   if (s.skipReason === "child") return [];
   if (s.skipReason === "implicit") {
-    if (s.lastCache === null) return waiting;
-    return [
-      HEADER,
-      cachedLine(s.lastCache),
-      { text: "keepalive", tone: "base", right: "n/a · implicit cache" },
-    ];
+    const keepalive: SidebarLine = { text: "keepalive", tone: "base", right: "n/a · implicit cache" };
+    return s.lastCache === null ? [HEADER, keepalive] : [HEADER, cachedLine(s.lastCache), keepalive];
   }
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
   if (s.ttl === null) return waiting;

@@ -212,8 +212,15 @@ describe("sidebarLines: implicit sessions", () => {
     ]);
   });
 
-  test("waits for the first response while lastCache is null", () => {
-    expect(lines(snap(implicit))).toEqual([TITLE, { text: "waiting for first response", tone: "muted" }]);
+  test("shows only the n/a keepalive row after a request whose response reported no usage", () => {
+    expect(lines(snap(implicit))).toEqual([TITLE, KEEPALIVE]);
+  });
+
+  test("waits for the first response while no request has been sent", () => {
+    expect(lines(snap({ ...implicit, lastRequestAt: null }))).toEqual([
+      TITLE,
+      { text: "waiting for first response", tone: "muted" },
+    ]);
   });
 
   test("renders nothing for a child session", () => {

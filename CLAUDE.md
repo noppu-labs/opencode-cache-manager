@@ -42,15 +42,15 @@ src/
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   └── openai.ts              # /chat/completions suffix, Claude-model regexes, finish-reason map
 ├── models/
-│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity
 │   └── keepalive.ts           # KeepaliveSnapshot, SkipReason, RequestKind
 ├── controllers/
 │   ├── command.ts             # server /cache-manager handler
 │   ├── command-args.ts        # /cache-manager argument parsing (shared with the TUI)
 │   └── rpc-handlers.ts        # getSettings / setGlobal / setSession / resetSession / getKeepalive
 ├── middleware/
-│   ├── request.ts             # http.request hook: ping alignment, TTL rewrite, request bookkeeping
-│   └── response.ts            # http.response hook: usage observation
+│   ├── request.ts             # http.request hook: classification, ping alignment, TTL rewrite, breakpoint injection, request bookkeeping
+│   └── response.ts            # http.response hook: usage observation and strategy learning
 ├── services/
 │   ├── keepalive-engine.ts    # scheduling engine
 │   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
@@ -73,7 +73,7 @@ src/
 │   ├── sidebar.compiled.d.ts  # types for the compiled output
 │   └── sidebar-lines.ts       # pure sidebar line formatting
 └── utils/
-    ├── format.ts              # formatRemaining, formatTokens, errorMessage
+    ├── format.ts              # formatRemaining, formatTokens, formatCompactTokens, errorMessage
     ├── is-record.ts
     ├── num.ts                 # finite-number coercion for usage fields
     └── request-path.ts        # POST-to-path-suffix check used by the classifier

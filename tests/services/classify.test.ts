@@ -1,11 +1,22 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { classifyRequest, classifyRequestWithBody } from "../../src/services/classify.ts";
+import { classifyRequest, classifyRequestWithBody, requestWire } from "../../src/services/classify.ts";
 import { parseModelPatterns } from "../../src/services/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
 const chat = (url = "https://omni.example/v1/chat/completions", method = "POST") => new Request(url, { method });
 const noDeps = { patterns: [] };
+
+describe("requestWire", () => {
+  const post = (url: string, method = "POST") => new Request(url, { method, body: method === "POST" ? "{}" : undefined });
+
+  test("names the wire from the method and path alone", () => {
+    expect(requestWire(post("https://api.anthropic.com/v1/messages"))).toBe("anthropic-messages");
+    expect(requestWire(post("https://omni.example/v1/chat/completions"))).toBe("openai-chat");
+    expect(requestWire(post("https://omni.example/v1/embeddings"))).toBeUndefined();
+    expect(requestWire(post("https://omni.example/v1/chat/completions", "GET"))).toBeUndefined();
+  });
+});
 
 describe("classifyRequest", () => {
   test("chat completions with a Claude model is openai-chat / explicit", () => {

@@ -1,5 +1,5 @@
 import { ANTHROPIC_UPSTREAM, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy, ModelRef } from "../models/cache.ts";
+import type { CacheStrategy, ModelRef, OpenAiIdentity } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import type { KV } from "./settings-store.ts";
 
@@ -33,7 +33,7 @@ export class StrategyStore {
   /** Records the strategy a response reveals; the latest response wins. Never rejects, so callers can fire and forget. */
   async learnFromResponse(
     ref: ModelRef,
-    identity: { model?: string; provider?: string } | undefined,
+    identity: OpenAiIdentity | undefined,
   ): Promise<void> {
     try {
       const { model, provider } = identity ?? {};

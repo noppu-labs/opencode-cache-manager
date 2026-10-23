@@ -1,12 +1,7 @@
 import { FINISH_REASON_MAP } from "../constants/openai.ts";
-import type { CacheUsage } from "../models/cache.ts";
+import type { CacheUsage, OpenAiIdentity } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
-
-export interface OpenAiIdentity {
-  model?: string;
-  provider?: string;
-}
 
 /**
  * Maps a Chat Completions `usage` block into `CacheUsage`. Cache writes are

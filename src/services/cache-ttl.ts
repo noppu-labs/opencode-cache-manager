@@ -3,8 +3,6 @@ import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from "../model
 import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
 import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "./openai-cache-ttl.ts";
 
-export { hasOneHourCacheControl };
-
 /** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
 export function ttlForMode(mode: CacheTtlMode): Ttl {
   return mode === "1h" ? "1h" : "5m";
