@@ -113,7 +113,7 @@ describe("classifyRequest", () => {
     const claude = { providerID: "omniroute", id: "auto/claude-opus-5-5" };
     expect(classifyRequest(post, claude, noDeps)).toEqual({ wire: "openai-responses", profile: "anthropic" });
     const alias = { providerID: "omniroute", id: "auto/alias" };
-    expect(classifyRequest(post, alias, { patterns: [], learned: () => "openai" })?.profile).toBe("openai");
+    expect(classifyRequest(post, alias, { patterns: [], learned: () => "anthropic" })?.profile).toBe("anthropic");
     expect(classifyRequest(post, alias, { patterns: parseCacheProfiles({ alias: "openai" }) })?.profile).toBe("openai");
   });
 
@@ -165,6 +165,13 @@ describe("classifyRequestWithBody", () => {
     const messages = new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
     expect((await classifyRequestWithBody(messages, ref, noDeps))?.wire).toBe("anthropic-messages");
     expect(await classifyRequestWithBody(new Request("https://x.test/v1/embeddings", { method: "POST" }), ref, noDeps)).toBeUndefined();
+  });
+
+  test("a learned openai never widens the GPT regex: the body model decides", async () => {
+    const learned = () => "openai" as const;
+    expect(classifyRequest(withBody("gpt-6-luna"), ref, { patterns: [], learned })?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody("gpt-5"), ref, { patterns: [], learned }))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody("gpt-6-luna"), ref, { patterns: [], learned }))?.profile).toBe("openai");
   });
 
   test("reads body.model on the Responses wire too", async () => {

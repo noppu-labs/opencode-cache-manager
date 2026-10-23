@@ -46,6 +46,8 @@ export interface Classification {
 /**
  * Decides the wire and cache profile of an outgoing request, or `undefined` when it is not a known wire.
  * Precedence on the OpenAI wires: user patterns, built-in Claude regex, built-in OpenAI regex, learned, implicit.
+ * A learned `openai` only counts when the request's own model matches the OpenAI regex: a router alias can
+ * send its next turn to a model that answers `prompt_cache_*` with a 400.
  */
 export function classifyRequest(
   request: Request,
@@ -62,16 +64,25 @@ export function classifyRequest(
     matchProfilePatterns(deps.patterns, ref) ??
     (matches(CLAUDE_MODEL) ? "anthropic" : undefined) ??
     (matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
-    deps.learned?.(ref) ??
+    learnedProfile(deps, ref, matches) ??
     "implicit";
   return { wire, profile };
+}
+
+function learnedProfile(
+  deps: ClassifyDeps,
+  ref: ModelRef,
+  matches: (regex: RegExp) => boolean,
+): CacheProfileId | undefined {
+  const learned = deps.learned?.(ref);
+  return learned === "openai" && !matches(OPENAI_CACHE_MODEL) ? undefined : learned;
 }
 
 /**
  * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
  * body carries the upstream ID. The body is read from a clone, and only when the first pass is
  * `implicit` on an OpenAI wire and no user pattern matched, so a pattern, a Claude or GPT ID or a
- * learned profile never costs a parse.
+ * learned `anthropic` never costs a parse.
  */
 export async function classifyRequestWithBody(
   request: Request,

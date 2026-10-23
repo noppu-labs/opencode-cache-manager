@@ -287,6 +287,22 @@ describe("keepalive engine: scheduling", () => {
     expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "30m", ttlSource: "requested", lastPing: "hit" });
   });
 
+  test("a detected Claude 1h gives way to a requested 30m after a switch to GPT", async () => {
+    const h = harness();
+    await h.request("s1", write1h, "1h");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", ttlSource: "detected" });
+    await h.advance(10 * MIN);
+    await h.request("s1", writeNoBreakdown, "30m");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "30m",
+      ttlSource: "requested",
+      expiresAt: 10 * MIN + TTL_MS["30m"],
+      nextPingAt: 35 * MIN,
+    });
+    await h.advance(25 * MIN);
+    expect(h.pings).toEqual([{ sessionID: "s1", at: 35 * MIN }]);
+  });
+
   test("12h requested pings at 10h and stays requested without a breakdown", async () => {
     const h = harness();
     await h.request("s1", writeNoBreakdown, "12h");

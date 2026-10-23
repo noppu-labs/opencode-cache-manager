@@ -1,5 +1,5 @@
 import { BUILTIN_DEFAULTS, type Settings } from "../config/settings.ts";
-import { EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
+import { DETECTABLE_TTLS, EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
 import type { CacheUsage, Ttl } from "../models/cache.ts";
 import type { CacheReadout, KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
 import { contextTokens, grantedTtl, hasCacheActivity } from "./usage.ts";
@@ -78,7 +78,15 @@ export class KeepaliveEngine {
     s.lastRequestAt = this.deps.now();
     s.requestSentAt = s.lastRequestAt;
     const kind = info.kind ?? "primary";
-    if (kind === "primary" || kind === "compaction") s.requestedTtl = info.requestedTtl;
+    if (kind === "primary" || kind === "compaction") {
+      s.requestedTtl = info.requestedTtl;
+      // A TTL usage cannot report means the session switched to a model whose cache the detected TTL does not describe.
+      const requested = info.requestedTtl;
+      if (s.ttlSource === "detected" && requested !== null && requested !== s.ttl && !DETECTABLE_TTLS.has(requested)) {
+        s.ttl = null;
+        s.ttlSource = null;
+      }
+    }
     s.pingsUsed = 0;
     s.lastPing = null;
     s.missed = false;
