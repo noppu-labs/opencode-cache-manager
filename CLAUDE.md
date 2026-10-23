@@ -37,7 +37,7 @@ src/
 ├── rpc.ts                     # RPC contract and client type (public export, so it stays a top-level entry)
 ├── config/
 │   ├── settings.ts            # Settings type, defaults, option parsing, layer merging
-│   └── model-patterns.ts      # parseModelPatterns: explicitCacheModels option -> ModelPattern[]
+│   └── model-patterns.ts      # parseModelPatterns: explicitCacheModels option (substring, /regex/flags, leading !) -> ModelPattern[]
 ├── constants/
 │   ├── anthropic.ts           # beta header name and value, x-cache-ttl header name, /messages suffix, Anthropic provider IDs
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
@@ -61,7 +61,7 @@ src/
 │   ├── cache-control.ts       # cache_control block helpers shared by both wires
 │   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
 │   ├── classify.ts            # wire + strategy (explicit/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
-│   ├── model-patterns.ts      # matchModelPatterns: substring, /regex/flags, leading ! (parsing lives in config/)
+│   ├── model-patterns.ts      # matchModelPatterns: first pattern matching <providerID>/<id> gives the strategy
 │   ├── strategy-store.ts      # strategies learned from responses, kept in memory and plugin storage
 │   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
 │   ├── response-observer.ts   # observeResponseUsage: response tee that feeds a ResponseParsers set
@@ -95,7 +95,7 @@ tests/                         # mirrors src/ (tests/services/usage.test.ts test
 Other top-level files:
 
 - `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host.
-- `tests/helpers/` - shared test fixtures (sample Anthropic bodies, request builders, in-memory storage).
+- `tests/helpers/` - shared test fixtures (sample Anthropic and OpenAI bodies and usage, SSE builders, request builders, in-memory storage).
 - `tests/opencode-config.test.ts` - checks that every `docs/examples/*.jsonc` parses and that each of its `-1h` variants rewrites to 1h.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `docs/examples/` - sample provider configs with `-1h` model variants and commented plugin options, one per endpoint kind: `opencode.anthropic.jsonc`, `opencode.openrouter.jsonc`, `opencode.openai-compatible.jsonc` (not shipped). Add new examples there; the config test picks up every `.jsonc` file.
@@ -109,7 +109,7 @@ Where new code goes:
 - Configuration (settings shape, defaults, option parsing) goes in `config/`.
 - `utils/` is for small pure helpers with no domain knowledge. Don't duplicate a helper; move it here.
 - Anything rendered in the TUI goes in `ui/`. Keep formatting pure (`sidebar-lines.ts`) and separate from Solid components.
-- Each source file with logic gets a unit test file at the matching path under `tests/`; files that only declare types, constants or schemas (`models/keepalive.ts`, `constants/`, `rpc.ts`) need none, and `ui/sidebar.tsx` can only run inside the TUI host, so its logic lives in `sidebar-lines.ts`. Split test files by area rather than growing one large file.
+- Each source file with logic gets a unit test file at the matching path under `tests/`; files that only declare types, constants or schemas (`models/keepalive.ts`, `models/storage.ts`, `constants/`, `rpc.ts`) need none, and `ui/sidebar.tsx` can only run inside the TUI host, so its logic lives in `sidebar-lines.ts`. Split test files by area rather than growing one large file.
 - Test behaviour in the unit test of the module that owns it. `tests/server.test.ts` and `tests/tui.test.ts` only check what needs the plugin host: registration, setup-time option and storage reads, events emitted, keepalive round trips through both hooks and the engine, and cleanup.
 - A local checkout is loaded by symlinking `src/` (not the repo root) into `~/.config/opencode/plugins/`: OpenCode resolves a plugin directory by file path, not through `package.json` `exports`.
 - No `dist/` and no `@types/`. The only build output is `src/ui/sidebar.compiled.js`; keep any further compile step out unless it solves the same problem (code the host will not transform under `node_modules`).
