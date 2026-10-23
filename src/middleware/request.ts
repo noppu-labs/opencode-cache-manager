@@ -14,7 +14,7 @@ import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { SettingsStore } from "../services/settings-store.ts";
-import type { StrategyStore } from "../services/strategy-store.ts";
+import type { ProfileStore } from "../services/profile-store.ts";
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 export interface HttpRequestEvent {
@@ -29,24 +29,26 @@ export interface RequestHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
-  strategies: Pick<StrategyStore, "get">;
+  profiles: Pick<ProfileStore, "get">;
   /** Latest primary request messages per session, in memory only, kept while a ping may still use them. */
   primaryMessages: Map<string, unknown[]>;
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
-export function createRequestHook({ store, engine, pings, options, strategies, primaryMessages }: RequestHookDeps) {
+export function createRequestHook({ store, engine, pings, options, profiles, primaryMessages }: RequestHookDeps) {
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => strategies.get(r) };
+    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
     const cls = options.openaiCompatible
       ? await classifyRequestWithBody(evt.request, ref, deps)
       : classifyRequest(evt.request, ref, deps);
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
-    const { rewrites, implicit } = route;
+    // Until the request path rewrites through the profiles, an `openai` profile is only observed.
+    const rewrites = route.rewrites && (route.profile !== "openai" || anthropicProvider || hasSentinel);
     const observed = route.observedWire !== undefined;
+    const implicit = observed && route.observedWire !== "anthropic-messages" && route.profile !== "anthropic";
     if (!rewrites && !observed) return;
 
     const sessionID = evt.sessionID;

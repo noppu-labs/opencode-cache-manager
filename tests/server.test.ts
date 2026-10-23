@@ -450,7 +450,7 @@ describe("keepalive wiring", () => {
       expect(lastSnapshot(mock)).toMatchObject({ ttl: "1h", skipReason: null });
     });
 
-    test("a learned strategy survives a restart", async () => {
+    test("a learned profile survives a restart", async () => {
       const before = await start({ defaultMode: "1h" });
       const learned: Parameters<typeof openaiSse> = [WRITE_CHAT, { model: "claude-opus-5-5", provider: "Anthropic" }];
       await roundTrip(before, chatTurn("auto/opus-5", { sse: learned }));

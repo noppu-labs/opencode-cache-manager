@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { KV } from "../../src/models/storage.ts";
-import { StrategyStore } from "../../src/services/strategy-store.ts";
+import { ProfileStore } from "../../src/services/profile-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
 const ref = { providerID: "omniroute", id: "auto/opus-5" };
 
-async function loaded(kv: KV): Promise<StrategyStore> {
-  const store = new StrategyStore(kv);
+async function loaded(kv: KV): Promise<ProfileStore> {
+  const store = new ProfileStore(kv);
   await store.load();
   return store;
 }
 
-describe("StrategyStore", () => {
+describe("ProfileStore", () => {
   test("a Claude model in the response is learned as explicit", async () => {
     const store = await loaded(memoryKv().kv);
     await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
@@ -24,9 +24,26 @@ describe("StrategyStore", () => {
     expect(store.get(ref)).toBe("anthropic");
   });
 
-  test("any other model and provider is learned as implicit", async () => {
+  test("a GPT-5.6+ model in the response is learned as openai", async () => {
     const store = await loaded(memoryKv().kv);
     await store.learnFromResponse(ref, { model: "openai/gpt-6-luna", provider: "OpenAI" });
+    expect(store.get(ref)).toBe("openai");
+  });
+
+  test("an older GPT model or any other model and provider is learned as implicit, never as openai", async () => {
+    const store = await loaded(memoryKv().kv);
+    await store.learnFromResponse(ref, { model: "openai/gpt-5", provider: "OpenAI" });
+    expect(store.get(ref)).toBe("implicit");
+    await store.learnFromResponse(ref, { model: "deepseek/deepseek-v4.1-flash", provider: "DeepInfra" });
+    expect(store.get(ref)).toBe("implicit");
+    await store.learnFromResponse(ref, { provider: "OpenAI" });
+    expect(store.get(ref)).toBe("implicit");
+  });
+
+  test("the latest response replaces a stale openai profile", async () => {
+    const store = await loaded(memoryKv().kv);
+    await store.learnFromResponse(ref, { model: "openai/gpt-6-luna" });
+    await store.learnFromResponse(ref, { model: "openai/gpt-5" });
     expect(store.get(ref)).toBe("implicit");
   });
 
@@ -60,7 +77,7 @@ describe("StrategyStore", () => {
     await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
     await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
     expect(writes).toBe(1);
-    await store.learnFromResponse(ref, { model: "gpt-6" });
+    await store.learnFromResponse(ref, { model: "gpt-5" });
     expect(writes).toBe(2);
     expect(store.get(ref)).toBe("implicit");
   });

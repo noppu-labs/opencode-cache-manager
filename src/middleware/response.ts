@@ -4,7 +4,7 @@ import type { RequestKind } from "../models/keepalive.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { isAnthropicProvider, observedWireFor, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
-import type { StrategyStore } from "../services/strategy-store.ts";
+import type { ProfileStore } from "../services/profile-store.ts";
 import { observeResponseUsage } from "../services/response-observer.ts";
 import { ANTHROPIC_PARSERS } from "../services/usage.ts";
 import { OPENAI_PARSERS } from "../services/usage-openai.ts";
@@ -22,11 +22,11 @@ export interface ResponseHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
-  strategies: Pick<StrategyStore, "learnFromResponse">;
+  profiles: Pick<ProfileStore, "learnFromResponse">;
 }
 
-/** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the strategy from `openai-chat` responses. */
-export function createResponseHook({ engine, pings, options, strategies }: ResponseHookDeps) {
+/** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the profile from `openai-chat` responses. */
+export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
@@ -46,7 +46,7 @@ export function createResponseHook({ engine, pings, options, strategies }: Respo
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);
       if (wire === "openai-chat") {
-        void observed.identity.then((identity) => strategies.learnFromResponse(ref, identity)).catch(() => {});
+        void observed.identity.then((identity) => profiles.learnFromResponse(ref, identity)).catch(() => {});
       }
     } catch {
       // Observation must never fail the host's response; it passes through unchanged.

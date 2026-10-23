@@ -1,6 +1,11 @@
 import { ANTHROPIC_PROVIDER_IDS, MESSAGES_SUFFIX } from "../constants/anthropic.ts";
-import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy, ModelRef, ProfilePattern, Wire } from "../models/cache.ts";
+import {
+  CHAT_COMPLETIONS_SUFFIX,
+  EXPLICIT_CACHE_MODEL,
+  OPENAI_CACHE_MODEL,
+  RESPONSES_SUFFIX,
+} from "../constants/openai.ts";
+import type { CacheProfileId, ModelRef, ProfilePattern, Wire } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import { matchProfilePatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
@@ -18,54 +23,63 @@ export function isAnthropicMessagesRequest(request: Request): boolean {
 
 export interface ClassifyDeps {
   patterns: readonly ProfilePattern[];
-  learned?: (ref: ModelRef) => CacheStrategy | undefined;
+  learned?: (ref: ModelRef) => CacheProfileId | undefined;
 }
 
-/** The wire of an outgoing request, or `undefined` when it is neither an Anthropic Messages nor a chat completions call. */
+/** The wire of an outgoing request, or `undefined` when it is not an Anthropic Messages, chat completions or Responses call. */
 export function requestWire(request: Request): Wire | undefined {
   if (isAnthropicMessagesRequest(request)) return "anthropic-messages";
-  return isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX) ? "openai-chat" : undefined;
+  if (isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX)) return "openai-chat";
+  return isPostToPathSuffix(request, RESPONSES_SUFFIX) ? "openai-responses" : undefined;
 }
 
-/** The user pattern's profile as a strategy; `openai` reads as `implicit` until the OpenAI profile is resolved here. */
-function userStrategy(patterns: readonly ProfilePattern[], ref: ModelRef): CacheStrategy | undefined {
-  const profile = matchProfilePatterns(patterns, ref);
-  return profile === "openai" ? "implicit" : profile;
+/** True for the two OpenAI-format wires, which share one profile resolution. */
+function isOpenAiWire(wire: Wire | undefined): wire is "openai-chat" | "openai-responses" {
+  return wire === "openai-chat" || wire === "openai-responses";
+}
+
+export interface Classification {
+  wire: Wire;
+  profile: CacheProfileId;
 }
 
 /**
- * Decides the wire and cache strategy of an outgoing request, or `undefined` when it is neither.
- * Precedence on `openai-chat`: user patterns, built-in Claude regex, learned, implicit.
+ * Decides the wire and cache profile of an outgoing request, or `undefined` when it is not a known wire.
+ * Precedence on the OpenAI wires: user patterns, built-in Claude regex, built-in OpenAI regex, learned, implicit.
  */
 export function classifyRequest(
   request: Request,
   ref: ModelRef,
   deps: ClassifyDeps,
   bodyModel?: string,
-): { wire: Wire; strategy: CacheStrategy } | undefined {
+): Classification | undefined {
   const wire = requestWire(request);
   if (wire === undefined) return undefined;
-  if (wire === "anthropic-messages") return { wire, strategy: "anthropic" };
+  if (wire === "anthropic-messages") return { wire, profile: "anthropic" };
 
-  const builtin = EXPLICIT_CACHE_MODEL.test(ref.id) || (bodyModel !== undefined && EXPLICIT_CACHE_MODEL.test(bodyModel));
-  const strategy =
-    userStrategy(deps.patterns, ref) ?? (builtin ? "anthropic" : undefined) ?? deps.learned?.(ref) ?? "implicit";
-  return { wire: "openai-chat", strategy };
+  const matches = (regex: RegExp) => regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
+  const profile =
+    matchProfilePatterns(deps.patterns, ref) ??
+    (matches(EXPLICIT_CACHE_MODEL) ? "anthropic" : undefined) ??
+    (matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
+    deps.learned?.(ref) ??
+    "implicit";
+  return { wire, profile };
 }
 
 /**
  * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
  * body carries the upstream ID. The body is read from a clone, and only when the first pass is
- * `implicit` on `openai-chat` and no user pattern matched, so a pattern, a Claude ID or a learned
- * `explicit` never costs a parse.
+ * `implicit` on an OpenAI wire and no user pattern matched, so a pattern, a Claude or GPT ID or a
+ * learned profile never costs a parse.
  */
 export async function classifyRequestWithBody(
   request: Request,
   ref: ModelRef,
   deps: ClassifyDeps,
-): Promise<{ wire: Wire; strategy: CacheStrategy } | undefined> {
+): Promise<Classification | undefined> {
   const first = classifyRequest(request, ref, deps);
-  if (first?.wire !== "openai-chat" || first.strategy !== "implicit") return first;
+  if (!isOpenAiWire(first?.wire) || first?.profile !== "implicit") return first;
   if (matchProfilePatterns(deps.patterns, ref) !== undefined) return first;
   try {
     const body: unknown = await request.clone().json();
@@ -77,7 +91,7 @@ export async function classifyRequestWithBody(
 }
 
 export interface RouteInput {
-  cls: { wire: Wire; strategy: CacheStrategy } | undefined;
+  cls: Classification | undefined;
   anthropicProvider: boolean;
   hasSentinel: boolean;
   openaiCompatible: boolean;
@@ -88,39 +102,44 @@ export interface Route {
   rewrites: boolean;
   /** The wire whose response and usage are observed; `undefined` leaves the request and response alone. */
   observedWire: Wire | undefined;
-  /** An `openai-chat` request on an implicit-caching model (only with the option on). */
-  implicit: boolean;
+  /** The profile the request classified to, or `undefined` when it is not a known wire. */
+  profile: CacheProfileId | undefined;
+  /** An OpenAI-wire request whose profile is managed (only with the option on): not `implicit`. */
+  managed: boolean;
   /** The wire to hand `transformHttpRequest`, or `undefined` to rewrite as an Anthropic body. */
   transformWire: Wire | undefined;
-  /** An `openai-chat` request on an explicit-caching model (only with the option on). */
-  explicitChat: boolean;
 }
 
-/** The wire whose response is observed, or `undefined` to leave it alone. With the option off, `openai-chat` behaves as before the option existed. */
+/** The wire whose response is observed, or `undefined` to leave it alone. With the option off, the OpenAI wires behave as before the option existed. */
 export function observedWireFor(
   wire: Wire | undefined,
   anthropicProvider: boolean,
   openaiCompatible: boolean,
 ): Wire | undefined {
-  if (wire === "openai-chat" && openaiCompatible) return "openai-chat";
+  if (isOpenAiWire(wire) && openaiCompatible) return wire;
   return anthropicProvider || wire === "anthropic-messages" ? "anthropic-messages" : undefined;
 }
 
 /** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
 export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible }: RouteInput): Route {
-  const chat = cls?.wire === "openai-chat";
-  const explicitChat = chat && openaiCompatible && cls.strategy === "anthropic";
-  const implicit = chat && openaiCompatible && cls.strategy === "implicit";
+  const openaiWire = isOpenAiWire(cls?.wire) ? cls.wire : undefined;
+  const managed = openaiWire !== undefined && openaiCompatible && cls?.profile !== "implicit";
   return {
-    rewrites: anthropicProvider || hasSentinel || explicitChat,
+    rewrites: anthropicProvider || hasSentinel || managed,
     observedWire: observedWireFor(cls?.wire, anthropicProvider, openaiCompatible),
-    implicit,
-    transformWire: chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined,
-    explicitChat,
+    profile: cls?.profile,
+    managed,
+    transformWire: openaiCompatible || hasSentinel ? openaiWire : undefined,
   };
 }
 
-/** True when breakpoints are injected into the request: an explicit `openai-chat` primary or compaction request that is not a ping. */
+/** True when breakpoints are injected into the request: a managed Claude-profile `openai-chat` primary or compaction request that is not a ping. */
 export function shouldInject(route: Route, kind: RequestKind, isPing: boolean): boolean {
-  return route.explicitChat && !isPing && (kind === "primary" || kind === "compaction");
+  return (
+    route.managed &&
+    route.profile === "anthropic" &&
+    route.transformWire === "openai-chat" &&
+    !isPing &&
+    (kind === "primary" || kind === "compaction")
+  );
 }

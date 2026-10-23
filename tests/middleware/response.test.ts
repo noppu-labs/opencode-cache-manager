@@ -34,7 +34,7 @@ function gate() {
 function harness(config: { options?: Partial<PluginOptions> } = {}) {
   const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
   const learnCalls: Array<{ ref: ModelRef; identity: unknown }> = [];
-  const strategies = {
+  const profiles = {
     learnFromResponse: async (ref: ModelRef, identity: unknown) => {
       learnCalls.push({ ref, identity });
     },
@@ -52,7 +52,7 @@ function harness(config: { options?: Partial<PluginOptions> } = {}) {
     },
   } as unknown as KeepaliveEngine;
   const pings = new PingTracker();
-  const hook = createResponseHook({ engine, pings, options, strategies });
+  const hook = createResponseHook({ engine, pings, options, profiles });
   return { hook, pings, observed, fake, learnCalls };
 }
 
@@ -344,7 +344,7 @@ describe("createResponseHook on openai-chat", () => {
       engine: { responseObserved: () => Promise.resolve() } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
       options: { openaiCompatible: true, cacheProfiles: [] },
-      strategies: {
+      profiles: {
         learnFromResponse: async () => {
           throw new Error("storage down");
         },

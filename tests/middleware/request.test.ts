@@ -3,7 +3,7 @@ import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthro
 import { PING_PROMPT } from "../../src/constants/keepalive.ts";
 import { createRequestHook, type HttpRequestEvent } from "../../src/middleware/request.ts";
 import type { PluginOptions } from "../../src/config/settings.ts";
-import type { CacheStrategy, ModelRef } from "../../src/models/cache.ts";
+import type { CacheProfileId, ModelRef } from "../../src/models/cache.ts";
 import type { SkipReason } from "../../src/models/keepalive.ts";
 import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
 import type { CacheUsage } from "../../src/models/cache.ts";
@@ -14,10 +14,10 @@ import { SettingsStore } from "../../src/services/settings-store.ts";
 import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
-function harness(config: { options?: Partial<PluginOptions>; strategies?: Map<string, CacheStrategy> } = {}) {
+function harness(config: { options?: Partial<PluginOptions>; profiles?: Map<string, CacheProfileId> } = {}) {
   const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
-  const learned = config.strategies ?? new Map<string, CacheStrategy>();
-  const strategies = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
+  const learned = config.profiles ?? new Map<string, CacheProfileId>();
+  const profiles = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
   const { kv } = memoryKv();
   const store = new SettingsStore(kv, {});
   const pings = new PingTracker();
@@ -34,7 +34,7 @@ function harness(config: { options?: Partial<PluginOptions>; strategies?: Map<st
       if (fake.failRequestSent) throw new Error("engine down");
     },
   } as unknown as KeepaliveEngine;
-  const hook = createRequestHook({ store, engine, pings, options, strategies, primaryMessages });
+  const hook = createRequestHook({ store, engine, pings, options, profiles, primaryMessages });
 
   async function dispatch(
     request: Request,
@@ -171,7 +171,7 @@ describe("createRequestHook TTL rewrite", () => {
       engine: { snapshot: () => ({ skipReason: null }), requestSent: () => {} } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
       options: { openaiCompatible: true, cacheProfiles: [] },
-      strategies: { get: () => undefined },
+      profiles: { get: () => undefined },
       primaryMessages: new Map(),
     });
     const evt: HttpRequestEvent = {
@@ -624,15 +624,15 @@ describe("createRequestHook on openai-chat", () => {
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
   });
 
-  test("a learned strategy makes an alias explicit, and a user pattern can force it back", async () => {
+  test("a learned profile makes an alias explicit, and a user pattern can force it back", async () => {
     const alias = { providerID: "omniroute", modelID: "auto/opus-5" };
-    const learned = new Map<string, CacheStrategy>([["omniroute/auto/opus-5", "anthropic"]]);
+    const learned = new Map<string, CacheProfileId>([["omniroute/auto/opus-5", "anthropic"]]);
 
-    const h = harness({ strategies: learned });
+    const h = harness({ profiles: learned });
     const evt = await h.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
 
-    const forced = harness({ strategies: learned, options: { cacheProfiles: parseCacheProfiles({ opus: "implicit" }) } });
+    const forced = harness({ profiles: learned, options: { cacheProfiles: parseCacheProfiles({ opus: "implicit" }) } });
     const untouched = await forced.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
     expect(collectCacheControls(await parsedBodyOf(untouched.request))).toHaveLength(0);
   });
@@ -736,7 +736,7 @@ describe("createRequestHook with the real keepalive engine", () => {
       engine,
       pings: new PingTracker(),
       options,
-      strategies: { get: () => undefined },
+      profiles: { get: () => undefined },
       primaryMessages: new Map(),
     });
     const send = (kind: HttpRequestEvent["kind"], id: string) =>

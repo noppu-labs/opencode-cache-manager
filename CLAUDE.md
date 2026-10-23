@@ -43,7 +43,7 @@ src/
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   └── openai.ts              # /chat/completions suffix, Claude-model regexes, finish-reason map
 ├── models/
-│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity, ObservedResponse, ResponseParsers, ModelPattern
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheProfileId, ModelRef, OpenAiIdentity, ObservedResponse, ResponseParsers, ModelPattern
 │   ├── keepalive.ts           # KeepaliveSnapshot, CacheReadout, SkipReason, RequestKind
 │   └── storage.ts             # KV and ScannableKV plugin storage interfaces
 ├── controllers/
@@ -52,7 +52,7 @@ src/
 │   └── rpc-handlers.ts        # getSettings / setGlobal / setSession / resetSession / getKeepalive
 ├── middleware/
 │   ├── request.ts             # http.request hook: classification, ping alignment, TTL rewrite, breakpoint injection, request bookkeeping
-│   └── response.ts            # http.response hook: usage observation and strategy learning
+│   └── response.ts            # http.response hook: usage observation and profile learning
 ├── services/
 │   ├── keepalive-engine.ts    # scheduling engine
 │   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
@@ -60,9 +60,9 @@ src/
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)
 │   ├── cache-control.ts       # cache_control block helpers shared by both wires
 │   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
-│   ├── classify.ts            # wire + strategy (explicit/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
+│   ├── classify.ts            # wire + cache profile (anthropic/openai/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
 │   ├── model-patterns.ts      # matchModelPatterns: first pattern matching <providerID>/<id> gives the strategy
-│   ├── strategy-store.ts      # strategies learned from responses, kept in memory and plugin storage
+│   ├── profile-store.ts       # profiles learned from responses, kept in memory and plugin storage
 │   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
 │   ├── response-observer.ts   # observeResponseUsage: response tee that feeds a ResponseParsers set
 │   ├── usage.ts               # Anthropic usage/SSE parsing (ANTHROPIC_PARSERS), shared helpers: contextTokens, hasCacheActivity, grantedTtl

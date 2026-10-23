@@ -39,9 +39,6 @@ export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
  */
 export type CacheProfileId = "anthropic" | "openai" | "implicit";
 
-/** Temporary alias of `CacheProfileId`, removed once the profiles replace every strategy use. */
-export type CacheStrategy = CacheProfileId;
-
 /** Identifies an OpenCode model: provider plus model ID. */
 export interface ModelRef {
   providerID: string;
