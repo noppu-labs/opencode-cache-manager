@@ -1,6 +1,7 @@
 import { ANTHROPIC_PROVIDER_IDS, MESSAGES_SUFFIX } from "../constants/anthropic.ts";
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
 import type { CacheStrategy, ModelPattern, ModelRef, Wire } from "../models/cache.ts";
+import type { RequestKind } from "../models/keepalive.ts";
 import { matchModelPatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
@@ -67,4 +68,50 @@ export async function classifyRequestWithBody(
   } catch {
     return first;
   }
+}
+
+export interface RouteInput {
+  /** The classification; the response hook has no strategy to give, so `strategy` may be left out there. */
+  cls: { wire: Wire; strategy?: CacheStrategy } | undefined;
+  anthropicProvider: boolean;
+  hasSentinel: boolean;
+  openaiCompatible: boolean;
+}
+
+export interface Route {
+  /** The request body or headers are rewritten. */
+  rewrites: boolean;
+  /** The wire whose response and usage are observed; `undefined` leaves the request and response alone. */
+  observedWire: Wire | undefined;
+  /** An `openai-chat` request on an implicit-caching model (only with the option on). */
+  implicit: boolean;
+  /** The wire to hand `transformHttpRequest`, or `undefined` to rewrite as an Anthropic body. */
+  transformWire: Wire | undefined;
+  /** An `openai-chat` request on an explicit-caching model (only with the option on). */
+  explicitChat: boolean;
+}
+
+/** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
+export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible }: RouteInput): Route {
+  const chat = cls?.wire === "openai-chat";
+  const explicitChat = chat && openaiCompatible && cls.strategy === "explicit";
+  const implicit = chat && openaiCompatible && cls.strategy === "implicit";
+  const observedWire: Wire | undefined =
+    chat && openaiCompatible
+      ? "openai-chat"
+      : anthropicProvider || cls?.wire === "anthropic-messages"
+        ? "anthropic-messages"
+        : undefined;
+  return {
+    rewrites: anthropicProvider || hasSentinel || explicitChat,
+    observedWire,
+    implicit,
+    transformWire: chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined,
+    explicitChat,
+  };
+}
+
+/** True when breakpoints are injected into the request: an explicit `openai-chat` primary or compaction request that is not a ping. */
+export function shouldInject(route: Route, kind: RequestKind, isPing: boolean): boolean {
+  return route.explicitChat && !isPing && (kind === "primary" || kind === "compaction");
 }

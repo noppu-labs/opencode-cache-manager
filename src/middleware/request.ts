@@ -2,7 +2,13 @@ import { SENTINEL_HEADER } from "../constants/anthropic.ts";
 import type { PluginOptions } from "../config/settings.ts";
 import type { CacheTtlMode, ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
-import { classifyRequest, classifyRequestWithBody, isAnthropicProvider } from "../services/classify.ts";
+import {
+  classifyRequest,
+  classifyRequestWithBody,
+  isAnthropicProvider,
+  routeRequest,
+  shouldInject,
+} from "../services/classify.ts";
 import { resolveActiveMode, transformHttpRequest, ttlForMode } from "../services/cache-ttl.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
@@ -37,12 +43,10 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
     const cls = options.openaiCompatible
       ? await classifyRequestWithBody(evt.request, ref, deps)
       : classifyRequest(evt.request, ref, deps);
-    const chat = cls?.wire === "openai-chat";
-    const explicitChat = chat && options.openaiCompatible && cls.strategy === "explicit";
-    const implicit = chat && options.openaiCompatible && cls.strategy === "implicit";
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
-    const rewrites = anthropicProvider || hasSentinel || explicitChat;
-    const observed = anthropicProvider || cls?.wire === "anthropic-messages" || (chat && options.openaiCompatible);
+    const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
+    const { rewrites, implicit } = route;
+    const observed = route.observedWire !== undefined;
     if (!rewrites && !observed) return;
 
     const sessionID = evt.sessionID;
@@ -68,10 +72,9 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
     if (rewrites) {
       // With the option off an `openai-chat` request is rewritten as an Anthropic body (`opts` stays empty),
       // unless it carries the sentinel: then it goes through the OpenAI rewriter so the header is applied.
-      const opts =
-        chat && (options.openaiCompatible || hasSentinel)
-          ? { wire: "openai-chat" as const, inject: explicitChat && !isPing && (evt.kind === "primary" || evt.kind === "compaction") }
-          : {};
+      const opts = route.transformWire
+        ? { wire: route.transformWire, inject: shouldInject(route, evt.kind, isPing) }
+        : {};
       request = await transformHttpRequest(request, mode, opts);
     }
     evt.request = request;

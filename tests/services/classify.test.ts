@@ -4,6 +4,10 @@ import {
   classifyRequestWithBody,
   isAnthropicMessagesRequest,
   requestWire,
+  routeRequest,
+  shouldInject,
+  type Route,
+  type RouteInput,
 } from "../../src/services/classify.ts";
 import { parseModelPatterns } from "../../src/config/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
@@ -145,5 +149,152 @@ describe("isAnthropicMessagesRequest", () => {
 
   test("rejects non-POST", () => {
     expect(isAnthropicMessagesRequest(new Request("https://api.anthropic.com/v1/messages"))).toBe(false);
+  });
+});
+
+describe("routeRequest", () => {
+  const base: RouteInput = { cls: undefined, anthropicProvider: false, hasSentinel: false, openaiCompatible: false };
+  const route = (over: Partial<RouteInput>) => routeRequest({ ...base, ...over });
+  const none: Route = { rewrites: false, observedWire: undefined, implicit: false, transformWire: undefined, explicitChat: false };
+
+  test("an unclassified request is left alone", () => {
+    expect(route({})).toEqual(none);
+    expect(route({ openaiCompatible: true })).toEqual(none);
+  });
+
+  test("an Anthropic provider on /messages is rewritten and observed as anthropic-messages", () => {
+    const cls = { wire: "anthropic-messages", strategy: "explicit" } as const;
+    for (const openaiCompatible of [false, true]) {
+      expect(route({ cls, anthropicProvider: true, openaiCompatible })).toEqual({
+        ...none,
+        rewrites: true,
+        observedWire: "anthropic-messages",
+      });
+    }
+  });
+
+  test("a proxied /messages request is observed but not rewritten", () => {
+    const cls = { wire: "anthropic-messages", strategy: "explicit" } as const;
+    expect(route({ cls })).toEqual({ ...none, observedWire: "anthropic-messages" });
+  });
+
+  test("an Anthropic provider on /chat/completions with the option off is rewritten as an Anthropic body", () => {
+    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    expect(route({ cls, anthropicProvider: true })).toEqual({
+      ...none,
+      rewrites: true,
+      observedWire: "anthropic-messages",
+    });
+  });
+
+  test("openai-chat explicit with the option on is rewritten, injected and observed as openai-chat", () => {
+    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    expect(route({ cls, openaiCompatible: true })).toEqual({
+      rewrites: true,
+      observedWire: "openai-chat",
+      implicit: false,
+      transformWire: "openai-chat",
+      explicitChat: true,
+    });
+  });
+
+  test("openai-chat explicit with the option off is untouched", () => {
+    const cls = { wire: "openai-chat", strategy: "explicit" } as const;
+    expect(route({ cls })).toEqual(none);
+  });
+
+  test("openai-chat implicit with the option on is observed only", () => {
+    const cls = { wire: "openai-chat", strategy: "implicit" } as const;
+    expect(route({ cls, openaiCompatible: true })).toEqual({
+      ...none,
+      observedWire: "openai-chat",
+      implicit: true,
+      transformWire: "openai-chat",
+    });
+  });
+
+  test("openai-chat implicit with the option off is untouched", () => {
+    const cls = { wire: "openai-chat", strategy: "implicit" } as const;
+    expect(route({ cls })).toEqual(none);
+  });
+
+  test("the sentinel alone rewrites, through the OpenAI rewriter only on openai-chat", () => {
+    expect(route({ hasSentinel: true })).toEqual({ ...none, rewrites: true });
+    expect(route({ hasSentinel: true, cls: { wire: "openai-chat", strategy: "implicit" } })).toEqual({
+      ...none,
+      rewrites: true,
+      transformWire: "openai-chat",
+    });
+    expect(route({ hasSentinel: true, cls: { wire: "anthropic-messages", strategy: "explicit" } })).toEqual({
+      ...none,
+      rewrites: true,
+      observedWire: "anthropic-messages",
+    });
+  });
+
+  test("matches the former inline expressions for every input", () => {
+    const wires = [undefined, "anthropic-messages", "openai-chat"] as const;
+    const strategies = ["explicit", "implicit"] as const;
+    const bools = [false, true];
+    for (const wire of wires)
+      for (const strategy of strategies)
+        for (const anthropicProvider of bools)
+          for (const hasSentinel of bools)
+            for (const openaiCompatible of bools) {
+              const cls = wire ? { wire, strategy } : undefined;
+              const chat = cls?.wire === "openai-chat";
+              const explicitChat = chat && openaiCompatible && cls.strategy === "explicit";
+              const observed = anthropicProvider || cls?.wire === "anthropic-messages" || (chat && openaiCompatible);
+              const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
+              expect(got.explicitChat).toBe(explicitChat);
+              expect(got.implicit).toBe(chat && openaiCompatible && cls.strategy === "implicit");
+              expect(got.rewrites).toBe(anthropicProvider || hasSentinel || explicitChat);
+              expect(got.observedWire !== undefined).toBe(observed);
+              expect(got.transformWire).toBe(chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined);
+              const responseWire =
+                cls?.wire === "openai-chat" && openaiCompatible
+                  ? "openai-chat"
+                  : anthropicProvider || cls?.wire === "anthropic-messages"
+                    ? "anthropic-messages"
+                    : undefined;
+              expect(got.observedWire).toBe(responseWire);
+            }
+  });
+
+  test("the strategy is irrelevant to routing on the response side", () => {
+    expect(route({ cls: { wire: "openai-chat" }, openaiCompatible: true }).observedWire).toBe("openai-chat");
+  });
+});
+
+describe("shouldInject", () => {
+  const explicit = routeRequest({
+    cls: { wire: "openai-chat", strategy: "explicit" },
+    anthropicProvider: false,
+    hasSentinel: false,
+    openaiCompatible: true,
+  });
+  const implicit = routeRequest({
+    cls: { wire: "openai-chat", strategy: "implicit" },
+    anthropicProvider: false,
+    hasSentinel: false,
+    openaiCompatible: true,
+  });
+
+  test("injects on an explicit chat primary or compaction request that is not a ping", () => {
+    expect(shouldInject(explicit, "primary", false)).toBe(true);
+    expect(shouldInject(explicit, "compaction", false)).toBe(true);
+    expect(shouldInject(explicit, "title", false)).toBe(false);
+    expect(shouldInject(explicit, "generate", false)).toBe(false);
+  });
+
+  test("never injects a ping", () => {
+    for (const kind of ["primary", "compaction", "title", "generate"] as const) {
+      expect(shouldInject(explicit, kind, true)).toBe(false);
+    }
+  });
+
+  test("never injects a route that is not explicit chat", () => {
+    expect(shouldInject(implicit, "primary", false)).toBe(false);
+    expect(shouldInject(routeRequest({ cls: undefined, anthropicProvider: true, hasSentinel: false, openaiCompatible: true }), "primary", false)).toBe(false);
   });
 });

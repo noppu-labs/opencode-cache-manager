@@ -1,8 +1,8 @@
 import type { PluginOptions } from "../config/settings.ts";
-import type { ModelRef, Wire } from "../models/cache.ts";
+import type { ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import { isAnthropicProvider, requestWire } from "../services/classify.ts";
+import { isAnthropicProvider, requestWire, routeRequest } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
 import { observeResponseUsage } from "../services/usage.ts";
@@ -23,18 +23,18 @@ export interface ResponseHookDeps {
   strategies: Pick<StrategyStore, "learnFromResponse">;
 }
 
-/** The wire to observe, or `undefined` to leave the response alone. With the option off, `openai-chat` behaves as before the option existed. */
-function observedWire(wire: Wire | undefined, anthropicProvider: boolean, openaiCompatible: boolean): Wire | undefined {
-  if (wire === "openai-chat" && openaiCompatible) return "openai-chat";
-  return anthropicProvider || wire === "anthropic-messages" ? "anthropic-messages" : undefined;
-}
-
 /** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the strategy from `openai-chat` responses. */
 export function createResponseHook({ engine, pings, options, strategies }: ResponseHookDeps) {
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
-      const wire = observedWire(requestWire(evt.request), isAnthropicProvider(ref.providerID), options.openaiCompatible);
+      const wireOfRequest = requestWire(evt.request);
+      const { observedWire: wire } = routeRequest({
+        cls: wireOfRequest ? { wire: wireOfRequest } : undefined,
+        anthropicProvider: isAnthropicProvider(ref.providerID),
+        hasSentinel: false,
+        openaiCompatible: options.openaiCompatible,
+      });
       if (!wire) return;
 
       const sessionID = evt.sessionID;
