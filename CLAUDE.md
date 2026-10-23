@@ -66,7 +66,8 @@ src/
 │   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
 │   ├── response-observer.ts   # observeResponseUsage: response tee that feeds a ResponseParsers set
 │   ├── usage.ts               # Anthropic usage/SSE parsing (ANTHROPIC_PARSERS), shared helpers: contextTokens, hasCacheActivity, grantedTtl
-│   └── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing (OPENAI_PARSERS)
+│   ├── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing (OPENAI_PARSERS)
+│   └── usage-responses.ts     # openai-responses usage, status and model parsing (RESPONSES_PARSERS)
 ├── ui/
 │   ├── command.ts             # TUI /cache-manager runner (typed arguments, toasts)
 │   ├── picker.ts              # Session/Global picker

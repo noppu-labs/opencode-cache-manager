@@ -4,7 +4,7 @@ import type { PluginOptions } from "../../src/config/settings.ts";
 import type { ModelRef } from "../../src/models/cache.ts";
 import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
-import { makeRequest, openaiSse, openaiUsage } from "../helpers/fixtures.ts";
+import { makeRequest, openaiSse, openaiUsage, responsesSse, responsesUsage } from "../helpers/fixtures.ts";
 
 const WRITE_1H = {
   input_tokens: 10,
@@ -382,6 +382,60 @@ describe("createResponseHook on openai-chat", () => {
     const { hook, learnCalls } = harness();
     await hook(event());
     await flush();
+    expect(learnCalls).toHaveLength(0);
+  });
+});
+
+describe("createResponseHook on openai-responses", () => {
+  const RESPONSES = () => new Request("https://omni.example/v1/responses", { method: "POST", body: "{}" });
+  const sse = (text: string) => new Response(text, { headers: { "content-type": "text/event-stream" } });
+  const responsesEvent = (overrides: Partial<HttpResponseEvent> = {}) =>
+    event({
+      model: { providerID: "omniroute", id: "auto/fast" },
+      request: RESPONSES(),
+      response: sse(responsesSse(responsesUsage.read)),
+      ...overrides,
+    });
+
+  test("reports usage and the status, and learns the model", async () => {
+    const { hook, observed, learnCalls } = harness();
+    await hook(responsesEvent());
+    await flush();
+
+    expect(observed[0]?.info).toMatchObject({
+      ok: true,
+      stopReason: "stop",
+      usage: { inputTokens: 2, cacheReadTokens: 8885, cacheWriteTokens: 19 },
+    });
+    expect(learnCalls).toEqual([{ ref: { providerID: "omniroute", id: "auto/fast" }, identity: { model: "openai/gpt-6-luna" } }]);
+  });
+
+  test("a tool call ends as tool_use, and the caller still receives the untouched stream", async () => {
+    const { hook, observed } = harness();
+    const original = responsesSse(responsesUsage.write, { toolCall: true });
+    const evt = responsesEvent({ response: sse(original) });
+    await hook(evt);
+    await flush();
+    expect(observed[0]?.info).toMatchObject({ stopReason: "tool_use" });
+    expect(await evt.response.text()).toBe(original);
+  });
+
+  test("a non-streaming JSON body is parsed too", async () => {
+    const { hook, observed } = harness();
+    const body = { model: "openai/gpt-6-luna", status: "completed", output: [], usage: responsesUsage.write };
+    await hook(responsesEvent({ response: jsonResponse(body) }));
+    await flush();
+    expect(observed[0]?.info).toMatchObject({ stopReason: "stop", usage: { cacheWriteTokens: 8885 } });
+  });
+
+  test("with the option off the response is left alone", async () => {
+    const { hook, observed, learnCalls } = harness({ options: { openaiCompatible: false } });
+    const evt = responsesEvent();
+    const original = evt.response;
+    await hook(evt);
+    await flush();
+    expect(evt.response).toBe(original);
+    expect(observed).toHaveLength(0);
     expect(learnCalls).toHaveLength(0);
   });
 });
