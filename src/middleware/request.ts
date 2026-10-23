@@ -39,7 +39,7 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { patterns: options.explicitCacheModels, learned: (r: ModelRef) => strategies.get(r) };
+    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => strategies.get(r) };
     const cls = options.openaiCompatible
       ? await classifyRequestWithBody(evt.request, ref, deps)
       : classifyRequest(evt.request, ref, deps);

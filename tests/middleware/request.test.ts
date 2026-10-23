@@ -8,14 +8,14 @@ import type { SkipReason } from "../../src/models/keepalive.ts";
 import { BUILTIN_DEFAULTS } from "../../src/config/settings.ts";
 import type { CacheUsage } from "../../src/models/cache.ts";
 import { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
-import { parseModelPatterns } from "../../src/config/model-patterns.ts";
+import { parseCacheProfiles } from "../../src/config/model-patterns.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
 import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
 function harness(config: { options?: Partial<PluginOptions>; strategies?: Map<string, CacheStrategy> } = {}) {
-  const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [], ...config.options };
+  const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
   const learned = config.strategies ?? new Map<string, CacheStrategy>();
   const strategies = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
   const { kv } = memoryKv();
@@ -170,7 +170,7 @@ describe("createRequestHook TTL rewrite", () => {
       store,
       engine: { snapshot: () => ({ skipReason: null }), requestSent: () => {} } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
-      options: { openaiCompatible: true, explicitCacheModels: [] },
+      options: { openaiCompatible: true, cacheProfiles: [] },
       strategies: { get: () => undefined },
       primaryMessages: new Map(),
     });
@@ -632,13 +632,13 @@ describe("createRequestHook on openai-chat", () => {
     const evt = await h.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
 
-    const forced = harness({ strategies: learned, options: { explicitCacheModels: parseModelPatterns(["!opus"]) } });
+    const forced = harness({ strategies: learned, options: { cacheProfiles: parseCacheProfiles({ opus: "implicit" }) } });
     const untouched = await forced.dispatch(chatRequest(chatBody("auto/opus-5")), alias);
     expect(collectCacheControls(await parsedBodyOf(untouched.request))).toHaveLength(0);
   });
 
   test("a user pattern makes an unknown model explicit", async () => {
-    const h = harness({ options: { explicitCacheModels: parseModelPatterns(["omniroute/mystery"]) } });
+    const h = harness({ options: { cacheProfiles: parseCacheProfiles({ "omniroute/mystery": "anthropic" }) } });
     const evt = await h.dispatch(chatRequest(chatBody("mystery-1")), { providerID: "omniroute", modelID: "mystery-1" });
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
   });
@@ -730,7 +730,7 @@ describe("createRequestHook with the real keepalive engine", () => {
       isChild: async () => false,
       onChange: () => {},
     });
-    const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [] };
+    const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [] };
     const hook = createRequestHook({
       store,
       engine,

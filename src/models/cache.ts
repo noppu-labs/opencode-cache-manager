@@ -67,12 +67,6 @@ export interface ResponseParsers {
   fromSse(text: string): ObservedResponse;
 }
 
-/** A user-supplied `explicitCacheModels` entry, compiled. Replaced by `ProfilePattern` when `cacheProfiles` lands. */
-export interface ModelPattern {
-  test: RegExp;
-  strategy: CacheStrategy;
-}
-
 /** A user-supplied `cacheProfiles` entry, compiled. */
 export interface ProfilePattern {
   matches(ref: ModelRef): boolean;

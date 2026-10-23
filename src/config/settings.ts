@@ -1,5 +1,5 @@
-import { isCacheTtlMode, type CacheTtlMode, type ModelPattern } from "../models/cache.ts";
-import { parseModelPatterns } from "./model-patterns.ts";
+import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from "../models/cache.ts";
+import { parseCacheProfiles } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 
 /** Effective plugin settings after layering built-in defaults, options, global and session. */
@@ -50,15 +50,15 @@ export function settingsFromOptions(options: unknown): SettingsPatch {
 /** Server-only plugin options for OpenAI-compatible endpoints; not part of the layered settings. */
 export interface PluginOptions {
   openaiCompatible: boolean;
-  explicitCacheModels: ModelPattern[];
+  cacheProfiles: ProfilePattern[];
 }
 
-/** Reads `openaiCompatible` (default `true`) and `explicitCacheModels`; invalid values fall back to the defaults. */
+/** Reads `openaiCompatible` (default `true`) and `cacheProfiles`; invalid values fall back to the defaults. */
 export function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
     openaiCompatible: typeof record.openaiCompatible === "boolean" ? record.openaiCompatible : true,
-    explicitCacheModels: parseModelPatterns(record.explicitCacheModels),
+    cacheProfiles: parseCacheProfiles(record.cacheProfiles),
   };
 }
 

@@ -85,8 +85,8 @@ describe("settingsFromOptions", () => {
 
 describe("pluginOptions", () => {
   test("defaults to enabled with no patterns", () => {
-    expect(pluginOptions(undefined)).toEqual({ openaiCompatible: true, explicitCacheModels: [] });
-    expect(pluginOptions({})).toEqual({ openaiCompatible: true, explicitCacheModels: [] });
+    expect(pluginOptions(undefined)).toEqual({ openaiCompatible: true, cacheProfiles: [] });
+    expect(pluginOptions({})).toEqual({ openaiCompatible: true, cacheProfiles: [] });
   });
 
   test("reads openaiCompatible only when it is a boolean", () => {
@@ -95,9 +95,14 @@ describe("pluginOptions", () => {
     expect(pluginOptions({ openaiCompatible: 0 }).openaiCompatible).toBe(true);
   });
 
-  test("compiles explicitCacheModels and drops invalid entries", () => {
-    const { explicitCacheModels } = pluginOptions({ explicitCacheModels: ["auto/opus", "!deepseek", 5, ""] });
-    expect(explicitCacheModels.map((p) => p.strategy)).toEqual(["anthropic", "implicit"]);
-    expect(pluginOptions({ explicitCacheModels: "auto" }).explicitCacheModels).toEqual([]);
+  test("compiles cacheProfiles and drops invalid entries", () => {
+    const { cacheProfiles } = pluginOptions({ cacheProfiles: { "auto/opus": "anthropic", gpt: "openai", deepseek: "implicit", x: "bogus", "": "openai" } });
+    expect(cacheProfiles.map((p) => p.profile)).toEqual(["anthropic", "openai", "implicit"]);
+    expect(pluginOptions({ cacheProfiles: "auto" }).cacheProfiles).toEqual([]);
+    expect(pluginOptions({ cacheProfiles: ["auto/opus"] }).cacheProfiles).toEqual([]);
+  });
+
+  test("explicitCacheModels is ignored", () => {
+    expect(pluginOptions({ explicitCacheModels: ["auto/opus"] }).cacheProfiles).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
-import type { ModelPattern } from "../models/cache.ts";
+import type { CacheProfileId, ProfilePattern } from "../models/cache.ts";
+import { isRecord } from "../utils/is-record.ts";
 
 const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
 const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
@@ -25,16 +26,25 @@ function compile(source: string): RegExp | undefined {
   }
 }
 
-/** Compiles the `explicitCacheModels` option; invalid, empty and non-string entries are dropped. */
-export function parseModelPatterns(value: unknown): ModelPattern[] {
-  if (!Array.isArray(value)) return [];
-  const patterns: ModelPattern[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const negated = entry.startsWith("!");
-    const test = compile(negated ? entry.slice(1) : entry);
-    if (test === undefined || entry === "" || entry === "!") continue;
-    patterns.push({ test, strategy: negated ? "implicit" : "anthropic" });
+function isCacheProfileId(value: unknown): value is CacheProfileId {
+  return value === "anthropic" || value === "openai" || value === "implicit";
+}
+
+/** Compiles the `cacheProfiles` option; empty patterns, invalid regexes and unknown profile values are dropped. */
+export function parseCacheProfiles(value: unknown): ProfilePattern[] {
+  if (!isRecord(value)) return [];
+  const patterns: ProfilePattern[] = [];
+  for (const [source, profile] of Object.entries(value)) {
+    if (source === "" || !isCacheProfileId(profile)) continue;
+    const test = compile(source);
+    if (test === undefined) continue;
+    patterns.push({
+      profile,
+      matches: (ref) => {
+        test.lastIndex = 0;
+        return test.test(`${ref.providerID}/${ref.id}`);
+      },
+    });
   }
   return patterns;
 }

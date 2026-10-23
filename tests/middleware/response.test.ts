@@ -32,7 +32,7 @@ function gate() {
 }
 
 function harness(config: { options?: Partial<PluginOptions> } = {}) {
-  const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [], ...config.options };
+  const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
   const learnCalls: Array<{ ref: ModelRef; identity: unknown }> = [];
   const strategies = {
     learnFromResponse: async (ref: ModelRef, identity: unknown) => {
@@ -343,7 +343,7 @@ describe("createResponseHook on openai-chat", () => {
     const throwing = createResponseHook({
       engine: { responseObserved: () => Promise.resolve() } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
-      options: { openaiCompatible: true, explicitCacheModels: [] },
+      options: { openaiCompatible: true, cacheProfiles: [] },
       strategies: {
         learnFromResponse: async () => {
           throw new Error("storage down");

@@ -1,8 +1,8 @@
 import { ANTHROPIC_PROVIDER_IDS, MESSAGES_SUFFIX } from "../constants/anthropic.ts";
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy, ModelPattern, ModelRef, Wire } from "../models/cache.ts";
+import type { CacheStrategy, ModelRef, ProfilePattern, Wire } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
-import { matchModelPatterns } from "./model-patterns.ts";
+import { matchProfilePatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 
@@ -17,7 +17,7 @@ export function isAnthropicMessagesRequest(request: Request): boolean {
 }
 
 export interface ClassifyDeps {
-  patterns: readonly ModelPattern[];
+  patterns: readonly ProfilePattern[];
   learned?: (ref: ModelRef) => CacheStrategy | undefined;
 }
 
@@ -25,6 +25,12 @@ export interface ClassifyDeps {
 export function requestWire(request: Request): Wire | undefined {
   if (isAnthropicMessagesRequest(request)) return "anthropic-messages";
   return isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX) ? "openai-chat" : undefined;
+}
+
+/** The user pattern's profile as a strategy; `openai` reads as `implicit` until the OpenAI profile is resolved here. */
+function userStrategy(patterns: readonly ProfilePattern[], ref: ModelRef): CacheStrategy | undefined {
+  const profile = matchProfilePatterns(patterns, ref);
+  return profile === "openai" ? "implicit" : profile;
 }
 
 /**
@@ -43,7 +49,7 @@ export function classifyRequest(
 
   const builtin = EXPLICIT_CACHE_MODEL.test(ref.id) || (bodyModel !== undefined && EXPLICIT_CACHE_MODEL.test(bodyModel));
   const strategy =
-    matchModelPatterns(deps.patterns, ref) ?? (builtin ? "anthropic" : undefined) ?? deps.learned?.(ref) ?? "implicit";
+    userStrategy(deps.patterns, ref) ?? (builtin ? "anthropic" : undefined) ?? deps.learned?.(ref) ?? "implicit";
   return { wire: "openai-chat", strategy };
 }
 
@@ -60,7 +66,7 @@ export async function classifyRequestWithBody(
 ): Promise<{ wire: Wire; strategy: CacheStrategy } | undefined> {
   const first = classifyRequest(request, ref, deps);
   if (first?.wire !== "openai-chat" || first.strategy !== "implicit") return first;
-  if (matchModelPatterns(deps.patterns, ref) !== undefined) return first;
+  if (matchProfilePatterns(deps.patterns, ref) !== undefined) return first;
   try {
     const body: unknown = await request.clone().json();
     const model = isRecord(body) && typeof body.model === "string" ? body.model : undefined;

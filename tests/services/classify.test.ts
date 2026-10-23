@@ -10,7 +10,7 @@ import {
   type Route,
   type RouteInput,
 } from "../../src/services/classify.ts";
-import { parseModelPatterns } from "../../src/config/model-patterns.ts";
+import { parseCacheProfiles } from "../../src/config/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
 
@@ -58,12 +58,12 @@ describe("classifyRequest", () => {
     expect(classifyRequest(chat(), ref, { patterns: [], learned })?.strategy).toBe("implicit");
     await store.learnFromResponse(ref, { model: "claude-opus-5-5" });
     expect(classifyRequest(chat(), ref, { patterns: [], learned })?.strategy).toBe("anthropic");
-    expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["!opus"]), learned })?.strategy).toBe("implicit");
+    expect(classifyRequest(chat(), ref, { patterns: parseCacheProfiles({ opus: "implicit" }), learned })?.strategy).toBe("implicit");
   });
 
   test("a user pattern outranks the built-in regex", () => {
     const ref = { providerID: "omniroute", id: "auto/claude-opus-5-5" };
-    expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["!claude"]) })?.strategy).toBe("implicit");
+    expect(classifyRequest(chat(), ref, { patterns: parseCacheProfiles({ claude: "implicit" }) })?.strategy).toBe("implicit");
   });
 
   test("the built-in regex outranks a learned implicit value", () => {
@@ -73,13 +73,13 @@ describe("classifyRequest", () => {
 
   test("a pattern can make a non-Claude model explicit", () => {
     const ref = { providerID: "omniroute", id: "auto/opus-5" };
-    expect(classifyRequest(chat(), ref, { patterns: parseModelPatterns(["opus"]) })?.strategy).toBe("anthropic");
+    expect(classifyRequest(chat(), ref, { patterns: parseCacheProfiles({ opus: "anthropic" }) })?.strategy).toBe("anthropic");
   });
 
   test("POST …/messages is anthropic-messages / explicit regardless of model or patterns", () => {
     const request = chat("https://api.anthropic.com/v1/messages");
     const ref = { providerID: "anthropic", id: "whatever" };
-    expect(classifyRequest(request, ref, { patterns: parseModelPatterns(["!whatever"]) })).toEqual({
+    expect(classifyRequest(request, ref, { patterns: parseCacheProfiles({ whatever: "implicit" }) })).toEqual({
       wire: "anthropic-messages",
       strategy: "anthropic",
     });
@@ -126,15 +126,15 @@ describe("classifyRequestWithBody", () => {
   });
 
   test("a pattern still outranks the body model", async () => {
-    const deps = { patterns: parseModelPatterns(["!opus"]) };
+    const deps = { patterns: parseCacheProfiles({ opus: "implicit" }) };
     expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, deps))?.strategy).toBe("implicit");
   });
 
   test("a matching pattern, either way, never parses the body", async () => {
-    for (const pattern of ["!opus", "opus"]) {
+    for (const profile of ["implicit", "anthropic"] as const) {
       const request = withBody("anthropic/claude-opus-5");
       const spy = spyOn(request, "clone");
-      await classifyRequestWithBody(request, ref, { patterns: parseModelPatterns([pattern]) });
+      await classifyRequestWithBody(request, ref, { patterns: parseCacheProfiles({ opus: profile }) });
       expect(spy).not.toHaveBeenCalled();
     }
   });
