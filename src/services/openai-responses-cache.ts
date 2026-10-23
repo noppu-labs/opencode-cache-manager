@@ -30,12 +30,28 @@ export function firstInputItem(body: Rec): Rec | undefined {
   return isRecord(first) ? first : undefined;
 }
 
-/** The last `input_text` part in the body, skipping items without one. */
+/**
+ * The last `input_text` part of a `function_call_output` item; string `output` becomes parts first.
+ * Probe: a breakpoint on such a part is honoured, while one on the item itself is ignored.
+ */
+export function toolOutputTextPart(item: Rec): Rec | undefined {
+  if (item.type !== "function_call_output") return undefined;
+  const { output } = item;
+  if (typeof output === "string") {
+    if (output === "") return undefined;
+    const part: Rec = { type: "input_text", text: output };
+    item.output = [part];
+    return part;
+  }
+  return Array.isArray(output) ? output.findLast(isInputText) : undefined;
+}
+
+/** The last `input_text` part of a message or tool output in the body, skipping items without one (tool calls, assistant output). */
 export function lastInputText(body: Rec): Rec | undefined {
   if (!Array.isArray(body.input)) return undefined;
   for (let index = body.input.length - 1; index >= 0; index--) {
     const item: unknown = body.input[index];
-    const part = isRecord(item) ? lastInputTextPart(item) : undefined;
+    const part = isRecord(item) ? (lastInputTextPart(item) ?? toolOutputTextPart(item)) : undefined;
     if (part) return part;
   }
   return undefined;
@@ -47,13 +63,15 @@ function stripFrom(node: unknown, keep: Rec | undefined): boolean {
   return true;
 }
 
-/** Removes `prompt_cache_breakpoint` from tools, chat messages and parts, and Responses items and parts, except on `keep`. */
+/** Removes `prompt_cache_breakpoint` from tools, chat messages and parts, and Responses items, parts and tool output parts, except on `keep`. */
 export function stripBreakpoints(body: Rec, keep?: Rec): boolean {
   let changed = false;
   const visit = (node: unknown): void => {
     changed = stripFrom(node, keep) || changed;
-    if (!isRecord(node) || !Array.isArray(node.content)) return;
-    for (const part of node.content) changed = stripFrom(part, keep) || changed;
+    if (!isRecord(node)) return;
+    for (const parts of [node.content, node.output]) {
+      if (Array.isArray(parts)) for (const part of parts) changed = stripFrom(part, keep) || changed;
+    }
   };
   for (const key of ["tools", "messages", "input"]) {
     const list = body[key];

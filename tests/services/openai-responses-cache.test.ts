@@ -4,6 +4,7 @@ import {
   lastInputText,
   lastInputTextPart,
   stripBreakpoints,
+  toolOutputTextPart,
 } from "../../src/services/openai-responses-cache.ts";
 
 type Rec = Record<string, unknown>;
@@ -62,16 +63,59 @@ describe("lastInputText", () => {
       input: [
         message("user", [target]),
         message("assistant", [{ type: "output_text", text: "a" }]),
-        { type: "function_call_output", call_id: "c", output: "x" },
+        { type: "function_call", call_id: "c", name: "read", arguments: "{}" },
+        { type: "function_call_output", call_id: "c", output: "" },
       ],
     };
     expect(lastInputText(body)).toBe(target);
+  });
+
+  test("lands on a trailing tool output, turning string output into an input_text part", () => {
+    const body: Rec = {
+      input: [
+        message("user", [inputText("question")]),
+        { type: "function_call", call_id: "c", name: "read", arguments: "{}" },
+        { type: "function_call_output", call_id: "c", output: "file contents" },
+        message("assistant", [{ type: "output_text", text: "a" }]),
+      ],
+    };
+    const part = lastInputText(body);
+    expect(part).toEqual({ type: "input_text", text: "file contents" });
+    expect(body.input).toEqual([
+      message("user", [inputText("question")]),
+      { type: "function_call", call_id: "c", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "c", output: [{ type: "input_text", text: "file contents" }] },
+      message("assistant", [{ type: "output_text", text: "a" }]),
+    ]);
   });
 
   test("is undefined without an input array or usable items", () => {
     expect(lastInputText({})).toBeUndefined();
     expect(lastInputText({ input: "plain" })).toBeUndefined();
     expect(lastInputText({ input: [] })).toBeUndefined();
+  });
+});
+
+describe("toolOutputTextPart", () => {
+  test("returns the last input_text part of an output array", () => {
+    const last = inputText("b");
+    const item: Rec = { type: "function_call_output", call_id: "c", output: [inputText("a"), { type: "input_image", image_url: "x" }, last] };
+    expect(toolOutputTextPart(item)).toBe(last);
+  });
+
+  test("turns string output into an input_text part", () => {
+    const item: Rec = { type: "function_call_output", call_id: "c", output: "done" };
+    const part = toolOutputTextPart(item);
+    expect(item).toEqual({ type: "function_call_output", call_id: "c", output: [{ type: "input_text", text: "done" }] });
+    expect(item.output).toEqual([part]);
+  });
+
+  test("ignores other items, empty output and arrays without input text", () => {
+    expect(toolOutputTextPart(message("user", "hi"))).toBeUndefined();
+    const empty: Rec = { type: "function_call_output", call_id: "c", output: "" };
+    expect(toolOutputTextPart(empty)).toBeUndefined();
+    expect(empty.output).toBe("");
+    expect(toolOutputTextPart({ type: "function_call_output", output: [inputText("")] })).toBeUndefined();
   });
 });
 
@@ -119,6 +163,14 @@ describe("stripBreakpoints", () => {
     expect(stripBreakpoints(body, keep)).toBe(true);
     expect(other).not.toHaveProperty("prompt_cache_breakpoint");
     expect(keep.prompt_cache_breakpoint).toEqual(BP);
+  });
+
+  test("removes breakpoints from tool output parts", () => {
+    const body: Rec = {
+      input: [{ type: "function_call_output", call_id: "c", output: [inputText("x", { prompt_cache_breakpoint: BP })] }],
+    };
+    expect(stripBreakpoints(body)).toBe(true);
+    expect(body.input).toEqual([{ type: "function_call_output", call_id: "c", output: [inputText("x")] }]);
   });
 
   test("returns false for bodies without breakpoints", () => {

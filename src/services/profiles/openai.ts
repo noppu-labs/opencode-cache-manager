@@ -38,7 +38,7 @@ function breakpointTarget(body: Rec, { wire, mode }: RewriteContext): Rec | unde
   if (mode === "5m") return undefined;
   if (wire === "openai-chat") return mode === "1h" ? lastChatText(body) : lastChatPrefixText(body);
   if (wire !== "openai-responses") return undefined;
-  // Probe: only input_text parts of user/system messages can carry a breakpoint; assistant and tool-call items are skipped.
+  // Probe: only input_text parts of user/system messages and tool outputs carry a breakpoint; assistant and tool-call items are skipped.
   if (mode === "1h") return lastInputText(body);
   const first = firstInputItem(body);
   return first ? lastInputTextPart(first) : undefined;

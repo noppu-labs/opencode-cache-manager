@@ -66,8 +66,11 @@ function expectedWithBreakpoint(wire: OpenAiWire, mode: "1h" | "hybrid"): Rec {
     }
   } else {
     const input = body.input as Rec[];
-    const target = mode === "hybrid" ? input[0]! : input[2]!;
-    (target.content as Rec[]).at(-1)!.prompt_cache_breakpoint = BP;
+    if (mode === "hybrid") {
+      (input[0]!.content as Rec[]).at(-1)!.prompt_cache_breakpoint = BP;
+    } else {
+      input[3]!.output = [inputText("result", { prompt_cache_breakpoint: BP })];
+    }
   }
   return body;
 }
@@ -83,7 +86,7 @@ describe("openai profile", () => {
     expect(openaiProfile.headers).toBeUndefined();
     for (const mode of MODES) expect(openaiProfile.ttlForMode(mode)).toBe(OPENAI_TTL_FOR_MODE[mode]);
     expect(openaiProfile.ttlForMode("5m")).toBe("30m");
-    expect(openaiProfile.ttlForMode("hybrid")).toBe("12h");
+    expect(openaiProfile.ttlForMode("hybrid")).toBe("30m");
   });
 
   for (const wire of WIRES) {
@@ -125,8 +128,9 @@ describe("openai profile", () => {
           openaiProfile.rewrite(body, ctx(wire, "1h", kind));
           expect(openaiProfile.rewrite(body, ctx(wire, "hybrid", kind))).toBe(true);
           const expected = expectedWithBreakpoint(wire, "hybrid");
-          // The earlier 1h send already turned the final string message into parts.
+          // The earlier 1h send already turned the final string message or tool output into parts.
           if (wire === "openai-chat") (expected.messages as Rec[])[4]!.content = [text("question")];
+          else (expected.input as Rec[])[3]!.output = [inputText("result")];
           expect(body).toEqual(expected);
         });
 
@@ -311,7 +315,7 @@ describe("openai profile", () => {
       ]);
     });
 
-    test("1h skips trailing items without input_text", () => {
+    test("1h lands on a trailing tool output past assistant items", () => {
       const body: Rec = {
         input: [
           { type: "message", role: "user", content: [inputText("ask")] },
@@ -320,11 +324,50 @@ describe("openai profile", () => {
           { type: "message", role: "assistant", content: [{ type: "output_text", text: "done" }] },
         ],
       };
-      openaiProfile.rewrite(body, ctx("openai-responses", "1h"));
-      expect((body.input as Rec[])[0]).toEqual({
-        type: "message",
-        role: "user",
-        content: [inputText("ask", { prompt_cache_breakpoint: BP })],
+      expect(openaiProfile.rewrite(body, ctx("openai-responses", "1h"))).toBe(true);
+      expect(body).toEqual({
+        input: [
+          { type: "message", role: "user", content: [inputText("ask")] },
+          { type: "function_call", call_id: "c", name: "f", arguments: "{}" },
+          { type: "function_call_output", call_id: "c", output: [inputText("r", { prompt_cache_breakpoint: BP })] },
+          { type: "message", role: "assistant", content: [{ type: "output_text", text: "done" }] },
+        ],
+      });
+    });
+
+    test("1h on a tool output moves an earlier breakpoint off the user message", () => {
+      const body: Rec = {
+        input: [
+          { type: "message", role: "user", content: [inputText("ask", { prompt_cache_breakpoint: BP })] },
+          { type: "function_call", call_id: "c", name: "f", arguments: "{}" },
+          { type: "function_call_output", call_id: "c", output: [inputText("r")] },
+        ],
+      };
+      expect(openaiProfile.rewrite(body, ctx("openai-responses", "1h"))).toBe(true);
+      expect(body).toEqual({
+        input: [
+          { type: "message", role: "user", content: [inputText("ask")] },
+          { type: "function_call", call_id: "c", name: "f", arguments: "{}" },
+          { type: "function_call_output", call_id: "c", output: [inputText("r", { prompt_cache_breakpoint: BP })] },
+        ],
+      });
+    });
+
+    test("1h walks back to the user message when the tool output has no text", () => {
+      const body: Rec = {
+        input: [
+          { type: "message", role: "user", content: [inputText("ask")] },
+          { type: "function_call", call_id: "c", name: "f", arguments: "{}" },
+          { type: "function_call_output", call_id: "c", output: "" },
+        ],
+      };
+      expect(openaiProfile.rewrite(body, ctx("openai-responses", "1h"))).toBe(true);
+      expect(body).toEqual({
+        input: [
+          { type: "message", role: "user", content: [inputText("ask", { prompt_cache_breakpoint: BP })] },
+          { type: "function_call", call_id: "c", name: "f", arguments: "{}" },
+          { type: "function_call_output", call_id: "c", output: "" },
+        ],
       });
     });
 

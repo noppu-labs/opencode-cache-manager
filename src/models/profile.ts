@@ -13,7 +13,7 @@ export interface RewriteContext {
 /** One provider's way of controlling its prompt cache: mode to TTL, request rewriting, keepalive. */
 export interface CacheProfile {
   id: CacheProfileId;
-  /** Wires this profile can rewrite on. */
+  /** Wires this profile can rewrite on; on any other wire the request is only observed (`implicit`). */
   wires: readonly Wire[];
   /** The TTL keepalive should track for a mode; `null` when there is nothing to keep warm. */
   ttlForMode(mode: CacheTtlMode): Ttl | null;

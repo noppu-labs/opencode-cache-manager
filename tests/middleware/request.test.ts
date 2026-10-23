@@ -675,7 +675,7 @@ describe("createRequestHook on openai-chat", () => {
     expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
   });
 
-  test("a /responses request is observed but never handed to the Anthropic rewriter", async () => {
+  test("a Claude /responses request is observed only: no rewrite, no TTL, no ping alignment", async () => {
     const h = harness();
     await h.store.setSession("ses_a", { mode: "1h" });
     const body = JSON.stringify({
@@ -692,6 +692,8 @@ describe("createRequestHook on openai-chat", () => {
     expect(await evt.request.text()).toBe(body);
     expect(evt.request.headers.has("anthropic-beta")).toBe(false);
     expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]?.info.requestedTtl).toBeNull();
+    expect(h.primaryMessages.has("ses_a")).toBe(false);
   });
 
   test("with the option off the body is never parsed for classification", async () => {
@@ -831,7 +833,7 @@ describe("createRequestHook with the openai profile", () => {
     messages[0].content = marked("You are helpful.") as never;
     expect(await parsedBodyOf(evt.request)).toEqual({ model: "openai/gpt-6-luna", messages });
     expect(evt.request.headers.get("anthropic-beta")).toBeNull();
-    expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+    expect(h.sent[0]?.info.requestedTtl).toBe("30m");
   });
 
   test("a title request caches nothing: explicit mode, no breakpoint", async () => {

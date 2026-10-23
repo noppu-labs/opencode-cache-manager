@@ -430,7 +430,7 @@ describe("profileForRoute", () => {
   test("with the option off, an OpenAI-wire request goes through the anthropic profile only with the sentinel", () => {
     expect(pick({ cls: gptChat })).toBeUndefined();
     expect(pick({ cls: gptChat, hasSentinel: true })).toBe("anthropic");
-    expect(pick({ cls: { wire: "openai-responses", profile: "implicit" }, hasSentinel: true })).toBe("anthropic");
+    expect(pick({ cls: { wire: "openai-responses", profile: "implicit" }, hasSentinel: true })).toBe("implicit");
   });
 
   test("an Anthropic provider on an OpenAI wire with the option off is an Anthropic body", () => {
@@ -444,10 +444,18 @@ describe("profileForRoute", () => {
 
   test("with the option on, an OpenAI-wire request uses its classified profile", () => {
     for (const wire of ["openai-chat", "openai-responses"] as const) {
-      for (const profile of ["anthropic", "openai", "implicit"] as const) {
+      for (const profile of ["openai", "implicit"] as const) {
         expect(pick({ cls: { wire, profile }, openaiCompatible: true })).toBe(profile);
         expect(pick({ cls: { wire, profile }, openaiCompatible: true, hasSentinel: true })).toBe(profile);
       }
     }
+    expect(pick({ cls: { wire: "openai-chat", profile: "anthropic" }, openaiCompatible: true })).toBe("anthropic");
+  });
+
+  test("a profile that cannot rewrite the wire falls back to implicit: Claude on /responses is observed only", () => {
+    const cls = { wire: "openai-responses", profile: "anthropic" } as const;
+    expect(pick({ cls, openaiCompatible: true })).toBe("implicit");
+    expect(pick({ cls, openaiCompatible: true, hasSentinel: true })).toBe("implicit");
+    expect(pick({ cls, openaiCompatible: true, anthropicProvider: true })).toBe("implicit");
   });
 });

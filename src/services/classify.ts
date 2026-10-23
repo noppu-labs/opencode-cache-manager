@@ -8,6 +8,7 @@ import {
 import type { CacheProfileId, ModelRef, ProfilePattern, Wire } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import { matchProfilePatterns } from "./model-patterns.ts";
+import { profileFor } from "./profiles/index.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 
@@ -148,12 +149,15 @@ export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompat
  * The profile a routed request is rewritten and kept warm through, or `undefined` to leave it alone.
  * An Anthropic-wire request, or one rewritten as an Anthropic body, uses `anthropic`. With the option
  * off an OpenAI-wire request is only reached through the sentinel, and keeps the Claude rewrite it had
- * before profiles existed, so an `openai` model never gets fields it was not opted into.
+ * before profiles existed, so an `openai` model never gets fields it was not opted into. A profile that
+ * cannot handle the request's wire (Claude on `/responses`) falls back to `implicit`: observed only.
  */
 export function profileForRoute(route: Route, openaiCompatible: boolean): CacheProfileId | undefined {
   if (!route.rewrites && route.observedWire === undefined) return undefined;
-  if (route.transformWire === undefined || !openaiCompatible) return "anthropic";
-  return route.profile ?? "anthropic";
+  const wire = route.transformWire;
+  if (wire === undefined) return "anthropic";
+  const id = openaiCompatible ? (route.profile ?? "anthropic") : "anthropic";
+  return profileFor(id).wires.includes(wire) ? id : "implicit";
 }
 
 /** True when breakpoints are injected into the request: a managed Claude-profile `openai-chat` primary or compaction request that is not a ping. */
