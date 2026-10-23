@@ -1,4 +1,4 @@
-import type { CacheStrategy } from "../models/cache.ts";
+import type { CacheStrategy, ModelRef } from "../models/cache.ts";
 
 /** A user-supplied `explicitCacheModels` entry, compiled. */
 export interface ModelPattern {
@@ -8,10 +8,23 @@ export interface ModelPattern {
 
 const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
 
-function compile(source: string): RegExp | undefined {
+const substring = (source: string) => new RegExp(source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+function validFlags(flags: string): boolean {
   try {
-    const literal = REGEX_LITERAL.exec(source);
-    return literal ? new RegExp(literal[1]!, literal[2]) : new RegExp(source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    new RegExp("", flags);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `/body/flags` is a regex (an invalid body gives `undefined`); anything else, including bad flags like `/auto/opus`, is a substring. */
+function compile(source: string): RegExp | undefined {
+  const literal = REGEX_LITERAL.exec(source);
+  if (!literal || !validFlags(literal[2]!)) return substring(source);
+  try {
+    return new RegExp(literal[1]!, literal[2]);
   } catch {
     return undefined;
   }
@@ -34,7 +47,7 @@ export function parseModelPatterns(value: unknown): ModelPattern[] {
 /** Strategy of the first pattern matching `"<providerID>/<id>"`, or `undefined`. */
 export function matchModelPatterns(
   patterns: readonly ModelPattern[],
-  ref: { providerID: string; id: string },
+  ref: ModelRef,
 ): CacheStrategy | undefined {
   const key = `${ref.providerID}/${ref.id}`;
   for (const pattern of patterns) {

@@ -1,20 +1,12 @@
 import { CHAT_COMPLETIONS_SUFFIX, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy, Wire } from "../models/cache.ts";
+import type { CacheStrategy, ModelRef, Wire } from "../models/cache.ts";
 import { matchModelPatterns, type ModelPattern } from "./model-patterns.ts";
+import { isPostToPathSuffix } from "../utils/request-path.ts";
 import { isAnthropicMessagesRequest } from "./usage.ts";
 
 export interface ClassifyDeps {
   patterns: readonly ModelPattern[];
-  learned?: (ref: { providerID: string; id: string }) => CacheStrategy | undefined;
-}
-
-function isChatCompletionsRequest(request: Request): boolean {
-  if (request.method !== "POST") return false;
-  try {
-    return new URL(request.url).pathname.endsWith(CHAT_COMPLETIONS_SUFFIX);
-  } catch {
-    return false;
-  }
+  learned?: (ref: ModelRef) => CacheStrategy | undefined;
 }
 
 /**
@@ -23,12 +15,12 @@ function isChatCompletionsRequest(request: Request): boolean {
  */
 export function classifyRequest(
   request: Request,
-  ref: { providerID: string; id: string },
+  ref: ModelRef,
   deps: ClassifyDeps,
   bodyModel?: string,
 ): { wire: Wire; strategy: CacheStrategy } | undefined {
   if (isAnthropicMessagesRequest(request)) return { wire: "anthropic-messages", strategy: "explicit" };
-  if (!isChatCompletionsRequest(request)) return undefined;
+  if (!isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX)) return undefined;
 
   const builtin = EXPLICIT_CACHE_MODEL.test(ref.id) || (bodyModel !== undefined && EXPLICIT_CACHE_MODEL.test(bodyModel));
   const strategy =

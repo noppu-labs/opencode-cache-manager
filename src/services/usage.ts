@@ -1,6 +1,7 @@
 import { ANTHROPIC_PROVIDER_IDS } from "../constants/anthropic.ts";
 import type { CacheUsage, Ttl } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
+import { isPostToPathSuffix } from "../utils/request-path.ts";
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -124,12 +125,7 @@ export function isAnthropicProvider(providerID: string): boolean {
 
 /** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
 export function isAnthropicMessagesRequest(request: Request): boolean {
-  if (request.method !== "POST") return false;
-  try {
-    return new URL(request.url).pathname.endsWith("/messages");
-  } catch {
-    return false;
-  }
+  return isPostToPathSuffix(request, "/messages");
 }
 
 /**

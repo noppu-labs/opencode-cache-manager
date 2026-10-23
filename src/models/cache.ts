@@ -37,3 +37,9 @@ export type Wire = "anthropic-messages" | "openai-chat";
  * - `"implicit"` — provider-managed caching; observed only, never pinged.
  */
 export type CacheStrategy = "explicit" | "implicit";
+
+/** Identifies an OpenCode model: provider plus model ID. */
+export interface ModelRef {
+  providerID: string;
+  id: string;
+}

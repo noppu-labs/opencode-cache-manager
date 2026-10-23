@@ -37,6 +37,17 @@ describe("parseModelPatterns", () => {
     expect(parseModelPatterns(["/(/", "opus"])).toHaveLength(1);
   });
 
+  test("a /…/x string with invalid regex flags falls back to a substring match", () => {
+    const patterns = parseModelPatterns(["/auto/opus"]);
+    expect(patterns).toHaveLength(1);
+    expect(matchModelPatterns(patterns, ref)).toBe("explicit");
+    expect(matchModelPatterns(patterns, { providerID: "omniroute", id: "auto/haiku-5" })).toBeUndefined();
+  });
+
+  test("an invalid regex body with valid flags is still dropped", () => {
+    expect(parseModelPatterns(["/(/i", "/[/"])).toEqual([]);
+  });
+
   test("drops non-string and empty entries", () => {
     expect(parseModelPatterns([1, null, {}, "", "!", "opus"])).toHaveLength(1);
   });

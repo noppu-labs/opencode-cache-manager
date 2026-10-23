@@ -1,10 +1,10 @@
 import { ANTHROPIC_UPSTREAM, EXPLICIT_CACHE_MODEL } from "../constants/openai.ts";
-import type { CacheStrategy } from "../models/cache.ts";
+import type { CacheStrategy, ModelRef } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import type { KV } from "./settings-store.ts";
 
 const STORAGE_KEY = "learned-models";
-const key = (ref: { providerID: string; id: string }) => `${ref.providerID}/${ref.id}`;
+const key = (ref: ModelRef) => `${ref.providerID}/${ref.id}`;
 
 /** Cache strategies learned from the resolved `model` / `provider` of past responses, persisted in plugin storage. */
 export class StrategyStore {
@@ -13,21 +13,26 @@ export class StrategyStore {
   constructor(private readonly kv: KV) {}
 
   async load(): Promise<void> {
-    const stored = await this.kv.get(STORAGE_KEY);
     this.learned = new Map();
+    let stored: unknown;
+    try {
+      stored = await this.kv.get(STORAGE_KEY);
+    } catch {
+      return;
+    }
     if (!isRecord(stored)) return;
     for (const [name, strategy] of Object.entries(stored)) {
       if (strategy === "explicit" || strategy === "implicit") this.learned.set(name, strategy);
     }
   }
 
-  get(ref: { providerID: string; id: string }): CacheStrategy | undefined {
+  get(ref: ModelRef): CacheStrategy | undefined {
     return this.learned.get(key(ref));
   }
 
-  /** Records the strategy a response reveals. Never rejects, so callers can fire and forget. */
+  /** Records the strategy a response reveals; the latest response wins. Never rejects, so callers can fire and forget. */
   async learnFromResponse(
-    ref: { providerID: string; id: string },
+    ref: ModelRef,
     identity: { model?: string; provider?: string } | undefined,
   ): Promise<void> {
     try {

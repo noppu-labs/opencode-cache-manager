@@ -73,6 +73,12 @@ describe("StrategyStore", () => {
     expect(store.get(ref)).toBe("explicit");
   });
 
+  test("a storage read error leaves load() resolved with an empty map", async () => {
+    const { kv } = memoryKv();
+    const store = await loaded({ ...kv, get: async () => { throw new Error("unreadable"); } });
+    expect(store.get(ref)).toBeUndefined();
+  });
+
   test("garbage in storage is ignored on load", async () => {
     const { kv, data } = memoryKv();
     data.set("learned-models", { "a/b": "explicit", "c/d": "bogus", "e/f": 3 });
