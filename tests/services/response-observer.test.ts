@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { observeResponseUsage } from "../../src/services/response-observer.ts";
+import { ANTHROPIC_PARSERS } from "../../src/services/usage.ts";
 import { OPENAI_PARSERS } from "../../src/services/usage-openai.ts";
 import { fullParsed, fullUsage, openaiSse, openaiUsage, sse } from "../helpers/fixtures.ts";
 
@@ -11,7 +12,7 @@ describe("observeResponseUsage", () => {
       statusText: "OK",
       headers: { "content-type": "text/event-stream", "x-test": "1" },
     });
-    const { response, usage } = observeResponseUsage(original);
+    const { response, usage } = observeResponseUsage(original, ANTHROPIC_PARSERS);
     expect(response.status).toBe(200);
     expect(response.statusText).toBe("OK");
     expect(response.headers.get("content-type")).toBe("text/event-stream");
@@ -24,6 +25,7 @@ describe("observeResponseUsage", () => {
     const text = JSON.stringify({ usage: fullUsage });
     const { response, usage } = observeResponseUsage(
       new Response(text, { headers: { "content-type": "application/json" } }),
+      ANTHROPIC_PARSERS,
     );
     expect(await response.text()).toBe(text);
     expect(await usage).toEqual(fullParsed);
@@ -33,6 +35,7 @@ describe("observeResponseUsage", () => {
     const text = JSON.stringify({ type: "error", error: { type: "invalid_request_error" } });
     const { response, usage } = observeResponseUsage(
       new Response(text, { status: 400, headers: { "content-type": "application/json" } }),
+      ANTHROPIC_PARSERS,
     );
     expect(response.status).toBe(400);
     expect(await response.text()).toBe(text);
@@ -40,7 +43,7 @@ describe("observeResponseUsage", () => {
   });
 
   test("bodyless responses resolve undefined", async () => {
-    const { response, usage } = observeResponseUsage(new Response(null, { status: 204 }));
+    const { response, usage } = observeResponseUsage(new Response(null, { status: 204 }), ANTHROPIC_PARSERS);
     expect(response.status).toBe(204);
     expect(response.body).toBeNull();
     expect(await usage).toBeUndefined();
@@ -49,6 +52,7 @@ describe("observeResponseUsage", () => {
   test("unparseable JSON resolves undefined without rejecting", async () => {
     const { response, usage } = observeResponseUsage(
       new Response("not json", { headers: { "content-type": "application/json" } }),
+      ANTHROPIC_PARSERS,
     );
     expect(await response.text()).toBe("not json");
     expect(await usage).toBeUndefined();
@@ -58,6 +62,7 @@ describe("observeResponseUsage", () => {
     const streamed = sse(fullUsage) + `data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n`;
     const fromSse = observeResponseUsage(
       new Response(streamed, { headers: { "content-type": "text/event-stream" } }),
+      ANTHROPIC_PARSERS,
     );
     await fromSse.response.text();
     expect(await fromSse.stopReason).toBe("tool_use");
@@ -66,11 +71,12 @@ describe("observeResponseUsage", () => {
       new Response(JSON.stringify({ stop_reason: "end_turn", usage: fullUsage }), {
         headers: { "content-type": "application/json" },
       }),
+      ANTHROPIC_PARSERS,
     );
     await fromJson.response.text();
     expect(await fromJson.stopReason).toBe("end_turn");
 
-    const failed = observeResponseUsage(new Response("not json", { headers: { "content-type": "application/json" } }));
+    const failed = observeResponseUsage(new Response("not json", { headers: { "content-type": "application/json" } }), ANTHROPIC_PARSERS);
     await failed.response.text();
     expect(await failed.stopReason).toBeUndefined();
   });
@@ -107,6 +113,7 @@ describe("observeResponseUsage", () => {
   test("identity is undefined on the Anthropic wire", async () => {
     const observed = observeResponseUsage(
       new Response(sse(fullUsage), { headers: { "content-type": "text/event-stream" } }),
+      ANTHROPIC_PARSERS,
     );
     expect(await observed.identity).toBeUndefined();
     expect(await observed.usage).toMatchObject({ inputTokens: 10 });
@@ -130,6 +137,7 @@ describe("observeResponseUsage", () => {
     );
     const { response, usage } = observeResponseUsage(
       new Response(source, { headers: { "content-type": "text/event-stream" } }),
+      ANTHROPIC_PARSERS,
     );
     const reader = response.body!.getReader();
     await reader.read();

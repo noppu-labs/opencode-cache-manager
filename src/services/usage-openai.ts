@@ -108,10 +108,14 @@ export function parseOpenAiIdentityFromSse(text: string): OpenAiIdentity | undef
 
 /** The Chat Completions parsers for the response tee. */
 export const OPENAI_PARSERS: ResponseParsers = {
-  usage: (text, sse) =>
-    sse ? parseOpenAiUsageFromSse(text) : parseOpenAiUsageFromJson(JSON.parse(text)),
-  stopReason: (text, sse) =>
-    sse ? parseOpenAiFinishReasonFromSse(text) : parseOpenAiFinishReasonFromJson(JSON.parse(text)),
-  identity: (text, sse) =>
-    sse ? parseOpenAiIdentityFromSse(text) : parseOpenAiIdentityFromJson(JSON.parse(text)),
+  fromJson: (body) => ({
+    usage: parseOpenAiUsageFromJson(body),
+    stopReason: parseOpenAiFinishReasonFromJson(body),
+    identity: parseOpenAiIdentityFromJson(body),
+  }),
+  fromSse: (text) => ({
+    usage: parseOpenAiUsageFromSse(text),
+    stopReason: parseOpenAiFinishReasonFromSse(text),
+    identity: parseOpenAiIdentityFromSse(text),
+  }),
 };

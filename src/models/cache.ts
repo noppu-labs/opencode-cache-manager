@@ -50,11 +50,17 @@ export interface OpenAiIdentity {
   provider?: string;
 }
 
-/** The per-wire parsers the response tee applies to a buffered body (`sse` picks stream or JSON). */
+/** What the response tee reads from a response body; fields a wire does not report stay undefined. */
+export interface ObservedResponse {
+  usage?: CacheUsage;
+  stopReason?: string;
+  identity?: OpenAiIdentity;
+}
+
+/** The per-wire parsers the response tee applies: `fromJson` gets the body parsed once, `fromSse` the raw stream text. */
 export interface ResponseParsers {
-  usage(text: string, sse: boolean): CacheUsage | undefined;
-  stopReason(text: string, sse: boolean): string | undefined;
-  identity(text: string, sse: boolean): OpenAiIdentity | undefined;
+  fromJson(body: unknown): ObservedResponse;
+  fromSse(text: string): ObservedResponse;
 }
 
 /** A user-supplied `explicitCacheModels` entry, compiled. */

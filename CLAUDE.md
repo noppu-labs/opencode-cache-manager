@@ -43,7 +43,7 @@ src/
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   └── openai.ts              # /chat/completions suffix, Claude-model regexes, finish-reason map
 ├── models/
-│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity, ResponseParsers, ModelPattern
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity, ObservedResponse, ResponseParsers, ModelPattern
 │   ├── keepalive.ts           # KeepaliveSnapshot, CacheReadout, SkipReason, RequestKind
 │   └── storage.ts             # KV and ScannableKV plugin storage interfaces
 ├── controllers/

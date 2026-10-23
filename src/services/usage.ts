@@ -116,8 +116,12 @@ export function parseStopReasonFromSse(text: string): string | undefined {
 
 /** The Anthropic Messages parsers; the wire reports no resolved model or provider. */
 export const ANTHROPIC_PARSERS: ResponseParsers = {
-  usage: (text, sse) => (sse ? parseUsageFromSse(text) : parseUsageFromJson(JSON.parse(text))),
-  stopReason: (text, sse) =>
-    sse ? parseStopReasonFromSse(text) : parseStopReasonFromJson(JSON.parse(text)),
-  identity: () => undefined,
+  fromJson: (body) => ({
+    usage: parseUsageFromJson(body),
+    stopReason: parseStopReasonFromJson(body),
+  }),
+  fromSse: (text) => ({
+    usage: parseUsageFromSse(text),
+    stopReason: parseStopReasonFromSse(text),
+  }),
 };

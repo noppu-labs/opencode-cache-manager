@@ -1,21 +1,14 @@
-import type { CacheUsage, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
-import { ANTHROPIC_PARSERS } from "./usage.ts";
-
-interface ObservedResponse {
-  usage?: CacheUsage;
-  stopReason?: string;
-  identity?: OpenAiIdentity;
-}
+import type { CacheUsage, ObservedResponse, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
 
 /**
  * Tees the response body so usage, the stop reason and, where `parsers`
- * report it, the resolved model and provider can be read in the background while the caller
- * receives an unmodified response. Cancelling the caller's body also stops the
+ * report it, the resolved model and provider can be read in the background
+ * while the caller receives an unmodified response. Cancelling the caller's body also stops the
  * observer, so the source is cancelled. The promises never reject.
  */
 export function observeResponseUsage(
   response: Response,
-  parsers: ResponseParsers = ANTHROPIC_PARSERS,
+  parsers: ResponseParsers,
 ): {
   response: Response;
   usage: Promise<CacheUsage | undefined>;
@@ -67,12 +60,8 @@ export function observeResponseUsage(
       }
       text += decoder.decode();
       if (cancelled || !response.ok) return {};
-      const streamed = contentType.includes("text/event-stream");
-      return {
-        usage: parsers.usage(text, streamed),
-        stopReason: parsers.stopReason(text, streamed),
-        identity: parsers.identity(text, streamed),
-      };
+      if (contentType.includes("text/event-stream")) return parsers.fromSse(text);
+      return parsers.fromJson(JSON.parse(text));
     } catch {
       return {};
     }
