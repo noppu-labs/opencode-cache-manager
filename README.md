@@ -10,7 +10,7 @@ An [OpenCode](https://opencode.ai) plugin for Claude's prompt cache. Pick the ca
 It works with Claude through the Anthropic API and through proxies that speak the Anthropic Messages API.
 
 <p align="center">
-  <img src="docs/images/sidebar-ping.png" alt="The Cache section of the OpenCode sidebar: status warm, expires 20:29 (59m), ttl 1h (detected), next ping 20:19 (49m), pings 0/5" width="500">
+  <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit" width="420">
 </p>
 
 ## Why
@@ -185,8 +185,10 @@ Cache
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
 - When keepalive isn't running, a `keepalive` row says why: `off · 31k < 50k` (context below the minimum), `off · disabled`, `waiting · session busy` (waiting on a tool call), or `stopped · last ping missed`.
 
+Every other state the section can show:
+
 <p align="center">
-  <img src="docs/images/sidebar-busy.png" alt="The Cache section while the session waits on a tool call: status warm, expires 20:24 (58m), ttl 1h (detected), keepalive waiting · session busy" width="500">
+  <img src="docs/images/sidebar-states.svg" alt="Nine captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; and an expired cache (expired 12m ago)" width="520">
 </p>
 
 The section is hidden for subagent sessions and for sessions with no cache activity.

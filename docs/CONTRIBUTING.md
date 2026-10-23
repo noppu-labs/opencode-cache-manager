@@ -48,7 +48,7 @@ src/
 ├── ui/            # picker, typed command, sidebar
 └── utils/         # small shared helpers
 tests/             # mirrors src/
-scripts/           # build-sidebar.ts
+scripts/           # build-sidebar.ts, capture-sidebar.ts and its capture/ modules
 docs/              # this file, UPGRADE.md, design notes from the original build
 ```
 
@@ -63,6 +63,22 @@ Where things go:
 ## The sidebar build
 
 `src/ui/sidebar.tsx` is the only JSX file. OpenCode runs the Solid JSX transform only on files outside `node_modules`, so for the npm package `bun run build` compiles it to `src/ui/sidebar.compiled.js` (gitignored, shipped in the tarball) and `tui.ts` loads that copy when installed from npm. The build also runs on `prepack`. There is no other build output and no `dist/`.
+
+## Sidebar images
+
+`docs/images/sidebar.svg` and `docs/images/sidebar-states.svg` in the README are rendered from `src/ui/sidebar.tsx`, not drawn by hand. `scripts/capture-sidebar.ts <screen>` renders one screen with OpenTUI's test renderer from sample snapshots (`scripts/capture/screens.tsx`) and OpenCode's default dark theme, and prints it as truecolor ANSI. Charm's [freeze](https://github.com/charmbracelet/freeze) turns that into an SVG. freeze is a contributor tool, not a package dependency, and CI does not run it:
+
+```sh
+brew install charmbracelet/tap/freeze   # other package managers: see the freeze README
+```
+
+After changing the sidebar component or a screen's samples, regenerate both images and commit them:
+
+```sh
+bun scripts/capture-sidebar.ts --all
+```
+
+`tests/scripts/capture-sidebar.test.ts` checks the rows each screen renders, so a change in the sidebar that affects the images fails the suite until the samples are updated. The picker image (`docs/images/picker.png`) is a screenshot: the picker is OpenCode's own dialog, so it can't be rendered from this repo.
 
 ## Rules worth knowing
 
