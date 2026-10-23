@@ -25,7 +25,8 @@ const defaultClock = (ms: number): string =>
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
 function cachedLine(cache: NonNullable<KeepaliveSnapshot["lastCache"]>): SidebarLine {
-  const percent = Math.round((cache.read / cache.total) * 100);
+  const ratio = (cache.read / cache.total) * 100;
+  const percent = cache.read < cache.total ? Math.floor(ratio) : Math.round(ratio);
   return {
     text: "cached",
     tone: "base",

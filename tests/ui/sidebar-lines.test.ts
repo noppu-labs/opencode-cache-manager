@@ -163,7 +163,7 @@ describe("sidebarLines", () => {
 
 describe("sidebarLines: cached line", () => {
   const cache = { read: 14_000, total: 16_000 };
-  const CACHED: SidebarLine = { text: "cached", tone: "base", right: "88% · 14k / 16k" };
+  const CACHED: SidebarLine = { text: "cached", tone: "base", right: "87% · 14k / 16k" };
 
   test("sits directly under status on a warm cache", () => {
     const out = lines(snap({ lastCache: cache }));
@@ -180,6 +180,11 @@ describe("sidebarLines: cached line", () => {
     expect(lines(snap({ lastCache: cache, expiresAt: null }))).toEqual([TITLE, TTL, CACHED]);
   });
 
+  test("a near-total read never rounds up to 100%", () => {
+    const out = lines(snap({ lastCache: { read: 9_960, total: 10_000 } }));
+    expect(out[2]?.right).toBe("99% · 10k / 10k");
+  });
+
   test("a null lastCache adds no cached line", () => {
     expect(lines(snap()).some((l) => l.text === "cached")).toBe(false);
   });
@@ -191,7 +196,7 @@ describe("sidebarLines: cached line", () => {
 
   test("formats the percentage and counts compactly", () => {
     const out = lines(snap({ lastCache: { read: 14_800, total: 16_100 } }));
-    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "92% · 14.8k / 16.1k" });
+    expect(out[2]).toEqual({ text: "cached", tone: "base", right: "91% · 14.8k / 16.1k" });
   });
 });
 
@@ -202,7 +207,7 @@ describe("sidebarLines: implicit sessions", () => {
   test("shows cached and an n/a keepalive row", () => {
     expect(lines(snap({ ...implicit, lastCache: { read: 14_000, total: 16_000 } }))).toEqual([
       TITLE,
-      { text: "cached", tone: "base", right: "88% · 14k / 16k" },
+      { text: "cached", tone: "base", right: "87% · 14k / 16k" },
       KEEPALIVE,
     ]);
   });
