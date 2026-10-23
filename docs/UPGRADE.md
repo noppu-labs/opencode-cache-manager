@@ -4,7 +4,7 @@
 
 Nothing to migrate. Update the version range in your `plugins` entry to `^0.4.0`: on 0.x, `^0.3.0` does not pick up 0.4.
 
-Support for OpenAI-compatible endpoints (OpenRouter, proxies) is on by default. Claude models on `…/chat/completions` now get the TTL rewrite, cache breakpoints and keepalive pings; other models there are only observed. To keep 0.3 behaviour, set the `openaiCompatible` plugin option to `false`. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
+Support for OpenAI-compatible endpoints (OpenRouter, proxies) is on by default. Claude models on `…/chat/completions` now get the TTL rewrite, cache breakpoints and keepalive pings; other models there are only observed. To turn it off, set the `openaiCompatible` plugin option to `false`. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
 
 ## From 0.1.x
 
