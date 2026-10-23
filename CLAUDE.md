@@ -36,14 +36,16 @@ src/
 ├── tui.ts                     # TUI entry: palette, slash command, registers the sidebar
 ├── rpc.ts                     # RPC contract and client type (public export, so it stays a top-level entry)
 ├── config/
-│   └── settings.ts            # Settings type, defaults, option parsing, layer merging
+│   ├── settings.ts            # Settings type, defaults, option parsing, layer merging
+│   └── model-patterns.ts      # parseModelPatterns: explicitCacheModels option -> ModelPattern[]
 ├── constants/
-│   ├── anthropic.ts           # beta header value, x-cache-ttl header name, Anthropic provider IDs
+│   ├── anthropic.ts           # beta header name and value, x-cache-ttl header name, /messages suffix, Anthropic provider IDs
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   └── openai.ts              # /chat/completions suffix, Claude-model regexes, finish-reason map
 ├── models/
-│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity
-│   └── keepalive.ts           # KeepaliveSnapshot, SkipReason, RequestKind
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheStrategy, ModelRef, OpenAiIdentity, ResponseParsers, ModelPattern
+│   ├── keepalive.ts           # KeepaliveSnapshot, CacheReadout, SkipReason, RequestKind
+│   └── storage.ts             # KV and ScannableKV plugin storage interfaces
 ├── controllers/
 │   ├── command.ts             # server /cache-manager handler
 │   ├── command-args.ts        # /cache-manager argument parsing (shared with the TUI)
@@ -58,16 +60,18 @@ src/
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)
 │   ├── cache-control.ts       # cache_control block helpers shared by both wires
 │   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
-│   ├── classify.ts            # wire + strategy (explicit/implicit) of a request
-│   ├── model-patterns.ts      # explicitCacheModels patterns: substring, /regex/flags, leading !
+│   ├── classify.ts            # wire + strategy (explicit/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
+│   ├── model-patterns.ts      # matchModelPatterns: substring, /regex/flags, leading ! (parsing lives in config/)
 │   ├── strategy-store.ts      # strategies learned from responses, kept in memory and plugin storage
 │   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
-│   ├── usage.ts               # Anthropic usage/SSE parsing, granted-TTL detection
-│   └── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing
+│   ├── response-observer.ts   # observeResponseUsage: response tee that feeds a ResponseParsers set
+│   ├── usage.ts               # Anthropic usage/SSE parsing (ANTHROPIC_PARSERS), shared helpers: contextTokens, hasCacheActivity, grantedTtl
+│   └── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing (OPENAI_PARSERS)
 ├── ui/
 │   ├── command.ts             # TUI /cache-manager runner (typed arguments, toasts)
 │   ├── picker.ts              # Session/Global picker
 │   ├── snapshot-feed.ts       # keepalive snapshots for the sidebar, fed by RPC events
+│   ├── located-rpc.ts         # withLocation: RPC client wrapper that targets the session's plugin instance
 │   ├── sidebar.tsx            # Solid sidebar component; the only JSX file
 │   ├── sidebar.compiled.js    # build output of sidebar.tsx (gitignored, shipped)
 │   ├── sidebar.compiled.d.ts  # types for the compiled output
@@ -75,6 +79,7 @@ src/
 └── utils/
     ├── format.ts              # formatRemaining, formatTokens, formatCompactTokens, errorMessage
     ├── is-record.ts
+    ├── node-modules.ts        # isInsideNodeModules: whether a module URL was loaded from node_modules
     ├── num.ts                 # finite-number coercion for usage fields
     └── request-path.ts        # POST-to-path-suffix check used by the classifier
 scripts/
