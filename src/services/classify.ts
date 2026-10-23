@@ -5,6 +5,7 @@ import { matchModelPatterns } from "./model-patterns.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { isPostToPathSuffix } from "../utils/request-path.ts";
 
+/** True for the provider IDs whose requests are always rewritten and observed. */
 export function isAnthropicProvider(providerID: string): boolean {
   return ANTHROPIC_PROVIDER_IDS.includes(providerID);
 }

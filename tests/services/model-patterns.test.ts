@@ -32,3 +32,12 @@ describe("matchModelPatterns", () => {
     expect(matchModelPatterns([], ref)).toBeUndefined();
   });
 });
+
+describe("parseModelPatterns with matchModelPatterns", () => {
+  test("a /…/x string with invalid regex flags falls back to a substring match", () => {
+    const patterns = parseModelPatterns(["/auto/opus"]);
+    expect(patterns).toHaveLength(1);
+    expect(matchModelPatterns(patterns, ref)).toBe("explicit");
+    expect(matchModelPatterns(patterns, { providerID: "omniroute", id: "auto/haiku-5" })).toBeUndefined();
+  });
+});
