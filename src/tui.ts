@@ -15,7 +15,7 @@ import { isInsideNodeModules } from "./utils/node-modules.ts";
  * the settings stay in one place (`ctx.storage`).
  */
 export default Plugin.define({
-  id: "anthropic-cache-ttl",
+  id: "opencode-cache-manager",
   async setup(ctx) {
     const rpc = withLocation(
       ctx.client.rpc(CacheTtlRpc as any) as unknown as RawCacheTtlRpcClient,

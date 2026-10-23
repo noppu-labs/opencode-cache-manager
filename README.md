@@ -43,7 +43,7 @@ If you prefer running from a clone (or while hacking on it), symlink the repo's 
 
 ```sh
 git clone https://github.com/noppu-labs/opencode-cache-manager.git
-ln -s "$(pwd)/opencode-cache-manager/src" ~/.config/opencode/plugins/anthropic-cache-ttl
+ln -s "$(pwd)/opencode-cache-manager/src" ~/.config/opencode/plugins/opencode-cache-manager
 ```
 
 A local checkout loads `src/ui/sidebar.tsx` directly, so no build is needed; `bun run build` is only for packaging.

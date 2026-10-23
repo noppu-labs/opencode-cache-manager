@@ -191,7 +191,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     rpcOptions,
     subscriptions,
     emitKeepalive: async (snapshot: any) => {
-      for (const listener of listeners) listener({ type: "rpc.anthropic-cache-ttl.keepalive.updated", data: snapshot });
+      for (const listener of listeners) listener({ type: "rpc.opencode-cache-manager.keepalive.updated", data: snapshot });
       await new Promise((resolve) => setTimeout(resolve, 0));
     },
     layer: () => layer,
