@@ -418,13 +418,15 @@ describe("keepalive wiring", () => {
     test("a GPT model is pinged on the 12h schedule with an aligned request and the ping is a hit", async () => {
       const mock = await start({ defaultMode: "1h" });
       const model = "gpt-6-luna";
+      const drifted = chatBody(model, PING_PROMPT);
+      drifted.messages[1] = { role: "user", content: "rewritten by another plugin" };
       const pings: Array<Record<string, any>> = [];
       mock.generate.mockImplementation(async (input: any) => {
         const ping = await roundTrip(mock, {
           ...chatTurn(model, { sse: [READ_CHAT] }),
           sessionID: input.sessionID,
           kind: "generate",
-          body: chatBody(model, PING_PROMPT),
+          body: drifted,
         });
         pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
         return {};

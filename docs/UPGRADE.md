@@ -4,7 +4,7 @@
 
 Update the version range in your `plugins` entry to `^0.5.0`: on 0.x, `^0.4.0` does not pick up 0.5.
 
-0.5.0 adds OpenAI GPT-5.6 and later as a managed provider, on Chat Completions and on the Responses API (OpenCode's native `openai` provider). The session's TTL mode now applies to them: `5m` leaves OpenAI's automatic 30-minute cache alone, `1h` and `hybrid` add a 12-hour breakpoint, one-off calls (titles, summaries) stop writing to the cache, and keepalive pings on the 25-minute or 10-hour schedule. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
+0.5.0 adds OpenAI GPT-5.6 and later as a managed provider, on Chat Completions and on the Responses API (OpenCode's native `openai` provider). The session's TTL mode now applies to them: `5m` leaves OpenAI's automatic 30-minute cache alone, `1h` and `hybrid` add a 12-hour breakpoint, one-off calls (titles and other one-off generate calls) stop writing to the cache, and keepalive pings on the 25-minute or 10-hour schedule. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
 
 **`explicitCacheModels` is replaced by `cacheProfiles`.** The old option is ignored. It was a list of patterns where a leading `!` meant "never manage"; the new one maps each pattern to a profile (`"anthropic"`, `"openai"` or `"implicit"`):
 
@@ -24,7 +24,7 @@ Behaviour you may notice:
 - **A `-1h` variant on an `implicit` model** (for example a `"gpt": "implicit"` mapping, or a model the plugin doesn't manage) has its `x-cache-ttl` header stripped and nothing else changed.
 - **Claude through a `…/responses` endpoint** now gets ping alignment like on the other wires. With the `openaiCompatible` option off, a `…/responses` request only has the `x-cache-ttl` header stripped; before, it went through the Anthropic rewrite.
 - **A non-Claude model behind an Anthropic-ID provider** on an OpenAI wire now follows its own profile instead of being rewritten as Claude.
-- **OmniRoute** drops `prompt_cache_breakpoint`, so GPT's 12-hour cache doesn't reach OpenAI through it yet; caching turned off for one-off calls does work. Use `5m` for GPT sessions there.
+- **OmniRoute** drops `prompt_cache_breakpoint`, so GPT's 12-hour cache is not expected to reach OpenAI through it yet (not yet reported upstream; expected, not measured). Caching turned off for one-off calls does work. Pings on the 12-hour schedule are then expected to miss, so use `5m` for GPT sessions there.
 - **Older GPT models** (before 5.6) are never sent the new fields, since they answer 400.
 
 ## From 0.3.x

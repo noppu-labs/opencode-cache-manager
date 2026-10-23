@@ -108,6 +108,57 @@ function openAiResponsesRequest(url: string, headers: Record<string, string>): R
   });
 }
 
+type ExampleKind = "anthropic" | "chat" | "responses";
+
+const EXAMPLE_KIND: Record<string, ExampleKind> = {
+  "opencode.anthropic.jsonc": "anthropic",
+  "opencode.openai-compatible.jsonc": "chat",
+  "opencode.openai.jsonc": "responses",
+  "opencode.openrouter.jsonc": "chat",
+};
+
+/** Per endpoint kind: rewrites a request carrying the variant's headers and checks the result. */
+const CHECKS: Record<ExampleKind, (variant: ExampleVariant, label: string) => Promise<void>> = {
+  async anthropic(variant, label) {
+    const out = await transformHttpRequest(
+      makeRequest(JSON.stringify(sampleBody()), variant.headers),
+      "5m",
+      transformOpts(),
+    );
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
+    const controls = collectCacheControls(await parsedBodyOf(out));
+    expect(controls.length, label).toBeGreaterThan(0);
+    for (const cc of controls) expect(cc.ttl, label).toBe("1h");
+  },
+  async chat(variant, label) {
+    const request = openAiChatRequest("https://your-proxy.example/v1/chat/completions", variant.headers ?? {});
+    const out = await transformHttpRequest(request, "5m", transformOpts({ wire: "openai-chat", inject: true }));
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
+    const controls = collectCacheControls(await parsedBodyOf(out));
+    expect(controls.length, label).toBeGreaterThan(0);
+    for (const cc of controls) expect(cc.ttl, label).toBe("1h");
+  },
+  async responses(variant, label) {
+    const request = openAiResponsesRequest("https://api.openai.com/v1/responses", variant.headers ?? {});
+    const out = await transformHttpRequest(
+      request,
+      "5m",
+      transformOpts({ wire: "openai-responses", profile: openaiProfile, inject: true }),
+    );
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.has("anthropic-beta"), label).toBe(false);
+    const body = (await parsedBodyOf(out)) as any;
+    expect(body.prompt_cache_options, label).toBeUndefined();
+    expect(body.input[0].content[0], label).toEqual({
+      type: "input_text",
+      text: "Say hello.",
+      prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
+    });
+  },
+};
+
 describe("docs/examples", () => {
   test("has an example per supported endpoint", () => {
     expect(EXAMPLE_FILES).toEqual([
@@ -121,8 +172,7 @@ describe("docs/examples", () => {
   describe.each(EXAMPLE_FILES)("%s", (file) => {
     const config = parseExample(file);
     const variants = oneHourVariants(config);
-    const responses = file === "opencode.openai.jsonc";
-    const openai = file !== "opencode.anthropic.jsonc" && !responses;
+    const kind = EXAMPLE_KIND[file]!;
 
     test("parses and declares providers with models", () => {
       expect(config.$schema).toBe("https://opencode.ai/config.json");
@@ -143,43 +193,8 @@ describe("docs/examples", () => {
       }
     });
 
-    test("every -1h variant rewrites its request to 1h", async () => {
-      if (responses) return;
-      for (const { label, variant } of variants) {
-        const request = openai
-          ? openAiChatRequest("https://your-proxy.example/v1/chat/completions", variant.headers ?? {})
-          : makeRequest(JSON.stringify(sampleBody()), variant.headers);
-        const out = await transformHttpRequest(
-          request,
-          "5m",
-          openai ? transformOpts({ wire: "openai-chat", inject: true }) : transformOpts(),
-        );
-        expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
-        expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
-        const controls = collectCacheControls(await parsedBodyOf(out));
-        expect(controls.length, label).toBeGreaterThan(0);
-        for (const cc of controls) expect(cc.ttl, label).toBe("1h");
-      }
-    });
-
-    test.if(responses)("every -1h variant puts a 12h breakpoint on its Responses request", async () => {
-      for (const { label, variant } of variants) {
-        const request = openAiResponsesRequest("https://api.openai.com/v1/responses", variant.headers ?? {});
-        const out = await transformHttpRequest(
-          request,
-          "5m",
-          transformOpts({ wire: "openai-responses", profile: openaiProfile, inject: true }),
-        );
-        expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
-        expect(out.headers.has("anthropic-beta"), label).toBe(false);
-        const body = (await parsedBodyOf(out)) as any;
-        expect(body.prompt_cache_options, label).toBeUndefined();
-        expect(body.input[0].content[0], label).toEqual({
-          type: "input_text",
-          text: "Say hello.",
-          prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
-        });
-      }
+    test("every -1h variant rewrites its request", async () => {
+      for (const { label, variant } of variants) await CHECKS[kind](variant, label);
     });
 
     test("holds no secrets or personal hostnames", () => {

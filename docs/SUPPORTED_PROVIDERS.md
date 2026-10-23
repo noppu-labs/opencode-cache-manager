@@ -9,7 +9,7 @@ The plugin handles three wire formats: the Anthropic Messages API (`POST …/mes
 | Cache control it rewrites | `cache_control` breakpoints | `prompt_cache_breakpoint` on text parts | none |
 | TTL by mode | 5m / 1h / hybrid | 30m (automatic) / 12h / 12h at the end of the system prompt | none |
 | Breakpoint injection when OpenCode sent none | yes (your prompts and compaction, not pings or titles) | only the 12h breakpoint for `1h` / `hybrid` | no |
-| One-off calls (titles, summaries) | unchanged | sent with `prompt_cache_options: { mode: "explicit" }` and no breakpoints, so they write nothing to the cache | unchanged |
+| One-off calls (titles and other one-off generate calls) | unchanged | sent with `prompt_cache_options: { mode: "explicit" }` and no breakpoints, so they write nothing to the cache | unchanged |
 | `x-cache-ttl` sentinel header stripped | yes | yes | yes |
 | Cache usage observed (sidebar `cached` row) | yes | yes | yes |
 | Keepalive pings | yes (5m, 1h) | yes (30m, 12h) | never |
@@ -21,15 +21,15 @@ Claude models cache only where a request marks a breakpoint. OpenCode's `openrou
 | Mode | Chat Completions | Responses |
 | --- | --- | --- |
 | `5m` | nothing (automatic 30m cache) | nothing (automatic 30m cache) |
-| `1h` | `prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" }` on the last text part of the last user, system or tool message | the same breakpoint on the last `input_text` part of `input` |
+| `1h` | `prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" }` on the last text part of the last user, system, developer or tool message | the same breakpoint on the last `input_text` part of `input` |
 | `hybrid` | the 12h breakpoint on the last text part of the leading system messages; the tail keeps the automatic 30m cache | the same breakpoint on the first `input` item |
-| title, summary and other one-off calls | `prompt_cache_options: { mode: "explicit" }`, no breakpoints | the same |
+| titles and other one-off generate calls | `prompt_cache_options: { mode: "explicit" }`, no breakpoints | the same |
 
 The plugin never sends a request-level `prompt_cache_options.ttl`. It is ignored on Chat Completions and OpenRouter rejects it with a 400 on Responses unless `mode` is `"explicit"`, and explicit mode on a normal turn would disable the automatic cache for the message tail. The 12h lifetime is always a `ttl` on the breakpoint itself. Pings are never changed beyond aligning their messages with the session's last request.
 
 OpenAI's usage reports how many tokens were read and written but not the lifetime, so the sidebar shows `ttl 30m (requested)` or `ttl 12h (requested)`.
 
-Models before GPT-5.6 (`gpt-5`, `gpt-4.1`, …) answer 400 to `prompt_cache_options` and `prompt_cache_breakpoint`, so the plugin never sends them. A model counts as GPT-5.6+ only when its name matches (`gpt-5.6` and up, `gpt-6` and up) or when you map it yourself with `"openai"` in `cacheProfiles`.
+Older models such as `gpt-5` answer 400 to `prompt_cache_options` and `prompt_cache_breakpoint`, so the plugin never sends them. A model counts as GPT-5.6+ only when its name matches (`gpt-5.6` and up, `gpt-6` and up) or when you map it yourself with `"openai"` in `cacheProfiles`.
 
 A model counts as Claude or GPT-5.6+, in this order:
 
@@ -43,7 +43,7 @@ On the OpenAI wires, Claude requests in `1h` and `hybrid` carry the same `anthro
 
 ### OmniRoute and other proxies
 
-OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is billed as the automatic 30m cache. A fix is planned upstream; until then, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. Keepalive still pings on the 12h schedule, so on OmniRoute those pings arrive after the 30m cache is gone and do not hit. Use `5m` for GPT sessions on such a proxy.
+OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is expected to be billed as the automatic 30m cache (observed in the probe, not measured for every route). This is not yet reported upstream; until it is fixed, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. Keepalive still pings on the 12h schedule, so on OmniRoute those pings are expected to arrive after the 30m cache is gone and miss (expected, not measured). Use `5m` for GPT sessions on such a proxy.
 
 Example provider configs with `-1h` variants:
 
@@ -68,7 +68,7 @@ Providers change their caching often. This table reflects their documentation as
 
 A few details that matter for long agent sessions:
 
-- **OpenAI GPT-5.6 and later bill every cache write**, even with automatic caching. A one-off prompt of 1,024 tokens or more therefore costs more with caching on. Setting `prompt_cache_options.mode` to `"explicit"` with no breakpoints turns caching off for that request. A request-level `prompt_cache_options.ttl` is ignored on Chat Completions and rejected on Responses through OpenRouter (it requires `mode: "explicit"`, which turns off the automatic cache for the tail); the 12h lifetime works through a `ttl` on `prompt_cache_breakpoint`, which is what the plugin sends. Before GPT-5.6 the fields answer 400.
+- **OpenAI GPT-5.6 and later bill every cache write**, even with automatic caching. A one-off prompt of 1,024 tokens or more therefore costs more with caching on. Setting `prompt_cache_options.mode` to `"explicit"` with no breakpoints turns caching off for that request. A request-level `prompt_cache_options.ttl` is ignored on Chat Completions and rejected on Responses through OpenRouter (it requires `mode: "explicit"`, which turns off the automatic cache for the tail); the 12h lifetime works through a `ttl` on `prompt_cache_breakpoint`, which is what the plugin sends. Older models such as `gpt-5` answer 400.
 - **OpenRouter keeps a session on the same provider** (sticky routing) while caching pays off, for up to 10 idle minutes. It uses the `session_id` body field or `x-session-id` header as the key when present, which OpenCode sends.
 
 ### Sources
