@@ -196,7 +196,3 @@ The section is hidden for subagent sessions and for sessions with no cache activ
 ## Contributing
 
 See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the local setup, the checks CI runs and how releases are cut.
-
-## License
-
-MIT -- see [LICENSE](LICENSE).
