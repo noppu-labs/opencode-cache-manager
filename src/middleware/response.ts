@@ -5,7 +5,8 @@ import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { isAnthropicProvider, observedWireFor, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { StrategyStore } from "../services/strategy-store.ts";
-import { ANTHROPIC_PARSERS, observeResponseUsage } from "../services/usage.ts";
+import { observeResponseUsage } from "../services/response-observer.ts";
+import { ANTHROPIC_PARSERS } from "../services/usage.ts";
 import { OPENAI_PARSERS } from "../services/usage-openai.ts";
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */

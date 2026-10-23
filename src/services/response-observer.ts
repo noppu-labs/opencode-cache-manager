@@ -1,0 +1,87 @@
+import type { CacheUsage, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
+import { ANTHROPIC_PARSERS } from "./usage.ts";
+
+interface ObservedResponse {
+  usage?: CacheUsage;
+  stopReason?: string;
+  identity?: OpenAiIdentity;
+}
+
+/**
+ * Tees the response body so usage, the stop reason and, where `parsers`
+ * report it, the resolved model and provider can be read in the background while the caller
+ * receives an unmodified response. Cancelling the caller's body also stops the
+ * observer, so the source is cancelled. The promises never reject.
+ */
+export function observeResponseUsage(
+  response: Response,
+  parsers: ResponseParsers = ANTHROPIC_PARSERS,
+): {
+  response: Response;
+  usage: Promise<CacheUsage | undefined>;
+  stopReason: Promise<string | undefined>;
+  identity: Promise<OpenAiIdentity | undefined>;
+} {
+  if (!response.body) {
+    return {
+      response,
+      usage: Promise.resolve(undefined),
+      stopReason: Promise.resolve(undefined),
+      identity: Promise.resolve(undefined),
+    };
+  }
+
+  const [callerBranch, observerBranch] = response.body.tee();
+  const callerReader = callerBranch.getReader();
+  const observerReader = observerBranch.getReader();
+  let cancelled = false;
+  const forCaller = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        const { done, value } = await callerReader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      async cancel(reason) {
+        cancelled = true;
+        await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const passthrough = new Response(forCaller, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const parsed = (async (): Promise<ObservedResponse> => {
+    try {
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { done, value } = await observerReader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      if (cancelled || !response.ok) return {};
+      const streamed = contentType.includes("text/event-stream");
+      return {
+        usage: parsers.usage(text, streamed),
+        stopReason: parsers.stopReason(text, streamed),
+        identity: parsers.identity(text, streamed),
+      };
+    } catch {
+      return {};
+    }
+  })();
+
+  return {
+    response: passthrough,
+    usage: parsed.then((p) => p.usage),
+    stopReason: parsed.then((p) => p.stopReason),
+    identity: parsed.then((p) => p.identity),
+  };
+}
