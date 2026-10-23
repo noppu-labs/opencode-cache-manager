@@ -10,7 +10,7 @@ An [OpenCode](https://opencode.ai) plugin for Claude's prompt cache. Pick the ca
 It works with Claude through the Anthropic API and through proxies that speak the Anthropic Messages API.
 
 <p align="center">
-  <img src="docs/images/sidebar.png" alt="The Cache section of the OpenCode sidebar: status warm, expires in 58m, ttl 1h (detected), keepalive waiting on a busy session" width="520">
+  <img src="docs/images/sidebar-ping.png" alt="The Cache section of the OpenCode sidebar: status warm, expires 20:29 (59m), ttl 1h (detected), next ping 20:19 (49m), pings 0/5" width="500">
 </p>
 
 ## Why
@@ -53,21 +53,11 @@ To run from a clone instead, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). U
 
 Run `/cache-manager` in the TUI. It's also in the palette as "Cache Manager".
 
-With no argument it opens a picker with two sections:
+With no argument it opens a picker with a Session section (only shown inside a session) and a Global section:
 
-```
-Session                       (only shown inside a session)
-  TTL mode          1h · global
-  Keepalive         on · global
-  Pings per idle    3
-  Min context       50k · global
-  Reset session to global
-Global
-  TTL mode          1h
-  Keepalive         on
-  Pings per idle    5
-  Min context       50k
-```
+<p align="center">
+  <img src="docs/images/picker.png" alt="The Cache Manager picker: a Session section with TTL mode 5m · global, Keepalive on · global, Pings per idle 5 · global, Min context 50k · global and Reset session to global; a Global section with TTL mode 5m, Keepalive on, Pings per idle 5, Min context 50k" width="640">
+</p>
 
 Session rows that show `· global` inherit the global value; a row without it has a session override. Picking a row opens a list of values, and the numeric settings also offer "Custom…" for a typed value.
 
@@ -194,6 +184,10 @@ Cache
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
 - When keepalive isn't running, a `keepalive` row says why: `off · 31k < 50k` (context below the minimum), `off · disabled`, `waiting · session busy` (waiting on a tool call), or `stopped · last ping missed`.
+
+<p align="center">
+  <img src="docs/images/sidebar-busy.png" alt="The Cache section while the session waits on a tool call: status warm, expires 20:24 (58m), ttl 1h (detected), keepalive waiting · session busy" width="500">
+</p>
 
 The section is hidden for subagent sessions and for sessions with no cache activity.
 
