@@ -1,6 +1,6 @@
 # opencode-cache-manager
 
-OpenCode V2 plugin that manages the Anthropic prompt cache: it rewrites outgoing requests to control the TTL (`5m` default, `1h`, or `hybrid` with 1h on tools + system and 5m on messages), per session, and keeps idle sessions' caches warm with hidden keepalive pings. Published to npm as both `@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`.
+OpenCode V2 plugin that manages the Anthropic prompt cache: it rewrites outgoing requests to control the TTL (`5m` default, `1h`, or `hybrid` with 1h on tools + system and 5m on messages), per session, and keeps idle sessions' caches warm with hidden keepalive pings. It works on the Anthropic Messages wire and on OpenAI-compatible endpoints (`POST …/chat/completions`: OpenRouter, proxies such as OmniRoute): Claude models there get the same management, and every other model is only observed (sidebar `cached` row, never pinged). Published to npm as both `@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`.
 
 ## Commands
 
@@ -39,7 +39,8 @@ src/
 │   └── settings.ts            # Settings type, defaults, option parsing, layer merging
 ├── constants/
 │   ├── anthropic.ts           # beta header value, x-cache-ttl header name, Anthropic provider IDs
-│   └── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
+│   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
+│   └── openai.ts              # /chat/completions suffix, Claude-model regexes, finish-reason map
 ├── models/
 │   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage
 │   └── keepalive.ts           # KeepaliveSnapshot, SkipReason, RequestKind
@@ -54,9 +55,15 @@ src/
 │   ├── keepalive-engine.ts    # scheduling engine
 │   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
 │   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep
-│   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge
+│   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)
+│   ├── cache-control.ts       # cache_control block helpers shared by both wires
+│   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
+│   ├── classify.ts            # wire + strategy (explicit/implicit) of a request
+│   ├── model-patterns.ts      # explicitCacheModels patterns: substring, /regex/flags, leading !
+│   ├── strategy-store.ts      # strategies learned from responses, kept in memory and plugin storage
 │   ├── ping-alignment.ts      # aligning a ping's messages with the last primary request
-│   └── usage.ts               # usage/SSE parsing, granted-TTL detection
+│   ├── usage.ts               # Anthropic usage/SSE parsing, granted-TTL detection
+│   └── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing
 ├── ui/
 │   ├── command.ts             # TUI /cache-manager runner (typed arguments, toasts)
 │   ├── picker.ts              # Session/Global picker
@@ -67,13 +74,16 @@ src/
 │   └── sidebar-lines.ts       # pure sidebar line formatting
 └── utils/
     ├── format.ts              # formatRemaining, formatTokens, errorMessage
-    └── is-record.ts
+    ├── is-record.ts
+    ├── num.ts                 # finite-number coercion for usage fields
+    └── request-path.ts        # POST-to-path-suffix check used by the classifier
 scripts/
 ├── build-sidebar.ts           # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js
 ├── capture-sidebar.ts         # renders the sidebar for docs/images/*.svg (ANSI out, or --all through freeze)
 └── capture/
     ├── ansi.ts                # CapturedFrame -> truecolor ANSI rows
     └── screens.tsx            # sample snapshots and the screen list
+docs/examples/                 # sample opencode.jsonc provider configs: anthropic, openrouter, openai-compatible
 tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts)
 ```
 
@@ -81,9 +91,9 @@ Other top-level files:
 
 - `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host.
 - `tests/helpers/` - shared test fixtures (sample Anthropic bodies, request builders, in-memory storage).
-- `tests/opencode-config.test.ts` - checks the `-1h` variants in `opencode.jsonc`.
+- `tests/opencode-config.test.ts` - checks that every `docs/examples/*.jsonc` parses and that each of its `-1h` variants rewrites to 1h.
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
-- `opencode.jsonc` - sample provider config with `-1h` model variants and a commented keepalive options example (not shipped).
+- `docs/examples/` - sample provider configs with `-1h` model variants and commented plugin options, one per endpoint kind: `opencode.anthropic.jsonc`, `opencode.openrouter.jsonc`, `opencode.openai-compatible.jsonc` (not shipped). Add new examples there; the config test picks up every `.jsonc` file.
 - `docs/` - `CONTRIBUTING.md`, `UPGRADE.md`, README images in `images/` (the sidebar SVGs are generated by `bun scripts/capture-sidebar.ts --all`, which needs Charm's `freeze`; `picker.png` is a screenshot), and design notes under `superpowers/`.
 
 Where new code goes:
@@ -102,8 +112,8 @@ Where new code goes:
 ## Rules
 
 - Anthropic requires 1h breakpoints to come before 5m ones in a request. Any change to TTL assignment must preserve that ordering.
-- `1h` / `hybrid` requests must carry `anthropic-beta: extended-cache-ttl-2025-04-11`, merged with any existing beta values.
-- The `x-cache-ttl` header is a per-model override sentinel: read it, apply it, strip it before the request leaves.
+- `1h` / `hybrid` requests must carry `anthropic-beta: extended-cache-ttl-2025-04-11`, merged with any existing beta values. This applies on both wires; some OpenAI-compatible proxies (OmniRoute) need it for 1h to take effect.
+- The `x-cache-ttl` header is a per-model override sentinel: read it, apply it, strip it before the request leaves. On the OpenAI wire this holds for implicit-cache models too (strip it, rewrite nothing else).
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.
 - The release workflow and the package smoke test pack with `--ignore-scripts`, so they run `bun run build` explicitly. Keep that if the pack command changes.

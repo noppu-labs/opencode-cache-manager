@@ -1,7 +1,7 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
   "version": "0.3.0",
-  "description": "Anthropic prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL, keepalive pings for idle sessions, and a sidebar cache status",
+  "description": "Prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL and keepalive pings for Claude on Anthropic and OpenAI-compatible endpoints (OpenRouter, proxies), plus a sidebar cache status",
   "type": "module",
   "license": "MIT",
   "author": "cris005",
@@ -49,6 +49,8 @@
     "opencode-plugin",
     "anthropic",
     "claude",
+    "openrouter",
+    "openai-compatible",
     "prompt-caching",
     "cache-ttl",
     "cache-keepalive",
