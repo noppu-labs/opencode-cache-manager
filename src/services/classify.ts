@@ -32,7 +32,8 @@ export function classifyRequest(
 /**
  * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
  * body carries the upstream ID. The body is read from a clone, and only when the first pass is
- * `implicit` on `openai-chat`, so a pattern, a Claude ID or a learned value never costs a parse.
+ * `implicit` on `openai-chat` and no user pattern matched, so a pattern, a Claude ID or a learned value
+ * never costs a parse.
  */
 export async function classifyRequestWithBody(
   request: Request,
@@ -41,6 +42,7 @@ export async function classifyRequestWithBody(
 ): Promise<{ wire: Wire; strategy: CacheStrategy } | undefined> {
   const first = classifyRequest(request, ref, deps);
   if (first?.wire !== "openai-chat" || first.strategy !== "implicit") return first;
+  if (matchModelPatterns(deps.patterns, ref) !== undefined) return first;
   try {
     const body: unknown = await request.clone().json();
     const model = isRecord(body) && typeof body.model === "string" ? body.model : undefined;

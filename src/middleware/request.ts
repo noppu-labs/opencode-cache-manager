@@ -2,7 +2,7 @@ import { SENTINEL_HEADER } from "../constants/anthropic.ts";
 import type { PluginOptions } from "../config/settings.ts";
 import type { CacheTtlMode, ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
-import { classifyRequestWithBody } from "../services/classify.ts";
+import { classifyRequest, classifyRequestWithBody } from "../services/classify.ts";
 import { resolveActiveMode, transformHttpRequest, ttlForMode } from "../services/cache-ttl.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
@@ -34,10 +34,10 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const cls = await classifyRequestWithBody(evt.request, ref, {
-      patterns: options.explicitCacheModels,
-      learned: (r) => strategies.get(r),
-    });
+    const deps = { patterns: options.explicitCacheModels, learned: (r: ModelRef) => strategies.get(r) };
+    const cls = options.openaiCompatible
+      ? await classifyRequestWithBody(evt.request, ref, deps)
+      : classifyRequest(evt.request, ref, deps);
     const chat = cls?.wire === "openai-chat";
     const explicitChat = chat && options.openaiCompatible && cls.strategy === "explicit";
     const implicit = chat && options.openaiCompatible && cls.strategy === "implicit";
@@ -71,7 +71,7 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
       // sentinel is still stripped and honoured.
       const opts =
         chat && (options.openaiCompatible || hasSentinel)
-          ? { wire: "openai-chat" as const, inject: explicitChat && !isPing && evt.kind !== "title" }
+          ? { wire: "openai-chat" as const, inject: explicitChat && !isPing && (evt.kind === "primary" || evt.kind === "compaction") }
           : {};
       request = await transformHttpRequest(request, mode, opts);
     }

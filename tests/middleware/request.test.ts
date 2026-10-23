@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
 import { PING_PROMPT } from "../../src/constants/keepalive.ts";
 import { createRequestHook, type HttpRequestEvent } from "../../src/middleware/request.ts";
@@ -651,10 +651,26 @@ describe("createRequestHook on openai-chat", () => {
     expect(h.sent.at(-1)?.info.isPing).toBe(true);
   });
 
-  test("a title request is not injected", async () => {
+  test("one-off title and generate requests are not injected", async () => {
     const h = harness();
-    const evt = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), { ...claude, kind: "title" });
-    expect(collectCacheControls(await parsedBodyOf(evt.request))).toHaveLength(0);
+    for (const kind of ["title", "generate"] as const) {
+      const evt = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), { ...claude, kind });
+      expect(collectCacheControls(await parsedBodyOf(evt.request))).toHaveLength(0);
+    }
+  });
+
+  test("a compaction request is injected", async () => {
+    const h = harness();
+    const evt = await h.dispatch(chatRequest(chatBody("claude-opus-5-5")), { ...claude, kind: "compaction" });
+    expect(collectCacheControls(await parsedBodyOf(evt.request)).length).toBeGreaterThan(0);
+  });
+
+  test("with the option off the body is never parsed for classification", async () => {
+    const h = harness({ options: { openaiCompatible: false } });
+    const request = chatRequest(chatBody("anthropic/claude-opus-5"));
+    const spy = spyOn(request, "clone");
+    await h.dispatch(request, { providerID: "omniroute", modelID: "auto/opus-5" });
+    expect(spy).not.toHaveBeenCalled();
   });
 
   test("with the option off the request is skipped, or only sentinel-stripped", async () => {

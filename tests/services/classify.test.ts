@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { classifyRequest, classifyRequestWithBody } from "../../src/services/classify.ts";
 import { parseModelPatterns } from "../../src/services/model-patterns.ts";
 import { StrategyStore } from "../../src/services/strategy-store.ts";
@@ -107,5 +107,14 @@ describe("classifyRequestWithBody", () => {
   test("a pattern still outranks the body model", async () => {
     const deps = { patterns: parseModelPatterns(["!opus"]) };
     expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, deps))?.strategy).toBe("implicit");
+  });
+
+  test("a matching pattern, either way, never parses the body", async () => {
+    for (const pattern of ["!opus", "opus"]) {
+      const request = withBody("anthropic/claude-opus-5");
+      const spy = spyOn(request, "clone");
+      await classifyRequestWithBody(request, ref, { patterns: parseModelPatterns([pattern]) });
+      expect(spy).not.toHaveBeenCalled();
+    }
   });
 });
