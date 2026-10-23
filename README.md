@@ -33,35 +33,11 @@ Reads cost about 0.1x base input in every mode. `hybrid` exists because Anthropi
 
 Requests in `1h` or `hybrid` mode also get the `anthropic-beta: extended-cache-ttl-2025-04-11` header merged in.
 
-## Supported endpoints
+## Supported providers and endpoints
 
-The plugin handles two wire formats: the Anthropic Messages API (`POST …/messages`) and OpenAI Chat Completions (`POST …/chat/completions`). On Chat Completions it also needs to know whether a model's cache is something it can manage:
+The plugin handles the Anthropic Messages API (`POST …/messages`) and OpenAI Chat Completions (`POST …/chat/completions`). Claude models get the full treatment on both. Other models (OpenAI, DeepSeek, Gemini, …) manage their own cache, so the plugin only shows how much of each prompt was cached.
 
-| | Claude (explicit cache) | Everything else (implicit cache) |
-| --- | --- | --- |
-| TTL rewrite of existing `cache_control` | yes | no |
-| Breakpoint injection when OpenCode sent none | yes (your prompts and compaction, not pings or titles) | no |
-| `x-cache-ttl` sentinel header stripped | yes | yes |
-| Cache usage observed (sidebar `cached` row) | yes | yes |
-| Keepalive pings | yes | never |
-
-Claude models cache only where a request marks a breakpoint. OpenCode's `openrouter` provider marks them for `anthropic/*` models, but its `openai-compatible` provider marks none, so the plugin adds the same three (the last tool, the system prompt, the last message) when the request has no `cache_control` at all. Other models, such as OpenAI's or DeepSeek's, cache on the provider's side with no breakpoints to rewrite. The plugin only reads the usage in their responses.
-
-A model counts as Claude, in this order:
-
-1. Your `explicitCacheModels` patterns (see [Settings](#settings)).
-2. Its name: the OpenCode model ID or the `model` in the request body contains `claude`, or has an `anthropic/` prefix (as in `openrouter/anthropic/…`).
-3. What the first response says it ran on: the response's `model` or `provider` field names Anthropic or Claude. This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so an alias is unmanaged for its first turn only.
-
-Anything else is treated as implicit.
-
-On the OpenAI wire, 1h and `hybrid` requests carry the same `anthropic-beta: extended-cache-ttl-2025-04-11` header as on the Anthropic wire. OpenRouter adds it itself, but some proxies, OmniRoute among them, need it before they honour the 1h TTL. The OpenAI usage format doesn't say which TTL the provider granted, so the sidebar shows `ttl 1h (requested)` there.
-
-Example provider configs with `-1h` variants:
-
-- [docs/examples/opencode.anthropic.jsonc](docs/examples/opencode.anthropic.jsonc): Claude through an Anthropic Messages endpoint
-- [docs/examples/opencode.openrouter.jsonc](docs/examples/opencode.openrouter.jsonc): Claude and a non-Claude model through OpenCode's built-in `openrouter` provider
-- [docs/examples/opencode.openai-compatible.jsonc](docs/examples/opencode.openai-compatible.jsonc): a generic OpenAI-compatible proxy
+[docs/SUPPORTED_PROVIDERS.md](docs/SUPPORTED_PROVIDERS.md) covers what the plugin does on each wire, how it decides a model is Claude, the example provider configs, and how each provider caches, with links to their docs.
 
 ## Install
 
@@ -119,11 +95,11 @@ Model variants can force a TTL regardless of the session or global mode, via the
 ]
 ```
 
-The plugin reads the header before the request goes out, applies that TTL, and strips the header. The [example configs](#supported-endpoints) are full provider configs with `-1h` variants; the Anthropic one covers four Claude models.
+The plugin reads the header before the request goes out, applies that TTL, and strips the header. The [example configs](docs/SUPPORTED_PROVIDERS.md#endpoints) are full provider configs with `-1h` variants; the Anthropic one covers four Claude models.
 
 ### Proxies and other provider ids
 
-Requests to the `anthropic` provider are rewritten automatically. If you reach Claude through a proxy registered under another provider id, the plugin recognises it by the request: `POST …/messages` is the Anthropic wire, and `POST …/chat/completions` is the OpenAI wire (see [Supported endpoints](#supported-endpoints)). To force a TTL for one model, add the `x-cache-ttl` header to a model variant as above. Keepalive and the sidebar work with any provider on either wire, since they only need the cache usage in the response.
+Requests to the `anthropic` provider are rewritten automatically. If you reach Claude through a proxy registered under another provider id, the plugin recognises it by the request: `POST …/messages` is the Anthropic wire, and `POST …/chat/completions` is the OpenAI wire (see [Supported providers and endpoints](docs/SUPPORTED_PROVIDERS.md)). To force a TTL for one model, add the `x-cache-ttl` header to a model variant as above. Keepalive and the sidebar work with any provider on either wire, since they only need the cache usage in the response.
 
 ## Keepalive
 
@@ -235,7 +211,7 @@ Every other state the section can show:
   <img src="docs/images/sidebar-states.svg" alt="Ten captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; a provider-managed cache with cached 87% · 14k / 16k and keepalive n/a · implicit cache; and an expired cache (expired 12m ago)" width="520">
 </p>
 
-For a model with an implicit cache (anything that isn't Claude, see [Supported endpoints](#supported-endpoints)) there's no TTL or expiry to show, so the section is the `cached` row and a keepalive row:
+For a model with an implicit cache (anything that isn't Claude, see [Supported providers and endpoints](docs/SUPPORTED_PROVIDERS.md)) there's no TTL or expiry to show, so the section is the `cached` row and a keepalive row:
 
 ```
 Cache
