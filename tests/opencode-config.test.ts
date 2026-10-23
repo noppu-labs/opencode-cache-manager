@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../src/constants/anthropic.ts";
 import { transformHttpRequest } from "../src/services/cache-ttl.ts";
+import { openaiProfile } from "../src/services/profiles/openai.ts";
 import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody, transformOpts } from "./helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
@@ -92,11 +93,27 @@ function openAiChatRequest(url: string, headers: Record<string, string>): Reques
   });
 }
 
+function openAiResponsesRequest(url: string, headers: Record<string, string>): Request {
+  const body = {
+    model: "gpt-6-luna",
+    stream: true,
+    instructions: "You are a coding agent.",
+    input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Say hello." }] }],
+    tools: [{ type: "function", name: "read", description: "Read a file", parameters: { type: "object" } }],
+  };
+  return new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("docs/examples", () => {
   test("has an example per supported endpoint", () => {
     expect(EXAMPLE_FILES).toEqual([
       "opencode.anthropic.jsonc",
       "opencode.openai-compatible.jsonc",
+      "opencode.openai.jsonc",
       "opencode.openrouter.jsonc",
     ]);
   });
@@ -104,7 +121,8 @@ describe("docs/examples", () => {
   describe.each(EXAMPLE_FILES)("%s", (file) => {
     const config = parseExample(file);
     const variants = oneHourVariants(config);
-    const openai = file !== "opencode.anthropic.jsonc";
+    const responses = file === "opencode.openai.jsonc";
+    const openai = file !== "opencode.anthropic.jsonc" && !responses;
 
     test("parses and declares providers with models", () => {
       expect(config.$schema).toBe("https://opencode.ai/config.json");
@@ -126,6 +144,7 @@ describe("docs/examples", () => {
     });
 
     test("every -1h variant rewrites its request to 1h", async () => {
+      if (responses) return;
       for (const { label, variant } of variants) {
         const request = openai
           ? openAiChatRequest("https://your-proxy.example/v1/chat/completions", variant.headers ?? {})
@@ -140,6 +159,26 @@ describe("docs/examples", () => {
         const controls = collectCacheControls(await parsedBodyOf(out));
         expect(controls.length, label).toBeGreaterThan(0);
         for (const cc of controls) expect(cc.ttl, label).toBe("1h");
+      }
+    });
+
+    test.if(responses)("every -1h variant puts a 12h breakpoint on its Responses request", async () => {
+      for (const { label, variant } of variants) {
+        const request = openAiResponsesRequest("https://api.openai.com/v1/responses", variant.headers ?? {});
+        const out = await transformHttpRequest(
+          request,
+          "5m",
+          transformOpts({ wire: "openai-responses", profile: openaiProfile, inject: true }),
+        );
+        expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+        expect(out.headers.has("anthropic-beta"), label).toBe(false);
+        const body = (await parsedBodyOf(out)) as any;
+        expect(body.prompt_cache_options, label).toBeUndefined();
+        expect(body.input[0].content[0], label).toEqual({
+          type: "input_text",
+          text: "Say hello.",
+          prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
+        });
       }
     });
 

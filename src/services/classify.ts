@@ -1,7 +1,7 @@
 import { ANTHROPIC_PROVIDER_IDS, MESSAGES_SUFFIX } from "../constants/anthropic.ts";
 import {
   CHAT_COMPLETIONS_SUFFIX,
-  EXPLICIT_CACHE_MODEL,
+  CLAUDE_MODEL,
   OPENAI_CACHE_MODEL,
   RESPONSES_SUFFIX,
 } from "../constants/openai.ts";
@@ -60,7 +60,7 @@ export function classifyRequest(
   const matches = (regex: RegExp) => regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
   const profile =
     matchProfilePatterns(deps.patterns, ref) ??
-    (matches(EXPLICIT_CACHE_MODEL) ? "anthropic" : undefined) ??
+    (matches(CLAUDE_MODEL) ? "anthropic" : undefined) ??
     (matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
     deps.learned?.(ref) ??
     "implicit";

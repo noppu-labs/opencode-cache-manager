@@ -1,6 +1,6 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL and keepalive pings for Claude on Anthropic and OpenAI-compatible endpoints (OpenRouter, proxies), plus a sidebar cache status",
   "type": "module",
   "license": "MIT",

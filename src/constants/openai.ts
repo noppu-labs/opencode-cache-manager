@@ -12,8 +12,8 @@ export const OPENAI_CACHE_MODEL = /(^|\/)gpt-(5\.(?:[6-9]|\d{2,})|[6-9]|[1-9]\d(
 /** The OpenAI cache TTL each setting asks for: the automatic 30m by default, 12h for `1h` / `hybrid`. */
 export const OPENAI_TTL_FOR_MODE: Record<CacheTtlMode, Ttl> = { "5m": "30m", "1h": "12h", hybrid: "12h" };
 
-/** Model IDs treated as Claude-family (explicit cache control): `anthropic/…`, `~anthropic/…` or any `claude` name. */
-export const EXPLICIT_CACHE_MODEL = /(^|\/)~?anthropic\/|claude/i;
+/** Model IDs treated as Claude-family: `anthropic/…`, `~anthropic/…` or any `claude` name. */
+export const CLAUDE_MODEL = /(^|\/)~?anthropic\/|claude/i;
 
 /** Resolved upstream `provider` values that identify Anthropic. */
 export const ANTHROPIC_UPSTREAM = /anthropic|claude/i;

@@ -1,4 +1,4 @@
-import { ANTHROPIC_UPSTREAM, EXPLICIT_CACHE_MODEL, OPENAI_CACHE_MODEL } from "../constants/openai.ts";
+import { ANTHROPIC_UPSTREAM, CLAUDE_MODEL, OPENAI_CACHE_MODEL } from "../constants/openai.ts";
 import type { CacheProfileId, ModelRef, OpenAiIdentity } from "../models/cache.ts";
 import type { KV } from "../models/storage.ts";
 import { isRecord } from "../utils/is-record.ts";
@@ -40,7 +40,7 @@ export class ProfileStore {
       const { model, provider } = identity ?? {};
       if (!model && !provider) return;
       const profile: CacheProfileId =
-        (model !== undefined && EXPLICIT_CACHE_MODEL.test(model)) ||
+        (model !== undefined && CLAUDE_MODEL.test(model)) ||
         (provider !== undefined && ANTHROPIC_UPSTREAM.test(provider))
           ? "anthropic"
           : model !== undefined && OPENAI_CACHE_MODEL.test(model)
