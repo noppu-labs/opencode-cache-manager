@@ -4,7 +4,11 @@ import { hasOneHourCacheControl } from "../cache-control.ts";
 import { rewriteAnthropicCacheTtl, ttlForMode } from "../cache-ttl.ts";
 import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "../openai-cache-ttl.ts";
 
-/** Claude-family caching: `cache_control` breakpoints with 5m / 1h TTLs, kept warm by pings. */
+/**
+ * Claude-family caching: `cache_control` breakpoints with 5m / 1h TTLs, kept warm by pings.
+ * On `anthropic-messages` the boolean from `rewrite` must not gate the request rebuild: the
+ * sentinel header strip and the beta header (see `headers`) apply whether or not the body changed.
+ */
 export const anthropicProfile: CacheProfile = {
   id: "anthropic",
   wires: ["anthropic-messages", "openai-chat"],

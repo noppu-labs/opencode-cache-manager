@@ -190,6 +190,74 @@ describe("openai profile", () => {
       expect((body.messages as Rec[])[2]!.content).toBe("");
     });
 
+    const assistant = (content: unknown): Rec => ({ role: "assistant", content });
+    const toolCalls = [{ id: "c", type: "function", function: { name: "f", arguments: "{}" } }];
+
+    test("1h lands on a non-empty final tool message", () => {
+      const body: Rec = {
+        messages: [
+          { role: "user", content: "ask" },
+          { ...assistant(null), tool_calls: toolCalls },
+          { role: "tool", tool_call_id: "c", content: "result" },
+        ],
+      };
+      expect(openaiProfile.rewrite(body, ctx("openai-chat", "1h"))).toBe(true);
+      expect((body.messages as Rec[])[2]!.content).toEqual([text("result", { prompt_cache_breakpoint: BP })]);
+      expect((body.messages as Rec[])[0]!.content).toBe("ask");
+    });
+
+    test("1h skips a final assistant message with text and lands on the previous user message", () => {
+      const body: Rec = {
+        messages: [
+          { role: "user", content: "ask" },
+          assistant("answer"),
+        ],
+      };
+      expect(openaiProfile.rewrite(body, ctx("openai-chat", "1h"))).toBe(true);
+      expect(body.messages).toEqual([
+        { role: "user", content: [text("ask", { prompt_cache_breakpoint: BP })] },
+        assistant("answer"),
+      ]);
+    });
+
+    test("1h skips assistant parts given as an array", () => {
+      const body: Rec = {
+        messages: [
+          { role: "user", content: [text("ask")] },
+          assistant([text("answer")]),
+        ],
+      };
+      openaiProfile.rewrite(body, ctx("openai-chat", "1h"));
+      expect(body.messages).toEqual([
+        { role: "user", content: [text("ask", { prompt_cache_breakpoint: BP })] },
+        assistant([text("answer")]),
+      ]);
+    });
+
+    test("1h on assistant -> tool -> assistant lands on the tool message", () => {
+      const body: Rec = {
+        messages: [
+          { role: "user", content: "ask" },
+          { ...assistant("calling"), tool_calls: toolCalls },
+          { role: "tool", tool_call_id: "c", content: "result" },
+          assistant("done"),
+        ],
+      };
+      expect(openaiProfile.rewrite(body, ctx("openai-chat", "1h"))).toBe(true);
+      expect(body.messages).toEqual([
+        { role: "user", content: "ask" },
+        { ...assistant("calling"), tool_calls: toolCalls },
+        { role: "tool", tool_call_id: "c", content: [text("result", { prompt_cache_breakpoint: BP })] },
+        assistant("done"),
+      ]);
+    });
+
+    test("1h with only assistant text adds no breakpoint", () => {
+      const body: Rec = { messages: [assistant("alone")] };
+      expect(openaiProfile.rewrite(body, ctx("openai-chat", "1h"))).toBe(false);
+      expect(body).toEqual({ messages: [assistant("alone")] });
+    });
+
     test("hybrid turns string system content into a text part", () => {
       const body: Rec = { messages: [{ role: "system", content: "sys" }, { role: "user", content: "hi" }] };
       openaiProfile.rewrite(body, ctx("openai-chat", "hybrid"));
@@ -212,6 +280,26 @@ describe("openai profile", () => {
         expect(body).toEqual({ model: "x" });
       }
     });
+  });
+
+  describe("existing explicit prompt_cache_options", () => {
+    for (const wire of WIRES) {
+      for (const kind of ["primary", "compaction"] as const) {
+        test(`${wire} ${kind} 5m keeps the breakpoints the user's explicit mode relies on`, () => {
+          const body = { ...expectedWithBreakpoint(wire, "1h"), prompt_cache_options: { mode: "explicit" } };
+          const before = structuredClone(body);
+          expect(openaiProfile.rewrite(body, ctx(wire, "5m", kind))).toBe(false);
+          expect(body).toEqual(before);
+        });
+
+        test(`${wire} ${kind} 5m still strips when the options are not explicit`, () => {
+          const body = { ...expectedWithBreakpoint(wire, "1h"), prompt_cache_options: { ttl: "12h" } };
+          expect(openaiProfile.rewrite(body, ctx(wire, "5m", kind))).toBe(true);
+          expect(JSON.stringify(body)).not.toContain("prompt_cache_breakpoint");
+          expect(body.prompt_cache_options).toEqual({ ttl: "12h" });
+        });
+      }
+    }
   });
 
   describe("responses edge cases", () => {
