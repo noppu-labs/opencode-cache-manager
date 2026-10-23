@@ -63,10 +63,6 @@ Example provider configs with `-1h` variants:
 - [docs/examples/opencode.openrouter.jsonc](docs/examples/opencode.openrouter.jsonc): Claude and a non-Claude model through OpenCode's built-in `openrouter` provider
 - [docs/examples/opencode.openai-compatible.jsonc](docs/examples/opencode.openai-compatible.jsonc): a generic OpenAI-compatible proxy
 
-### Known limitations
-
-Through OmniRoute's `openrouter/anthropic/*` route, only a small fixed prefix (about 1k tokens) was observed to cache, whatever breakpoints the request carried. The plugin can't fix that. Use the proxy's direct Claude route, or OpenRouter itself.
-
 ## Install
 
 Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. OpenCode installs it at startup; there is no manual `npm install`:
