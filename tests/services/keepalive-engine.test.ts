@@ -914,15 +914,18 @@ describe("keepalive engine: implicit-cache sessions", () => {
     expect(h.engine.snapshot("s1").skipReason).toBe("child");
   });
 
-  test("lastCache follows every non-ping response and ignores pings", async () => {
+  test("lastCache follows primary responses and ignores pings and other kinds", async () => {
     const h = harness();
     expect(h.engine.snapshot("s1").lastCache).toBeNull();
     await h.request("s1", write1h);
     expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 0, total: 80_100 });
     await h.request("s1", pureRead);
     expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 80_000, total: 80_100 });
-    await h.request("s1", { ...pureRead, cacheReadTokens: 500, inputTokens: 100 }, "1h", { kind: "title" });
-    expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 500, total: 600 });
+    const small = { ...pureRead, cacheReadTokens: 500, inputTokens: 100 };
+    for (const kind of ["title", "generate", "compaction"] as const) {
+      await h.request("s1", small, "1h", { kind });
+      expect(h.engine.snapshot("s1").lastCache).toEqual({ read: 80_000, total: 80_100 });
+    }
 
     await h.request("s1", pureRead);
     await h.advance(50 * MIN);

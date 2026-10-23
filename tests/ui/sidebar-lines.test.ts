@@ -197,7 +197,7 @@ describe("sidebarLines: cached line", () => {
 
 describe("sidebarLines: implicit sessions", () => {
   const implicit = { ttl: null, ttlSource: null, expiresAt: null, nextPingAt: null, skipReason: "implicit" } as const;
-  const KEEPALIVE: SidebarLine = { text: "keepalive", tone: "base", right: "n/a · provider-managed cache" };
+  const KEEPALIVE: SidebarLine = { text: "keepalive", tone: "base", right: "n/a · implicit cache" };
 
   test("shows cached and an n/a keepalive row", () => {
     expect(lines(snap({ ...implicit, lastCache: { read: 14_000, total: 16_000 } }))).toEqual([

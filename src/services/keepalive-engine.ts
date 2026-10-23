@@ -130,7 +130,7 @@ export class KeepaliveEngine {
       s.confirmedAt = s.requestSentAt;
       s.lastRequestAt = s.requestSentAt;
     }
-    if (info.usage) {
+    if (info.usage && info.kind === "primary") {
       const total = contextTokens(info.usage);
       s.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
     }

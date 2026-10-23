@@ -48,7 +48,7 @@ export function sidebarLines(
     return [
       HEADER,
       cachedLine(s.lastCache),
-      { text: "keepalive", tone: "base", right: "n/a · provider-managed cache" },
+      { text: "keepalive", tone: "base", right: "n/a · implicit cache" },
     ];
   }
   if (s.skipReason === "no-cache-seen" && s.contextTokens !== null) return [];
