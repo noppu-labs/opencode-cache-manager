@@ -10,6 +10,7 @@ import type { CacheUsage } from "../../src/models/cache.ts";
 import { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 import { parseCacheProfiles } from "../../src/config/model-patterns.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
+import { openaiProfile } from "../../src/services/profiles/openai.ts";
 import { SettingsStore } from "../../src/services/settings-store.ts";
 import { collectCacheControls, ephemeral, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
 import { memoryKv } from "../helpers/memory-kv.ts";
@@ -782,5 +783,141 @@ describe("createRequestHook with the real keepalive engine", () => {
     const snapshot = await h.respond();
     expect(snapshot.skipReason).toBeNull();
     expect(snapshot.nextPingAt).not.toBeNull();
+  });
+});
+
+describe("createRequestHook with the openai profile", () => {
+  const CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+  const RESPONSES_URL = "https://openrouter.ai/api/v1/responses";
+  const LONG = { mode: "explicit", ttl: "12h" };
+  const gpt = { providerID: "openrouter", modelID: "openai/gpt-6-luna" };
+  const chatMessages = () => [
+    { role: "system", content: "You are helpful." },
+    { role: "user", content: "hello" },
+    { role: "assistant", content: "hi" },
+    { role: "user", content: "again" },
+  ];
+  const chatBody = () => ({ model: "openai/gpt-6-luna", messages: chatMessages() });
+  const post = (url: string, value: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    new Request(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(value) });
+  const marked = (text: string) => [{ type: "text", text, prompt_cache_breakpoint: LONG }];
+
+  test("5m sends the body as is and keeps the automatic 30m warm", async () => {
+    const h = harness();
+    const request = post(CHAT_URL, chatBody());
+    const evt = await h.dispatch(request, gpt);
+    expect(evt.request).toBe(request);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "30m", isPing: false, kind: "primary" } }]);
+    expect(h.primaryMessages.get("ses_a")).toEqual(chatMessages());
+  });
+
+  test("1h puts a 12h breakpoint on the last user text and no cache options or beta header", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(post(CHAT_URL, chatBody()), gpt);
+    const messages = chatMessages();
+    messages[3].content = marked("again") as never;
+    expect(await parsedBodyOf(evt.request)).toEqual({ model: "openai/gpt-6-luna", messages });
+    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
+    expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+    expect(h.primaryMessages.get("ses_a")).toEqual(messages);
+  });
+
+  test("hybrid puts the 12h breakpoint on the system prefix", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "hybrid" });
+    const evt = await h.dispatch(post(CHAT_URL, chatBody()), gpt);
+    const messages = chatMessages();
+    messages[0].content = marked("You are helpful.") as never;
+    expect(await parsedBodyOf(evt.request)).toEqual({ model: "openai/gpt-6-luna", messages });
+    expect(evt.request.headers.get("anthropic-beta")).toBeNull();
+    expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+  });
+
+  test("a title request caches nothing: explicit mode, no breakpoint", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(post(CHAT_URL, chatBody()), { ...gpt, kind: "title" });
+    expect(await parsedBodyOf(evt.request)).toEqual({ ...chatBody(), prompt_cache_options: { mode: "explicit" } });
+  });
+
+  test("a ping is aligned with the primary and otherwise untouched", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const primary = await h.dispatch(post(CHAT_URL, chatBody()), gpt);
+    const stored = (await parsedBodyOf(primary.request) as { messages: unknown[] }).messages;
+
+    const pingMessages = [...chatMessages(), { role: "assistant", content: "ok" }, { role: "user", content: PING_PROMPT }];
+    const ping = await h.duringPing("ses_a", () =>
+      h.dispatch(post(CHAT_URL, { model: "openai/gpt-6-luna", messages: pingMessages }), { ...gpt, kind: "generate" }),
+    );
+    expect(await parsedBodyOf(ping.request)).toEqual({
+      model: "openai/gpt-6-luna",
+      messages: [...stored, pingMessages[4], pingMessages[5]],
+    });
+    expect(h.sent[1]?.info).toEqual({ requestedTtl: "12h", isPing: true, kind: "generate" });
+  });
+
+  test("on the Responses wire 1h marks the last input_text", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const input = () => [
+      { role: "user", content: [{ type: "input_text", text: "hello" }] },
+      { role: "assistant", content: [{ type: "output_text", text: "hi" }] },
+      { role: "user", content: [{ type: "input_text", text: "again" }] },
+    ];
+    const evt = await h.dispatch(post(RESPONSES_URL, { model: "openai/gpt-6-luna", instructions: "Be brief.", input: input() }), gpt);
+    const expected = input();
+    expected[2].content = [{ type: "input_text", text: "again", prompt_cache_breakpoint: LONG }] as never;
+    expect(await parsedBodyOf(evt.request)).toEqual({ model: "openai/gpt-6-luna", instructions: "Be brief.", input: expected });
+    expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+    expect(h.primaryMessages.get("ses_a")).toEqual(expected);
+  });
+
+  test("a -1h variant's sentinel gives the 12h breakpoint and is stripped", async () => {
+    const h = harness();
+    const evt = await h.dispatch(post(CHAT_URL, chatBody(), { [SENTINEL_HEADER]: "1h" }), gpt);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    const messages = chatMessages();
+    messages[3].content = marked("again") as never;
+    expect(await parsedBodyOf(evt.request)).toEqual({ model: "openai/gpt-6-luna", messages });
+    expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+  });
+
+  test("with the option off a GPT request is left alone", async () => {
+    const h = harness({ options: { openaiCompatible: false } });
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = post(CHAT_URL, chatBody());
+    const evt = await h.dispatch(request, gpt);
+    expect(evt.request).toBe(request);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("with the option off a sentinel GPT request is stripped and never gets OpenAI cache fields", async () => {
+    const h = harness({ options: { openaiCompatible: false } });
+    const evt = await h.dispatch(post(CHAT_URL, chatBody(), { [SENTINEL_HEADER]: "1h" }), gpt);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(await parsedBodyOf(evt.request)).toEqual(chatBody());
+  });
+});
+
+describe("createRequestHook rewrite failures", () => {
+  test("a throwing profile rewrite sends the request unchanged", async () => {
+    const spy = spyOn(openaiProfile, "rewrite").mockImplementation(() => {
+      throw new Error("boom");
+    });
+    try {
+      const h = harness();
+      await h.store.setSession("ses_a", { mode: "1h" });
+      const request = new Request("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ model: "openai/gpt-6-luna", messages: [{ role: "user", content: "hi" }] }),
+      });
+      const evt = await h.dispatch(request, { providerID: "openrouter", modelID: "openai/gpt-6-luna" });
+      expect(evt.request).toBe(request);
+      expect(h.sent[0]?.info.requestedTtl).toBe("12h");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

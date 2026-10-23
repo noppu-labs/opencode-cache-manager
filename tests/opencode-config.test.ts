@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../src/constants/anthropic.ts";
 import { transformHttpRequest } from "../src/services/cache-ttl.ts";
-import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
+import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody, transformOpts } from "./helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
@@ -133,7 +133,7 @@ describe("docs/examples", () => {
         const out = await transformHttpRequest(
           request,
           "5m",
-          openai ? { wire: "openai-chat", inject: true } : {},
+          openai ? transformOpts({ wire: "openai-chat", inject: true }) : transformOpts(),
         );
         expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
         expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);

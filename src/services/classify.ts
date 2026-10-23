@@ -133,6 +133,18 @@ export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompat
   };
 }
 
+/**
+ * The profile a routed request is rewritten and kept warm through, or `undefined` to leave it alone.
+ * An Anthropic-wire request, or one rewritten as an Anthropic body, uses `anthropic`. With the option
+ * off an OpenAI-wire request is only reached through the sentinel, and keeps the Claude rewrite it had
+ * before profiles existed, so an `openai` model never gets fields it was not opted into.
+ */
+export function profileForRoute(route: Route, openaiCompatible: boolean): CacheProfileId | undefined {
+  if (!route.rewrites && route.observedWire === undefined) return undefined;
+  if (route.transformWire === undefined || !openaiCompatible) return "anthropic";
+  return route.profile ?? "anthropic";
+}
+
 /** True when breakpoints are injected into the request: a managed Claude-profile `openai-chat` primary or compaction request that is not a ping. */
 export function shouldInject(route: Route, kind: RequestKind, isPing: boolean): boolean {
   return (

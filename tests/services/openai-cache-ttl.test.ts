@@ -6,7 +6,7 @@ import {
   rewriteOpenAiCacheTtl,
 } from "../../src/services/openai-cache-ttl.ts";
 import { transformHttpRequest } from "../../src/services/cache-ttl.ts";
-import { ephemeral } from "../helpers/fixtures.ts";
+import { ephemeral, transformOpts } from "../helpers/fixtures.ts";
 
 type Rec = Record<string, unknown>;
 
@@ -340,7 +340,7 @@ describe("transformHttpRequest on the openai-chat wire", () => {
   }
 
   test("hybrid rewrites TTLs and adds the extended-cache beta header", async () => {
-    const out = await transformHttpRequest(chatRequest(markedBody()), "hybrid", { wire: "openai-chat" });
+    const out = await transformHttpRequest(chatRequest(markedBody()), "hybrid", transformOpts({ wire: "openai-chat" }));
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
     const body = await bodyOf(out);
     expect((body.tools as Rec[])[1].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
@@ -351,7 +351,7 @@ describe("transformHttpRequest on the openai-chat wire", () => {
     const out = await transformHttpRequest(
       chatRequest(markedBody(), { "anthropic-beta": "interleaved-thinking-2025-05-14" }),
       "1h",
-      { wire: "openai-chat" },
+      transformOpts({ wire: "openai-chat" }),
     );
     expect(out.headers.get("anthropic-beta")).toBe(`interleaved-thinking-2025-05-14,${EXTENDED_CACHE_BETA}`);
   });
@@ -359,38 +359,38 @@ describe("transformHttpRequest on the openai-chat wire", () => {
   test("5m adds no beta header and removes TTLs", async () => {
     const withTtl = markedBody();
     rewriteOpenAiCacheTtl(withTtl, "1h");
-    const out = await transformHttpRequest(chatRequest(withTtl), "5m", { wire: "openai-chat" });
+    const out = await transformHttpRequest(chatRequest(withTtl), "5m", transformOpts({ wire: "openai-chat" }));
     expect(out.headers.get("anthropic-beta")).toBeNull();
     for (const cc of breakpointsInOrder(await bodyOf(out))) expect("ttl" in cc).toBe(false);
   });
 
   test("a hybrid request whose only breakpoint is the 5m tail gets no beta header", async () => {
     const body: Rec = { messages: [{ role: "user", content: [textPart("q", ephemeral())] }] };
-    const out = await transformHttpRequest(chatRequest(body), "hybrid", { wire: "openai-chat" });
+    const out = await transformHttpRequest(chatRequest(body), "hybrid", transformOpts({ wire: "openai-chat" }));
     expect(out.headers.get("anthropic-beta")).toBeNull();
   });
 
   test("the sentinel overrides the fallback mode and is stripped", async () => {
-    const out = await transformHttpRequest(chatRequest(markedBody(), { [SENTINEL_HEADER]: "1h" }), "5m", {
+    const out = await transformHttpRequest(chatRequest(markedBody(), { [SENTINEL_HEADER]: "1h" }), "5m", transformOpts({
       wire: "openai-chat",
-    });
+    }));
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
     for (const cc of breakpointsInOrder(await bodyOf(out))) expect(cc.ttl).toBe("1h");
   });
 
   test("inject: true adds breakpoints to an unmarked body, then applies the TTL", async () => {
-    const out = await transformHttpRequest(chatRequest(plainBody()), "hybrid", {
+    const out = await transformHttpRequest(chatRequest(plainBody()), "hybrid", transformOpts({
       wire: "openai-chat",
       inject: true,
-    });
+    }));
     const body = await bodyOf(out);
     expect(breakpointsInOrder(body).map((cc) => cc.ttl)).toEqual(["1h", "1h", undefined]);
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
   });
 
   test("inject is skipped when the option is absent or false", async () => {
-    for (const opts of [{ wire: "openai-chat" as const }, { wire: "openai-chat" as const, inject: false }]) {
+    for (const opts of [transformOpts(transformOpts({ wire: "openai-chat" })), transformOpts(transformOpts({ wire: "openai-chat", inject: false }))]) {
       const out = await transformHttpRequest(chatRequest(plainBody()), "1h", opts);
       expect(hasCacheControl(await bodyOf(out))).toBe(false);
       expect(out.headers.get("anthropic-beta")).toBeNull();
@@ -398,19 +398,19 @@ describe("transformHttpRequest on the openai-chat wire", () => {
   });
 
   test("inject does not add to a body that already has breakpoints", async () => {
-    const out = await transformHttpRequest(chatRequest(markedBody()), "5m", { wire: "openai-chat", inject: true });
+    const out = await transformHttpRequest(chatRequest(markedBody()), "5m", transformOpts({ wire: "openai-chat", inject: true }));
     expect(breakpointsInOrder(await bodyOf(out))).toHaveLength(5);
   });
 
   test("the sentinel is stripped even when the body is not JSON", async () => {
     const request = new Request(URL, { method: "POST", headers: { [SENTINEL_HEADER]: "1h" }, body: "not json" });
-    const out = await transformHttpRequest(request, "5m", { wire: "openai-chat", inject: true });
+    const out = await transformHttpRequest(request, "5m", transformOpts({ wire: "openai-chat", inject: true }));
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(await out.text()).toBe("not json");
   });
 
   test("a request that needs no change is returned as is", async () => {
     const request = chatRequest(plainBody());
-    expect(await transformHttpRequest(request, "1h", { wire: "openai-chat" })).toBe(request);
+    expect(await transformHttpRequest(request, "1h", transformOpts({ wire: "openai-chat" }))).toBe(request);
   });
 });

@@ -1,4 +1,6 @@
 import type { CacheUsage } from "../../src/models/cache.ts";
+import type { TransformOptions } from "../../src/services/cache-ttl.ts";
+import { anthropicProfile } from "../../src/services/profiles/anthropic.ts";
 
 export function ephemeral(extra: Record<string, unknown> = {}) {
   return { type: "ephemeral", ...extra };
@@ -196,4 +198,9 @@ export function responsesSse(
     frame("response.output_text.delta", { delta: "hi" }) +
     frame(event, { response: { model, status, output, usage } })
   );
+}
+
+/** `transformHttpRequest` options for a primary request through the anthropic profile, with overrides. */
+export function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
+  return { wire: "anthropic-messages", profile: anthropicProfile, kind: "primary", isPing: false, inject: false, ...overrides };
 }

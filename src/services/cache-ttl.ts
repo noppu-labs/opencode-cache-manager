@@ -1,7 +1,9 @@
 import { BETA_HEADER, EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
 import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from "../models/cache.ts";
+import type { RequestKind } from "../models/keepalive.ts";
+import type { CacheProfile } from "../models/profile.ts";
+import { isRecord } from "../utils/is-record.ts";
 import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
-import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "./openai-cache-ttl.ts";
 
 /** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
 export function ttlForMode(mode: CacheTtlMode): Ttl {
@@ -92,17 +94,8 @@ export function rewriteAnthropicCacheTtl(
   return changed || hasOneHourCacheControl(body);
 }
 
-/** Rebuilds the request around a rewritten body, merging the extended-cache beta flag when asked. */
-function finalizeRequest(
-  request: Request,
-  body: Record<string, unknown>,
-  headers: Headers,
-  includeExtendedCacheBeta: boolean,
-): Request {
-  if (includeExtendedCacheBeta) {
-    const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
-    if (merged !== null) headers.set(BETA_HEADER, merged);
-  }
+/** Rebuilds the request around a rewritten body and its already merged headers. */
+function finalizeRequest(request: Request, body: Record<string, unknown>, headers: Headers): Request {
   return new Request(request.url, {
     method: request.method,
     headers,
@@ -111,17 +104,41 @@ function finalizeRequest(
   });
 }
 
+/** How `transformHttpRequest` rewrites a request: the wire it is on and the cache profile it goes through. */
+export interface TransformOptions {
+  wire: Wire;
+  profile: CacheProfile;
+  kind: RequestKind;
+  isPing: boolean;
+  inject: boolean;
+}
+
+/** Merges a profile's extra headers; the beta header is merged with any existing beta values. */
+function applyProfileHeaders(headers: Headers, extra: Record<string, string>): void {
+  for (const [name, value] of Object.entries(extra)) {
+    if (name.toLowerCase() !== BETA_HEADER) {
+      headers.set(name, value);
+      continue;
+    }
+    const tokens = (mergeBetaHeader(headers.get(BETA_HEADER), false) ?? "").split(",").filter((t) => t !== "");
+    for (const token of value.split(",").map((t) => t.trim())) {
+      if (token !== "" && !tokens.includes(token)) tokens.push(token);
+    }
+    if (tokens.length > 0) headers.set(BETA_HEADER, tokens.join(","));
+  }
+}
+
 /**
- * Transforms an outbound Anthropic HTTP request: rewrites cache_control TTLs,
- * strips the internal `x-cache-ttl` sentinel, and adds the extended-cache beta
- * flag when 1h breakpoints are emitted. On the `openai-chat` wire it can also
- * inject breakpoints first (`opts.inject`) and only re-serializes the body when
- * something changed.
+ * Transforms an outbound request through its cache profile: strips the internal
+ * `x-cache-ttl` sentinel, lets the profile rewrite the body for the active mode,
+ * and merges the profile's headers. On `anthropic-messages` a JSON body is always
+ * re-serialized; on the OpenAI wires the original request is returned when there
+ * was no sentinel and nothing changed.
  */
 export async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
-  opts: { wire?: Wire; inject?: boolean } = {},
+  opts: TransformOptions,
 ): Promise<Request> {
   const hadSentinel = request.headers.has(SENTINEL_HEADER);
   const activeMode = resolveActiveMode(request, fallbackMode);
@@ -145,26 +162,15 @@ export async function transformHttpRequest(
     parsed = undefined;
   }
 
-  if (
-    parsed === undefined ||
-    parsed === null ||
-    typeof parsed !== "object" ||
-    Array.isArray(parsed)
-  ) {
+  if (!isRecord(parsed)) {
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
     return new Request(request.url, { method: request.method, headers, body: buffer, signal: request.signal });
   }
 
-  if (opts.wire === "openai-chat") {
-    const chat = parsed as Record<string, unknown>;
-    const injected = opts.inject === true && injectOpenAiBreakpoints(chat);
-    const rewritten = rewriteOpenAiCacheTtl(chat, activeMode);
-    if (!hadSentinel && !injected && !rewritten) return request;
-    return finalizeRequest(request, chat, headers, hasOneHourCacheControl(chat));
-  }
-
-  const messages = parsed as Record<string, unknown>;
-  rewriteAnthropicCacheTtl(messages, activeMode);
-  return finalizeRequest(request, messages, headers, activeMode === "1h" || activeMode === "hybrid");
+  const { wire, profile, kind, isPing, inject } = opts;
+  const changed = profile.rewrite(parsed, { wire, mode: activeMode, kind, isPing, inject });
+  applyProfileHeaders(headers, profile.headers?.(parsed, { wire, mode: activeMode }) ?? {});
+  if (wire !== "anthropic-messages" && !hadSentinel && !changed) return request;
+  return finalizeRequest(request, parsed, headers);
 }

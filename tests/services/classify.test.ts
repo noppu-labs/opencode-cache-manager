@@ -4,6 +4,7 @@ import {
   classifyRequestWithBody,
   isAnthropicMessagesRequest,
   observedWireFor,
+  profileForRoute,
   requestWire,
   routeRequest,
   shouldInject,
@@ -394,5 +395,52 @@ describe("shouldInject", () => {
     }
     const responses = routeRequest({ cls: { wire: "openai-responses", profile: "anthropic" }, anthropicProvider: false, hasSentinel: false, openaiCompatible: true });
     expect(shouldInject(responses, "primary", false)).toBe(false);
+  });
+});
+
+describe("profileForRoute", () => {
+  const base: RouteInput = { cls: undefined, anthropicProvider: false, hasSentinel: false, openaiCompatible: false };
+  const pick = (over: Partial<RouteInput>) => {
+    const input = { ...base, ...over };
+    return profileForRoute(routeRequest(input), input.openaiCompatible);
+  };
+  const gptChat = { wire: "openai-chat", profile: "openai" } as const;
+
+  test("a request that is neither rewritten nor observed gets no profile", () => {
+    expect(pick({})).toBeUndefined();
+    expect(pick({ cls: gptChat })).toBeUndefined();
+    expect(pick({ cls: { wire: "openai-responses", profile: "implicit" } })).toBeUndefined();
+  });
+
+  test("an Anthropic Messages request uses the anthropic profile", () => {
+    const cls = { wire: "anthropic-messages", profile: "anthropic" } as const;
+    for (const openaiCompatible of [false, true]) {
+      expect(pick({ cls, openaiCompatible })).toBe("anthropic");
+      expect(pick({ cls, anthropicProvider: true, openaiCompatible })).toBe("anthropic");
+    }
+  });
+
+  test("with the option off, an OpenAI-wire request goes through the anthropic profile only with the sentinel", () => {
+    expect(pick({ cls: gptChat })).toBeUndefined();
+    expect(pick({ cls: gptChat, hasSentinel: true })).toBe("anthropic");
+    expect(pick({ cls: { wire: "openai-responses", profile: "implicit" }, hasSentinel: true })).toBe("anthropic");
+  });
+
+  test("an Anthropic provider on an OpenAI wire with the option off is an Anthropic body", () => {
+    expect(pick({ cls: gptChat, anthropicProvider: true })).toBe("anthropic");
+  });
+
+  test("a sentinel or Anthropic provider on an unknown wire uses the anthropic profile", () => {
+    expect(pick({ hasSentinel: true })).toBe("anthropic");
+    expect(pick({ anthropicProvider: true, openaiCompatible: true })).toBe("anthropic");
+  });
+
+  test("with the option on, an OpenAI-wire request uses its classified profile", () => {
+    for (const wire of ["openai-chat", "openai-responses"] as const) {
+      for (const profile of ["anthropic", "openai", "implicit"] as const) {
+        expect(pick({ cls: { wire, profile }, openaiCompatible: true })).toBe(profile);
+        expect(pick({ cls: { wire, profile }, openaiCompatible: true, hasSentinel: true })).toBe(profile);
+      }
+    }
   });
 });
