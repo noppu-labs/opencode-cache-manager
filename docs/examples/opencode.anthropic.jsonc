@@ -1,14 +1,17 @@
-// Sample opencode.jsonc for the opencode-cache-manager plugin.
+// Sample opencode.jsonc for the opencode-cache-manager plugin: Claude through an
+// endpoint that speaks the Anthropic Messages API (POST .../messages).
 //
-// This fixture is also used by the test suite (tests/opencode-config.test.ts).
-// To use the plugin with your own setup, copy the "omniroute-anthropic" provider
-// below into your ~/.config/opencode/opencode.jsonc, or point it at any
-// Anthropic-compatible endpoint. The authToken is an env-var reference, so
-// there are no secrets in this file.
+// The test suite (tests/opencode-config.test.ts) parses this file and checks its
+// -1h variants. To use it, copy the "omniroute-anthropic" provider into your
+// ~/.config/opencode/opencode.jsonc and point baseURL at your endpoint. The
+// authToken is an env-var reference, so there are no secrets in this file.
 //
-// Plugin options (keepalive and the default TTL mode) go in the plugin entry of
-// your own opencode.jsonc, not in this file. Every value is optional and the
-// ones shown are the defaults, except defaultMode, which defaults to "5m":
+// Each "-1h" variant carries the x-cache-ttl sentinel header: the plugin applies
+// that TTL to the request and strips the header before it leaves.
+//
+// Plugin options (default TTL mode, keepalive) go in the plugin entry of your own
+// opencode.jsonc, not in this file. Every value is optional and the ones shown
+// are the defaults, except defaultMode, which defaults to "5m":
 //
 //   "plugins": [
 //     {
@@ -30,7 +33,7 @@
       "name": "OmniRoute (Anthropic)",
       "package": "@opencode/ai/providers/anthropic-compatible",
       "settings": {
-        "baseURL": "https://omniroute.linksy.au/v1",
+        "baseURL": "https://your-proxy.example/v1",
         "authToken": "{env:OMNIROUTE_API_KEY}"
       },
       "models": {
