@@ -36,8 +36,19 @@ const keepaliveSnapshotSchema = {
     maxPings: { type: "integer", minimum: 0 },
     minContextTokens: { type: "integer", minimum: 0 },
     lastPing: nullableString(["hit", "miss", "failed"]),
-    skipReason: nullableString(["disabled", "small-context", "child", "busy", "exhausted", "no-cache-seen", "missed"]),
+    skipReason: nullableString(["disabled", "small-context", "child", "busy", "exhausted", "no-cache-seen", "missed", "implicit"]),
     contextTokens: nullableNumber,
+    lastCache: {
+      oneOf: [
+        {
+          type: "object",
+          properties: { read: { type: "number" }, total: { type: "number" } },
+          required: ["read", "total"],
+          additionalProperties: false,
+        },
+        { type: "null" },
+      ],
+    },
   },
   required: [
     "sessionID",
@@ -52,6 +63,7 @@ const keepaliveSnapshotSchema = {
     "lastPing",
     "skipReason",
     "contextTokens",
+    "lastCache",
   ],
   additionalProperties: false,
 } as const;

@@ -1,7 +1,7 @@
 import { BUILTIN_DEFAULTS, type Settings } from "../config/settings.ts";
 import { EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
 import type { CacheUsage, Ttl } from "../models/cache.ts";
-import type { KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
+import type { CacheReadout, KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
 import { contextTokens, grantedTtl, hasCacheActivity } from "./usage.ts";
 
 export interface EngineDeps {
@@ -24,6 +24,7 @@ interface PingInFlight {
 interface SessionState {
   ttl: Ttl | null;
   ttlSource: "detected" | "requested" | null;
+  /** Null for sessions whose provider manages the cache itself. */
   requestedTtl: Ttl | null;
   lastRequestAt: number | null;
   /** Send time of the latest non-ping request, whether or not it has succeeded yet. */
@@ -37,6 +38,7 @@ interface SessionState {
   lastPing: "hit" | "miss" | "failed" | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
+  lastCache: CacheReadout | null;
   cacheSeen: boolean;
   missed: boolean;
   /** The last primary response stopped for a tool call; cleared by the next real request. */
@@ -60,7 +62,8 @@ export class KeepaliveEngine {
 
   constructor(private readonly deps: EngineDeps) {}
 
-  requestSent(sessionID: string, info: { requestedTtl: Ttl; isPing: boolean }): void {
+  /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
+  requestSent(sessionID: string, info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }): void {
     if (this.disposed) return;
     const s = this.state(sessionID);
 
@@ -74,7 +77,8 @@ export class KeepaliveEngine {
     s.inflight = null;
     s.lastRequestAt = this.deps.now();
     s.requestSentAt = s.lastRequestAt;
-    s.requestedTtl = info.requestedTtl;
+    const kind = info.kind ?? "primary";
+    if (kind === "primary" || kind === "compaction") s.requestedTtl = info.requestedTtl;
     s.pingsUsed = 0;
     s.lastPing = null;
     s.missed = false;
@@ -127,6 +131,10 @@ export class KeepaliveEngine {
     if (s.requestSentAt !== null) {
       s.confirmedAt = s.requestSentAt;
       s.lastRequestAt = s.requestSentAt;
+    }
+    if (info.usage && info.kind === "primary") {
+      const total = contextTokens(info.usage);
+      s.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
     }
     // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
     if (info.usage && (info.kind === "primary" || info.kind === "compaction")) {
@@ -182,6 +190,7 @@ export class KeepaliveEngine {
       lastPing: null,
       skipReason: "no-cache-seen",
       contextTokens: null,
+      lastCache: null,
       cacheSeen: false,
       missed: false,
       busy: false,
@@ -212,6 +221,7 @@ export class KeepaliveEngine {
       lastPing: s.lastPing,
       skipReason: s.skipReason,
       contextTokens: s.contextTokens,
+      lastCache: s.lastCache,
     };
   }
 
@@ -235,7 +245,7 @@ export class KeepaliveEngine {
     if (granted) {
       s.ttl = granted;
       s.ttlSource = "detected";
-    } else if (active && s.ttl === null && s.requestedTtl !== null) {
+    } else if (active && s.requestedTtl !== null && s.ttlSource !== "detected") {
       s.ttl = s.requestedTtl;
       s.ttlSource = "requested";
     }
@@ -292,6 +302,7 @@ export class KeepaliveEngine {
 
   private skipReason(s: SessionState, settings: Settings, child: boolean): SkipReason | null {
     if (child) return "child";
+    if (s.requestedTtl === null) return "implicit";
     if (s.busy) return "busy";
     if (!settings.keepalive) return "disabled";
     if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return "no-cache-seen";

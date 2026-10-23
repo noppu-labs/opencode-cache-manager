@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createResponseHook, type HttpResponseEvent } from "../../src/middleware/response.ts";
+import type { PluginOptions } from "../../src/config/settings.ts";
+import type { ModelRef } from "../../src/models/cache.ts";
 import type { KeepaliveEngine } from "../../src/services/keepalive-engine.ts";
 import { PingTracker } from "../../src/services/ping-tracker.ts";
-import { makeRequest } from "../helpers/fixtures.ts";
+import { makeRequest, openaiSse, openaiUsage } from "../helpers/fixtures.ts";
 
 const WRITE_1H = {
   input_tokens: 10,
@@ -29,7 +31,14 @@ function gate() {
   return { promise, open };
 }
 
-function harness() {
+function harness(config: { options?: Partial<PluginOptions> } = {}) {
+  const options: PluginOptions = { openaiCompatible: true, explicitCacheModels: [], ...config.options };
+  const learnCalls: Array<{ ref: ModelRef; identity: unknown }> = [];
+  const strategies = {
+    learnFromResponse: async (ref: ModelRef, identity: unknown) => {
+      learnCalls.push({ ref, identity });
+    },
+  };
   const observed: Array<{ sessionID: string; info: Record<string, unknown> }> = [];
   const fake = {
     pending: undefined as Promise<void> | undefined,
@@ -43,8 +52,8 @@ function harness() {
     },
   } as unknown as KeepaliveEngine;
   const pings = new PingTracker();
-  const hook = createResponseHook({ engine, pings });
-  return { hook, pings, observed, fake };
+  const hook = createResponseHook({ engine, pings, options, strategies });
+  return { hook, pings, observed, fake, learnCalls };
 }
 
 function jsonResponse(body: unknown = { usage: WRITE_1H }, status = 200) {
@@ -58,7 +67,7 @@ function event(overrides: Partial<HttpResponseEvent> = {}): HttpResponseEvent {
   return {
     sessionID: "ses_a",
     kind: "primary",
-    model: { providerID: "anthropic" },
+    model: { providerID: "anthropic", id: "claude-sonnet-5-5" },
     request: makeRequest("{}"),
     response: jsonResponse(),
     ...overrides,
@@ -139,8 +148,8 @@ describe("createResponseHook", () => {
     const { hook, observed } = harness();
     const response = jsonResponse();
     const evt = event({
-      model: { providerID: "openai" },
-      request: new Request("https://api.openai.com/v1/chat/completions", { method: "POST", body: "{}" }),
+      model: { providerID: "openai", id: "gpt-6" },
+      request: new Request("https://api.openai.com/v1/embeddings", { method: "POST", body: "{}" }),
       response,
     });
     await hook(evt);
@@ -154,7 +163,7 @@ describe("createResponseHook", () => {
     const { hook, observed } = harness();
     await hook(
       event({
-        model: { providerID: "some-proxy" },
+        model: { providerID: "some-proxy", id: "m" },
         request: new Request("https://proxy.example/anthropic/v1/messages", { method: "POST", body: "{}" }),
       }),
     );
@@ -168,7 +177,7 @@ describe("createResponseHook", () => {
     const { hook, observed } = harness();
     await hook(
       event({
-        model: { providerID: "some-proxy" },
+        model: { providerID: "some-proxy", id: "m" },
         request: new Request("https://proxy.example/v1/messages", { method: "GET" }),
       }),
     );
@@ -284,12 +293,95 @@ describe("createResponseHook ping handling", () => {
       hook(
         event({
           kind: "generate",
-          model: { providerID: "openai" },
-          request: new Request("https://api.openai.com/v1/chat/completions", { method: "POST", body: "{}" }),
+          model: { providerID: "openai", id: "gpt-6" },
+          request: new Request("https://api.openai.com/v1/embeddings", { method: "POST", body: "{}" }),
         }),
       ),
     );
 
     expect(observed).toHaveLength(0);
+  });
+});
+
+describe("createResponseHook on openai-chat", () => {
+  const CHAT = () => new Request("https://omni.example/v1/chat/completions", { method: "POST", body: "{}" });
+  const sse = (text: string) => new Response(text, { headers: { "content-type": "text/event-stream" } });
+  const chatEvent = (overrides: Partial<HttpResponseEvent> = {}) =>
+    event({
+      model: { providerID: "omniroute", id: "auto/opus-5" },
+      request: CHAT(),
+      response: sse(openaiSse(openaiUsage.lunaRead, { model: "claude-opus-5-5", provider: "Anthropic" })),
+      ...overrides,
+    });
+
+  test("reports usage and the finish reason, and learns the identity", async () => {
+    const { hook, observed, learnCalls } = harness();
+    const evt = chatEvent();
+    await hook(evt);
+    await flush();
+
+    expect(observed[0]?.info).toMatchObject({
+      ok: true,
+      stopReason: "stop",
+      usage: { inputTokens: 3, cacheReadTokens: 8884 },
+    });
+    expect(learnCalls).toEqual([
+      { ref: { providerID: "omniroute", id: "auto/opus-5" }, identity: { model: "claude-opus-5-5", provider: "Anthropic" } },
+    ]);
+  });
+
+  test("the caller still receives the untouched stream", async () => {
+    const { hook } = harness();
+    const original = openaiSse(openaiUsage.lunaRead);
+    const evt = chatEvent({ response: sse(original) });
+    await hook(evt);
+    expect(await evt.response.text()).toBe(original);
+  });
+
+  test("a learning failure never reaches the host", async () => {
+    const { hook, observed } = harness();
+    const throwing = createResponseHook({
+      engine: { responseObserved: () => Promise.resolve() } as unknown as KeepaliveEngine,
+      pings: new PingTracker(),
+      options: { openaiCompatible: true, explicitCacheModels: [] },
+      strategies: {
+        learnFromResponse: async () => {
+          throw new Error("storage down");
+        },
+      },
+    });
+    await throwing(chatEvent());
+    await flush();
+    await hook(chatEvent());
+    await flush();
+    expect(observed).toHaveLength(1);
+  });
+
+  test("a ping response is tracked as on the Anthropic wire", async () => {
+    const { hook, pings, observed } = harness();
+    let release!: () => void;
+    const sending = pings.send("ses_a", () => new Promise<void>((resolve) => (release = resolve)));
+    await hook(chatEvent({ kind: "generate" }));
+    release();
+    await sending;
+    expect(observed[0]?.info).toMatchObject({ isPing: true, kind: "generate" });
+  });
+
+  test("with the option off the response is left alone and nothing is learned", async () => {
+    const { hook, observed, learnCalls } = harness({ options: { openaiCompatible: false } });
+    const evt = chatEvent();
+    const original = evt.response;
+    await hook(evt);
+    await flush();
+    expect(evt.response).toBe(original);
+    expect(observed).toHaveLength(0);
+    expect(learnCalls).toHaveLength(0);
+  });
+
+  test("anthropic-messages responses never trigger learning", async () => {
+    const { hook, learnCalls } = harness();
+    await hook(event());
+    await flush();
+    expect(learnCalls).toHaveLength(0);
   });
 });

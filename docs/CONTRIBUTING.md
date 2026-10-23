@@ -40,16 +40,16 @@ src/
 ├── tui.ts         # TUI entry: palette + slash command, sidebar
 ├── rpc.ts         # the RPC contract (settings, keepalive snapshot, events)
 ├── config/        # settings shape, defaults, option parsing, layer merging
-├── constants/     # Anthropic header values, keepalive timings
+├── constants/     # Anthropic and OpenAI wire values, keepalive timings
 ├── models/        # shared types (TTL modes, usage, keepalive snapshot)
 ├── controllers/   # /cache-manager command and RPC handlers
 ├── middleware/    # http.request / http.response hooks
-├── services/      # TTL rewrite, keepalive engine, ping alignment, usage parsing, settings store
+├── services/      # TTL rewrite, request classification, keepalive engine, ping alignment, usage parsing, settings store
 ├── ui/            # picker, typed command, sidebar
 └── utils/         # small shared helpers
 tests/             # mirrors src/
 scripts/           # build-sidebar.ts, capture-sidebar.ts and its capture/ modules
-docs/              # this file, UPGRADE.md, design notes from the original build
+docs/              # this file, UPGRADE.md, examples/ (sample provider configs), design notes
 ```
 
 Where things go:

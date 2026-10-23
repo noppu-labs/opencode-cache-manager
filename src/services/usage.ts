@@ -1,6 +1,6 @@
-import { ANTHROPIC_PROVIDER_IDS } from "../constants/anthropic.ts";
-import type { CacheUsage, Ttl } from "../models/cache.ts";
+import type { CacheUsage, ResponseParsers, Ttl } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
+import { num } from "../utils/num.ts";
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -23,10 +23,6 @@ export function grantedTtl(u: CacheUsage): Ttl | undefined {
 }
 
 type PartialUsage = Partial<CacheUsage>;
-
-function num(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
 
 /** Reads only the fields actually present so later events can override selectively. */
 function readUsage(raw: unknown): PartialUsage | undefined {
@@ -118,84 +114,14 @@ export function parseStopReasonFromSse(text: string): string | undefined {
   return stopReason;
 }
 
-export function isAnthropicProvider(providerID: string): boolean {
-  return ANTHROPIC_PROVIDER_IDS.includes(providerID);
-}
-
-/** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
-export function isAnthropicMessagesRequest(request: Request): boolean {
-  if (request.method !== "POST") return false;
-  try {
-    return new URL(request.url).pathname.endsWith("/messages");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Tees the response body so usage and the stop reason can be read in the
- * background while the caller receives an unmodified response. Cancelling the
- * caller's body also stops the observer, so the source is cancelled. The
- * promises never reject.
- */
-export function observeResponseUsage(response: Response): {
-  response: Response;
-  usage: Promise<CacheUsage | undefined>;
-  stopReason: Promise<string | undefined>;
-} {
-  if (!response.body) {
-    return { response, usage: Promise.resolve(undefined), stopReason: Promise.resolve(undefined) };
-  }
-
-  const [callerBranch, observerBranch] = response.body.tee();
-  const callerReader = callerBranch.getReader();
-  const observerReader = observerBranch.getReader();
-  let cancelled = false;
-  const forCaller = new ReadableStream<Uint8Array>(
-    {
-      async pull(controller) {
-        const { done, value } = await callerReader.read();
-        if (done) controller.close();
-        else controller.enqueue(value);
-      },
-      async cancel(reason) {
-        cancelled = true;
-        await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
-      },
-    },
-    { highWaterMark: 0 },
-  );
-  const passthrough = new Response(forCaller, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const parsed = (async (): Promise<{ usage?: CacheUsage; stopReason?: string }> => {
-    try {
-      const decoder = new TextDecoder();
-      let text = "";
-      for (;;) {
-        const { done, value } = await observerReader.read();
-        if (done) break;
-        text += decoder.decode(value, { stream: true });
-      }
-      text += decoder.decode();
-      if (cancelled || !response.ok) return {};
-      if (contentType.includes("text/event-stream")) {
-        return { usage: parseUsageFromSse(text), stopReason: parseStopReasonFromSse(text) };
-      }
-      const body: unknown = JSON.parse(text);
-      return { usage: parseUsageFromJson(body), stopReason: parseStopReasonFromJson(body) };
-    } catch {
-      return {};
-    }
-  })();
-
-  return {
-    response: passthrough,
-    usage: parsed.then((p) => p.usage),
-    stopReason: parsed.then((p) => p.stopReason),
-  };
-}
+/** The Anthropic Messages parsers; the wire reports no resolved model or provider. */
+export const ANTHROPIC_PARSERS: ResponseParsers = {
+  fromJson: (body) => ({
+    usage: parseUsageFromJson(body),
+    stopReason: parseStopReasonFromJson(body),
+  }),
+  fromSse: (text) => ({
+    usage: parseUsageFromSse(text),
+    stopReason: parseStopReasonFromSse(text),
+  }),
+};

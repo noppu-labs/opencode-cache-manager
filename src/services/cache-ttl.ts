@@ -1,5 +1,7 @@
-import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
-import { isCacheTtlMode, type CacheTtlMode, type Ttl } from "../models/cache.ts";
+import { BETA_HEADER, EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../constants/anthropic.ts";
+import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from "../models/cache.ts";
+import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
+import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from "./openai-cache-ttl.ts";
 
 /** The TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
 export function ttlForMode(mode: CacheTtlMode): Ttl {
@@ -32,34 +34,6 @@ export function mergeBetaHeader(
   return tokens.length > 0 ? tokens.join(",") : null;
 }
 
-/** Applies a TTL (or removes it, when `undefined`) to a single cache_control block. */
-function applyTtlToBlock(block: unknown, ttl: "1h" | undefined): boolean {
-  if (!block || typeof block !== "object") return false;
-  const rec = block as Record<string, unknown>;
-  const cacheControl = rec.cache_control;
-
-  if (
-    cacheControl &&
-    typeof cacheControl === "object" &&
-    (cacheControl as Record<string, unknown>).type === "ephemeral"
-  ) {
-    const cc = cacheControl as Record<string, unknown>;
-    if (ttl === "1h") {
-      if (cc.ttl !== "1h") {
-        cc.ttl = "1h";
-        return true;
-      }
-      return false;
-    }
-    if ("ttl" in cc) {
-      delete cc.ttl;
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /** Applies a TTL to a tool block and any nested namespace `tools`. */
 function applyTtlToTool(tool: unknown, ttl: "1h" | undefined): boolean {
   if (!tool || typeof tool !== "object") return false;
@@ -71,40 +45,6 @@ function applyTtlToTool(tool: unknown, ttl: "1h" | undefined): boolean {
     }
   }
   return changed;
-}
-
-/** Returns true when any ephemeral breakpoint in the payload carries a 1h TTL. */
-export function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
-  const isOneHour = (block: unknown): boolean => {
-    if (!block || typeof block !== "object") return false;
-    const cacheControl = (block as Record<string, unknown>).cache_control;
-    return (
-      !!cacheControl &&
-      typeof cacheControl === "object" &&
-      (cacheControl as Record<string, unknown>).ttl === "1h"
-    );
-  };
-
-  const tools = body.tools;
-  if (Array.isArray(tools)) {
-    for (const tool of tools) {
-      if (isOneHour(tool)) return true;
-      const nested = (tool as Record<string, unknown> | null)?.tools;
-      if (Array.isArray(nested) && nested.some(isOneHour)) return true;
-    }
-  }
-
-  if (Array.isArray(body.system) && body.system.some(isOneHour)) return true;
-
-  if (Array.isArray(body.messages)) {
-    for (const message of body.messages) {
-      if (isOneHour(message)) return true;
-      const content = (message as Record<string, unknown> | null)?.content;
-      if (Array.isArray(content) && content.some(isOneHour)) return true;
-    }
-  }
-
-  return false;
 }
 
 /**
@@ -152,14 +92,36 @@ export function rewriteAnthropicCacheTtl(
   return changed || hasOneHourCacheControl(body);
 }
 
+/** Rebuilds the request around a rewritten body, merging the extended-cache beta flag when asked. */
+function finalizeRequest(
+  request: Request,
+  body: Record<string, unknown>,
+  headers: Headers,
+  includeExtendedCacheBeta: boolean,
+): Request {
+  if (includeExtendedCacheBeta) {
+    const merged = mergeBetaHeader(headers.get(BETA_HEADER), true);
+    if (merged !== null) headers.set(BETA_HEADER, merged);
+  }
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: JSON.stringify(body),
+    signal: request.signal,
+  });
+}
+
 /**
  * Transforms an outbound Anthropic HTTP request: rewrites cache_control TTLs,
  * strips the internal `x-cache-ttl` sentinel, and adds the extended-cache beta
- * flag when 1h breakpoints are emitted.
+ * flag when 1h breakpoints are emitted. On the `openai-chat` wire it can also
+ * inject breakpoints first (`opts.inject`) and only re-serializes the body when
+ * something changed.
  */
 export async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
+  opts: { wire?: Wire; inject?: boolean } = {},
 ): Promise<Request> {
   const hadSentinel = request.headers.has(SENTINEL_HEADER);
   const activeMode = resolveActiveMode(request, fallbackMode);
@@ -194,17 +156,15 @@ export async function transformHttpRequest(
     return new Request(request.url, { method: request.method, headers, body: buffer, signal: request.signal });
   }
 
-  rewriteAnthropicCacheTtl(parsed as Record<string, unknown>, activeMode);
-
-  if (activeMode === "1h" || activeMode === "hybrid") {
-    const merged = mergeBetaHeader(headers.get("anthropic-beta"), true);
-    if (merged !== null) headers.set("anthropic-beta", merged);
+  if (opts.wire === "openai-chat") {
+    const chat = parsed as Record<string, unknown>;
+    const injected = opts.inject === true && injectOpenAiBreakpoints(chat);
+    const rewritten = rewriteOpenAiCacheTtl(chat, activeMode);
+    if (!hadSentinel && !injected && !rewritten) return request;
+    return finalizeRequest(request, chat, headers, hasOneHourCacheControl(chat));
   }
 
-  return new Request(request.url, {
-    method: request.method,
-    headers,
-    body: JSON.stringify(parsed),
-    signal: request.signal,
-  });
+  const messages = parsed as Record<string, unknown>;
+  rewriteAnthropicCacheTtl(messages, activeMode);
+  return finalizeRequest(request, messages, headers, activeMode === "1h" || activeMode === "hybrid");
 }

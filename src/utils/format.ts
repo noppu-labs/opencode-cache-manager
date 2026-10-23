@@ -12,6 +12,19 @@ export function formatTokens(tokens: number): string {
   return tokens > 0 && tokens % 1000 === 0 ? `${tokens / 1000}k` : String(tokens);
 }
 
+/** "732", "14.8k", "16k", "123k", "1.2M": a short token count for narrow displays. */
+export function formatCompactTokens(tokens: number): string {
+  const trim = (value: number): string => value.toFixed(1).replace(/\.0$/, "");
+  if (tokens < 1_000) return String(tokens);
+  if (tokens < 100_000) {
+    const k = trim(tokens / 1_000);
+    if (k !== "100") return `${k}k`;
+  }
+  const rounded = Math.round(tokens / 1_000);
+  if (tokens < 1_000_000 && rounded < 1_000) return `${rounded}k`;
+  return `${trim(tokens / 1_000_000)}M`;
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);

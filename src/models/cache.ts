@@ -26,3 +26,45 @@ export interface CacheUsage {
   write5mTokens: number | undefined;
   write1hTokens: number | undefined;
 }
+
+/** Request wire format the plugin understands. */
+export type Wire = "anthropic-messages" | "openai-chat";
+
+/**
+ * How a model's prompt cache is controlled.
+ *
+ * - `"explicit"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
+ * - `"implicit"` — provider-managed caching; observed only, never pinged.
+ */
+export type CacheStrategy = "explicit" | "implicit";
+
+/** Identifies an OpenCode model: provider plus model ID. */
+export interface ModelRef {
+  providerID: string;
+  id: string;
+}
+
+/** The resolved `model` / `provider` an OpenAI-format response reports. */
+export interface OpenAiIdentity {
+  model?: string;
+  provider?: string;
+}
+
+/** What the response tee reads from a response body; fields a wire does not report stay undefined. */
+export interface ObservedResponse {
+  usage?: CacheUsage;
+  stopReason?: string;
+  identity?: OpenAiIdentity;
+}
+
+/** The per-wire parsers the response tee applies: `fromJson` gets the body parsed once, `fromSse` the raw stream text. */
+export interface ResponseParsers {
+  fromJson(body: unknown): ObservedResponse;
+  fromSse(text: string): ObservedResponse;
+}
+
+/** A user-supplied `explicitCacheModels` entry, compiled. */
+export interface ModelPattern {
+  test: RegExp;
+  strategy: CacheStrategy;
+}

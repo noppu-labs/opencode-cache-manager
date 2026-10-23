@@ -1,11 +1,6 @@
 import { isCacheTtlMode } from "../models/cache.ts";
+import type { KV, ScannableKV } from "../models/storage.ts";
 import { mergeSettings, sanitizePatch, type Settings, type SettingsPatch } from "../config/settings.ts";
-
-export interface KV {
-  get(key: string): Promise<unknown>;
-  set(key: string, value: unknown): Promise<void>;
-  remove(key: string): Promise<void>;
-}
 
 const GLOBAL_KEY = "global";
 const LEGACY_MODE_KEY = "mode";
@@ -62,12 +57,6 @@ export class SettingsStore {
     this.sessions.set(sessionID, {});
     await this.kv.remove(sessionKey(sessionID));
   }
-}
-
-/** The plugin storage operations the startup sweep needs. */
-export interface ScannableKV {
-  scan(input: { prefix: string; after?: string }): Promise<{ entries: readonly { key: string }[]; next?: string }>;
-  remove(key: string): Promise<void>;
 }
 
 function isSessionNotFound(error: unknown): boolean {

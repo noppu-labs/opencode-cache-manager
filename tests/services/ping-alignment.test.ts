@@ -24,6 +24,7 @@ function snapshot(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot
     lastPing: null,
     skipReason: null,
     contextTokens: null,
+    lastCache: null,
     ...overrides,
   };
 }
@@ -168,7 +169,7 @@ describe("releasesMessages", () => {
   });
 
   test("is true for skip reasons that end pinging", () => {
-    for (const skipReason of ["child", "missed", "exhausted", "disabled"] as const) {
+    for (const skipReason of ["child", "implicit", "missed", "exhausted", "disabled"] as const) {
       expect(releasesMessages(snapshot({ skipReason }), NOW)).toBe(true);
     }
   });

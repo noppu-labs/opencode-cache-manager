@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   BUILTIN_DEFAULTS,
   mergeSettings,
+  pluginOptions,
   sanitizePatch,
   settingsFromOptions,
   type SettingsPatch,
@@ -79,5 +80,24 @@ describe("settingsFromOptions", () => {
     expect(settingsFromOptions(undefined)).toEqual({});
     expect(settingsFromOptions(null)).toEqual({});
     expect(settingsFromOptions({ keepalive: "on" })).toEqual({});
+  });
+});
+
+describe("pluginOptions", () => {
+  test("defaults to enabled with no patterns", () => {
+    expect(pluginOptions(undefined)).toEqual({ openaiCompatible: true, explicitCacheModels: [] });
+    expect(pluginOptions({})).toEqual({ openaiCompatible: true, explicitCacheModels: [] });
+  });
+
+  test("reads openaiCompatible only when it is a boolean", () => {
+    expect(pluginOptions({ openaiCompatible: false }).openaiCompatible).toBe(false);
+    expect(pluginOptions({ openaiCompatible: "no" }).openaiCompatible).toBe(true);
+    expect(pluginOptions({ openaiCompatible: 0 }).openaiCompatible).toBe(true);
+  });
+
+  test("compiles explicitCacheModels and drops invalid entries", () => {
+    const { explicitCacheModels } = pluginOptions({ explicitCacheModels: ["auto/opus", "!deepseek", 5, ""] });
+    expect(explicitCacheModels.map((p) => p.strategy)).toEqual(["explicit", "implicit"]);
+    expect(pluginOptions({ explicitCacheModels: "auto" }).explicitCacheModels).toEqual([]);
   });
 });

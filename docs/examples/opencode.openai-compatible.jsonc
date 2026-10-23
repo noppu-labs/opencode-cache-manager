@@ -1,0 +1,128 @@
+// Sample opencode.jsonc for the opencode-cache-manager plugin: a generic
+// OpenAI-compatible proxy (OmniRoute, LiteLLM and the like) that serves Claude
+// and other models on POST .../chat/completions.
+//
+// The test suite (tests/opencode-config.test.ts) parses this file and checks its
+// -1h variants. Replace the baseURL placeholder with your proxy's URL. The apiKey
+// is an env-var reference, so there are no secrets in this file.
+//
+// OpenCode's "openai-compatible" route places no cache breakpoints of its own. For
+// Claude models the plugin adds them (tools, system, last message) and applies the
+// TTL. Each "-1h" variant carries the x-cache-ttl sentinel header: the plugin
+// applies that TTL and strips the header. For 1h it also adds
+// anthropic-beta: extended-cache-ttl-2025-04-11, which some proxies need before
+// they honour the 1h TTL.
+//
+// The plugin tells Claude models from the rest by their model ID, or by the model
+// the first response names. If your proxy uses aliases the ID doesn't reveal,
+// list them in explicitCacheModels. Entries are matched against
+// "<providerID>/<modelID>": plain text is a case-insensitive substring, /regex/flags
+// is a regex, and a leading ! means never manage that model.
+//
+// Plugin options go in the plugin entry of your own opencode.jsonc, not in this
+// file:
+//
+//   "plugins": [
+//     {
+//       "package": "@noppu-labs/opencode-cache-manager",
+//       "options": {
+//         "openaiCompatible": true,
+//         "explicitCacheModels": ["opus", "!gpt"]
+//       }
+//     }
+//   ]
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "my-proxy": {
+      "name": "My proxy",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://your-proxy.example/v1",
+        "apiKey": "{env:PROXY_API_KEY}"
+      },
+      "models": {
+        "claude-sonnet-5-5": {
+          "name": "Claude Sonnet 5.5",
+          "capabilities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 64000
+          },
+          "variants": [
+            {
+              "id": "low",
+              "settings": {
+                "reasoningEffort": "low"
+              }
+            },
+            {
+              "id": "medium",
+              "settings": {
+                "reasoningEffort": "medium"
+              }
+            },
+            {
+              "id": "high",
+              "settings": {
+                "reasoningEffort": "high"
+              }
+            },
+            {
+              "id": "low-1h",
+              "settings": {
+                "reasoningEffort": "low"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "medium-1h",
+              "settings": {
+                "reasoningEffort": "medium"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "high-1h",
+              "settings": {
+                "reasoningEffort": "high"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            }
+          ]
+        },
+        "gpt-6-luna": {
+          "name": "GPT-6 Luna",
+          "capabilities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 400000,
+            "output": 128000
+          }
+        }
+      }
+    }
+  }
+}

@@ -52,7 +52,7 @@ export async function alignPingRequest(request: Request, primary: unknown[] | un
   return new Request(request.url, { method: request.method, headers, body, signal: request.signal });
 }
 
-const DROPS_MESSAGES = new Set<SkipReason>(["child", "missed", "exhausted", "disabled"]);
+const DROPS_MESSAGES = new Set<SkipReason>(["child", "implicit", "missed", "exhausted", "disabled"]);
 
 /** True once no ping can use the session's stored primary messages any more. */
 export function releasesMessages(snapshot: KeepaliveSnapshot, now: number): boolean {

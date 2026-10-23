@@ -63,6 +63,7 @@ describe("renderScreen", () => {
     expect(rows).toEqual([
       "Cache",
       "• status      warm",
+      "  cached      92% · 141k / 153k",
       "  expires     14:52 (52m)",
       "  ttl         1h (detected)",
       "  next ping   14:42 (42m)",
@@ -77,6 +78,7 @@ describe("renderScreen", () => {
     expect(new Set(captions).size).toBe(captions.length);
     for (const expected of [
       "waiting for first response",
+      "  cached      92% · 141k / 153k",
       "  ttl         5m (requested)",
       "  pings       3/5 ✗ failed",
       "  next ping   none",
@@ -84,6 +86,8 @@ describe("renderScreen", () => {
       "  keepalive   waiting · session busy",
       "  keepalive   off · 31k < 50k",
       "  keepalive   off · disabled",
+      "  cached      87% · 14k / 16k",
+      "  keepalive   n/a · implicit cache",
       "• status      expired",
       "  expired     12m ago",
     ]) {

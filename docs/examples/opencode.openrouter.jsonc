@@ -1,0 +1,120 @@
+// Sample opencode.jsonc for the opencode-cache-manager plugin: Claude through
+// OpenRouter, using OpenCode's built-in "openrouter" provider (OpenAI Chat
+// Completions, POST .../chat/completions).
+//
+// The test suite (tests/opencode-config.test.ts) parses this file and checks its
+// -1h variants. The apiKey is an env-var reference, so there are no secrets here.
+//
+// OpenCode places the cache breakpoints for anthropic/* models on this route; the
+// plugin only rewrites their TTL. Each "-1h" variant carries the x-cache-ttl
+// sentinel header: the plugin applies that TTL and strips the header before the
+// request leaves. For 1h it also adds anthropic-beta: extended-cache-ttl-2025-04-11.
+//
+// Non-Claude models need no variants. The plugin only reports how much of each
+// prompt was cached for them and never pings them.
+//
+// Plugin options go in the plugin entry of your own opencode.jsonc, not in this
+// file (see the README). The defaults are fine for OpenRouter:
+//
+//   "plugins": [
+//     {
+//       "package": "@noppu-labs/opencode-cache-manager",
+//       "options": {
+//         "defaultMode": "5m"
+//       }
+//     }
+//   ]
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "package": "@opencode/ai/providers/openrouter",
+      "settings": {
+        "apiKey": "{env:OPENROUTER_API_KEY}"
+      },
+      "models": {
+        "anthropic/claude-sonnet-5.5": {
+          "name": "Claude Sonnet 5.5",
+          "capabilities": {
+            "input": [
+              "text",
+              "image",
+              "pdf"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 64000
+          },
+          "variants": [
+            {
+              "id": "low",
+              "settings": {
+                "reasoningEffort": "low"
+              }
+            },
+            {
+              "id": "medium",
+              "settings": {
+                "reasoningEffort": "medium"
+              }
+            },
+            {
+              "id": "high",
+              "settings": {
+                "reasoningEffort": "high"
+              }
+            },
+            {
+              "id": "low-1h",
+              "settings": {
+                "reasoningEffort": "low"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "medium-1h",
+              "settings": {
+                "reasoningEffort": "medium"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "high-1h",
+              "settings": {
+                "reasoningEffort": "high"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            }
+          ]
+        },
+        "openai/gpt-6-luna": {
+          "name": "GPT-6 Luna",
+          "capabilities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 400000,
+            "output": 128000
+          }
+        }
+      }
+    }
+  }
+}

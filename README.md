@@ -7,10 +7,10 @@
 
 An [OpenCode](https://opencode.ai) plugin for Claude's prompt cache. Pick the cache TTL per session (5 minutes, 1 hour, or a hybrid of the two) from inside the TUI, keep idle sessions' caches warm with hidden pings so they don't expire while you're away, and watch the cache state in the sidebar.
 
-It works with Claude through the Anthropic API and through proxies that speak the Anthropic Messages API.
+It works with Claude through the Anthropic API, through proxies that speak the Anthropic Messages API, and through OpenAI-compatible endpoints such as OpenRouter and proxies like OmniRoute. For models that aren't Claude, it shows how much of each prompt was cached and leaves the cache alone.
 
 <p align="center">
-  <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit" width="420">
+  <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, cached 92% · 141k / 153k, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit" width="420">
 </p>
 
 ## Why
@@ -33,6 +33,12 @@ Reads cost about 0.1x base input in every mode. `hybrid` exists because Anthropi
 
 Requests in `1h` or `hybrid` mode also get the `anthropic-beta: extended-cache-ttl-2025-04-11` header merged in.
 
+## Supported providers and endpoints
+
+The plugin handles the Anthropic Messages API (`POST …/messages`) and OpenAI Chat Completions (`POST …/chat/completions`). Claude models get the full treatment on both. Other models (OpenAI, DeepSeek, Gemini, …) manage their own cache, so the plugin only shows how much of each prompt was cached.
+
+[docs/SUPPORTED_PROVIDERS.md](docs/SUPPORTED_PROVIDERS.md) covers what the plugin does on each wire, how it decides a model is Claude, the example provider configs, and how each provider caches, with links to their docs.
+
 ## Install
 
 Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. OpenCode installs it at startup; there is no manual `npm install`:
@@ -41,8 +47,8 @@ Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. O
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
-    "@noppu-labs/opencode-cache-manager@^0.3.0"
-    // or: "opencode-cache-manager@^0.3.0" -- same package, unscoped name
+    "@noppu-labs/opencode-cache-manager@^0.4.0"
+    // or: "opencode-cache-manager@^0.4.0" -- same package, unscoped name
   ]
 }
 ```
@@ -89,11 +95,11 @@ Model variants can force a TTL regardless of the session or global mode, via the
 ]
 ```
 
-The plugin reads the header before the request goes out, applies that TTL, and strips the header. `opencode.jsonc` at this repo's root is a full sample provider config with `-1h` variants for four Claude models.
+The plugin reads the header before the request goes out, applies that TTL, and strips the header. The [example configs](docs/SUPPORTED_PROVIDERS.md#endpoints) are full provider configs with `-1h` variants; the Anthropic one covers four Claude models.
 
 ### Proxies and other provider ids
 
-Requests to the `anthropic` provider are rewritten automatically. If you reach Claude through a proxy registered under another provider id, add the `x-cache-ttl` header to a model variant as above and the rewrite applies to that variant. Keepalive and the sidebar work with any provider whose endpoint is the Anthropic Messages API (`POST …/messages`), since they only need the cache usage in the response.
+Requests to the `anthropic` provider are rewritten automatically. If you reach Claude through a proxy registered under another provider id, the plugin recognises it by the request: `POST …/messages` is the Anthropic wire, and `POST …/chat/completions` is the OpenAI wire (see [Supported providers and endpoints](docs/SUPPORTED_PROVIDERS.md)). To force a TTL for one model, add the `x-cache-ttl` header to a model variant as above. Keepalive and the sidebar work with any provider on either wire, since they only need the cache usage in the response.
 
 ## Keepalive
 
@@ -138,7 +144,9 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
           "enabled": true,           // default true
           "maxPings": 5,             // default 5
           "minContextTokens": 50000  // default 50000
-        }
+        },
+        "openaiCompatible": true,    // default true
+        "explicitCacheModels": ["opus", "!gpt"]
       }
     }
   ]
@@ -151,6 +159,16 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 | `keepalive.enabled` | `true` | Whether keepalive runs |
 | `keepalive.maxPings` | `5` | Pings per idle stretch |
 | `keepalive.minContextTokens` | `50000` | Smallest context worth pinging |
+| `openaiCompatible` | `true` | Handle OpenAI Chat Completions requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped |
+| `explicitCacheModels` | `[]` | Patterns that decide which models are managed as Claude (explicit cache) |
+
+`explicitCacheModels` entries are matched against `<providerID>/<modelID>`, in order, and the first match wins:
+
+- `"opus"` is a case-insensitive substring match.
+- `"/^my-proxy\\/(opus|sonnet)/i"` is a regex: `/body/flags`.
+- A leading `!` marks matching models as never managed: `"!gpt"` keeps every model with `gpt` in its name out of TTL rewriting, injection and keepalive.
+
+Entries that are empty or aren't valid regexes are ignored. Patterns win over the built-in name check and over what the plugin has learned from responses. Patterns only apply to OpenAI Chat Completions requests. These two options aren't in the picker and have no typed command; they're read at startup.
 
 The effective value of each setting is the first one set, in this order:
 
@@ -172,6 +190,7 @@ Inside a session, the sidebar shows a Cache section. It ticks once a second from
 ```
 Cache
 • status      warm
+  cached      92% · 141k / 153k
   expires     14:52 (52m)
   ttl         1h (detected)
   next ping   14:42 (42m)
@@ -181,6 +200,7 @@ Cache
 - `status` is `warm` with a green bullet, amber once the pings are used up, and `expired` with a red bullet once the cache has expired (then `expired 12m ago` replaces the `expires` row).
 - `expires` is the clock time and time left until the cache expires.
 - `ttl` is the TTL being scheduled and where it came from (`detected` or `requested`). Before the first response, including right after a restart, the section reads `waiting for first response`.
+- `cached` describes the latest primary turn: the share of its prompt that was read from cache, then the tokens read / the prompt total, such as `92% · 14.8k / 16.1k`. Pings, titles and other one-off requests don't change it. It shows for every session with cache usage, Claude or not, once a response has arrived.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
 - When keepalive isn't running, a `keepalive` row says why: `off · 31k < 50k` (context below the minimum), `off · disabled`, `waiting · session busy` (waiting on a tool call), or `stopped · last ping missed`.
@@ -188,8 +208,16 @@ Cache
 Every other state the section can show:
 
 <p align="center">
-  <img src="docs/images/sidebar-states.svg" alt="Nine captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; and an expired cache (expired 12m ago)" width="520">
+  <img src="docs/images/sidebar-states.svg" alt="Ten captioned Cache sections: before the first response; a 5m cache with the first ping pending; a ping that failed and retries in 30s; pings used up with next ping none; last ping missed with keepalive stopped; waiting on a tool call; context below the minimum (off · 31k < 50k); keepalive turned off; a provider-managed cache with cached 87% · 14k / 16k and keepalive n/a · implicit cache; and an expired cache (expired 12m ago)" width="520">
 </p>
+
+For a model with an implicit cache (anything that isn't Claude, see [Supported providers and endpoints](docs/SUPPORTED_PROVIDERS.md)) there's no TTL or expiry to show, so the section is the `cached` row and a keepalive row:
+
+```
+Cache
+  cached      92% · 14.8k / 16.1k
+  keepalive   n/a · implicit cache
+```
 
 The section is hidden for subagent sessions and for sessions with no cache activity.
 
