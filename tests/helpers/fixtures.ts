@@ -1,3 +1,5 @@
+import type { CacheUsage } from "../../src/models/cache.ts";
+
 export function ephemeral(extra: Record<string, unknown> = {}) {
   return { type: "ephemeral", ...extra };
 }
@@ -132,5 +134,30 @@ export function openaiSse(
     chunk({ model, provider, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] }) +
     chunk({ model, provider, choices: [], usage }) +
     "data: [DONE]\n\n"
+  );
+}
+
+/** Anthropic usage with cache reads and a 1h write. */
+export const fullUsage = {
+  input_tokens: 10,
+  cache_read_input_tokens: 60000,
+  cache_creation_input_tokens: 500,
+  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 500 },
+};
+
+/** `fullUsage` as parsed. */
+export const fullParsed: CacheUsage = {
+  inputTokens: 10,
+  cacheReadTokens: 60000,
+  cacheWriteTokens: 500,
+  write5mTokens: 0,
+  write1hTokens: 500,
+};
+
+/** An Anthropic SSE stream: usage in `message_start`, a cache-read update in `message_delta`. */
+export function sse(usage: unknown): string {
+  return (
+    `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { usage } })}\n\n` +
+    `event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5,"cache_read_input_tokens":61000}}\n\n`
   );
 }

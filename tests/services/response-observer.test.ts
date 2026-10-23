@@ -1,30 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { observeResponseUsage } from "../../src/services/response-observer.ts";
 import { OPENAI_PARSERS } from "../../src/services/usage-openai.ts";
-import type { CacheUsage } from "../../src/models/cache.ts";
-import { openaiSse, openaiUsage } from "../helpers/fixtures.ts";
-
-const fullUsage = {
-  input_tokens: 10,
-  cache_read_input_tokens: 60000,
-  cache_creation_input_tokens: 500,
-  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 500 },
-};
-
-const fullParsed: CacheUsage = {
-  inputTokens: 10,
-  cacheReadTokens: 60000,
-  cacheWriteTokens: 500,
-  write5mTokens: 0,
-  write1hTokens: 500,
-};
-
-function sse(usage: unknown): string {
-  return (
-    `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { usage } })}\n\n` +
-    `event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5,"cache_read_input_tokens":61000}}\n\n`
-  );
-}
+import { fullParsed, fullUsage, openaiSse, openaiUsage, sse } from "../helpers/fixtures.ts";
 
 describe("observeResponseUsage", () => {
   test("passes SSE through unchanged and resolves usage", async () => {
