@@ -194,6 +194,7 @@ describe("docs/examples", () => {
     });
 
     test("every -1h variant rewrites its request", async () => {
+      expect(variants.length).toBeGreaterThan(0);
       for (const { label, variant } of variants) await CHECKS[kind](variant, label);
     });
 
