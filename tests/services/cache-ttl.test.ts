@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../../src/constants/anthropic.ts";
-import { mergeBetaHeader, resolveActiveMode, rewriteAnthropicCacheTtl, transformHttpRequest, ttlForMode } from "../../src/services/cache-ttl.ts";
+import { betaTokens, mergeBetaHeader, resolveActiveMode, rewriteAnthropicCacheTtl, transformHttpRequest, ttlForMode } from "../../src/services/cache-ttl.ts";
 import { hasOneHourCacheControl } from "../../src/services/cache-control.ts";
-import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody } from "../helpers/fixtures.ts";
+import type { CacheProfile } from "../../src/models/profile.ts";
+import { implicitProfile } from "../../src/services/profiles/implicit.ts";
+import { openaiProfile } from "../../src/services/profiles/openai.ts";
+import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody, transformOpts } from "../helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // ttlForMode / resolveActiveMode
@@ -29,6 +32,18 @@ describe("resolveActiveMode", () => {
 
   test("uses the fallback when the header is absent", () => {
     expect(resolveActiveMode(makeRequest("{}"), "1h")).toBe("1h");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// betaTokens
+// ---------------------------------------------------------------------------
+
+describe("betaTokens", () => {
+  test("splits, trims and drops empty tokens", () => {
+    expect(betaTokens(null)).toEqual([]);
+    expect(betaTokens("")).toEqual([]);
+    expect(betaTokens(" a, ,b ,,c")).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -213,7 +228,7 @@ describe("transformHttpRequest", () => {
     const request = makeRequest(JSON.stringify(sampleBody()), {
       "anthropic-beta": "interleaved-thinking-2025-05-14",
     });
-    const out = await transformHttpRequest(request, "1h");
+    const out = await transformHttpRequest(request, "1h", transformOpts());
 
     expect(out.headers.get("anthropic-beta")).toBe(
       "interleaved-thinking-2025-05-14,extended-cache-ttl-2025-04-11",
@@ -223,7 +238,7 @@ describe("transformHttpRequest", () => {
   });
 
   test("hybrid fallback rewrites body and appends the extended beta header", async () => {
-    const out = await transformHttpRequest(makeRequest(JSON.stringify(sampleBody())), "hybrid");
+    const out = await transformHttpRequest(makeRequest(JSON.stringify(sampleBody())), "hybrid", transformOpts());
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
     const body = (await parsedBodyOf(out)) as { messages: Record<string, unknown>[] };
     const tail = body.messages[2].cache_control as Record<string, unknown>;
@@ -231,7 +246,7 @@ describe("transformHttpRequest", () => {
   });
 
   test("5m fallback does not add the extended beta header", async () => {
-    const out = await transformHttpRequest(makeRequest(JSON.stringify(sampleBody())), "5m");
+    const out = await transformHttpRequest(makeRequest(JSON.stringify(sampleBody())), "5m", transformOpts());
     expect(out.headers.get("anthropic-beta")).toBeNull();
     const body = (await parsedBodyOf(out)) as Record<string, unknown>;
     for (const cc of collectCacheControls(body)) expect("ttl" in cc).toBe(false);
@@ -241,6 +256,7 @@ describe("transformHttpRequest", () => {
     const out = await transformHttpRequest(
       makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "1h" }),
       "5m",
+      transformOpts(),
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
@@ -252,6 +268,7 @@ describe("transformHttpRequest", () => {
     const out = await transformHttpRequest(
       makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "5m" }),
       "1h",
+      transformOpts(),
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(out.headers.get("anthropic-beta")).toBeNull();
@@ -263,6 +280,7 @@ describe("transformHttpRequest", () => {
     const out = await transformHttpRequest(
       makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: "bogus" }),
       "1h",
+      transformOpts(),
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     const body = (await parsedBodyOf(out)) as Record<string, unknown>;
@@ -271,7 +289,7 @@ describe("transformHttpRequest", () => {
 
   test("5m mode with no body and no sentinel returns the same request", async () => {
     const request = new Request("https://api.anthropic.com/v1/models", { method: "GET" });
-    const out = await transformHttpRequest(request, "5m");
+    const out = await transformHttpRequest(request, "5m", transformOpts());
     expect(out).toBe(request);
   });
 
@@ -280,32 +298,32 @@ describe("transformHttpRequest", () => {
       method: "GET",
       headers: { [SENTINEL_HEADER]: "1h" },
     });
-    const out = await transformHttpRequest(request, "1h");
+    const out = await transformHttpRequest(request, "1h", transformOpts());
     expect(out).not.toBe(request);
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
   });
 
   test("handles non-JSON bodies gracefully without throwing", async () => {
     const request = makeRequest("this is definitely not json", { [SENTINEL_HEADER]: "1h" });
-    const out = await transformHttpRequest(request, "1h");
+    const out = await transformHttpRequest(request, "1h", transformOpts());
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(await out.text()).toBe("this is definitely not json");
   });
 
   test("non-JSON body without a sentinel is returned untouched", async () => {
     const request = makeRequest("plain text", {}, { method: "POST" });
-    const out = await transformHttpRequest(request, "5m");
+    const out = await transformHttpRequest(request, "5m", transformOpts());
     expect(out).toBe(request);
   });
 
   test("handles an empty JSON object body", async () => {
-    const out = await transformHttpRequest(makeRequest("{}"), "1h");
+    const out = await transformHttpRequest(makeRequest("{}"), "1h", transformOpts());
     expect(out.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
     expect(await out.text()).toBe("{}");
   });
 
   test("handles a JSON array body without throwing", async () => {
-    const out = await transformHttpRequest(makeRequest("[1,2,3]", { [SENTINEL_HEADER]: "1h" }), "5m");
+    const out = await transformHttpRequest(makeRequest("[1,2,3]", { [SENTINEL_HEADER]: "1h" }), "5m", transformOpts());
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(await out.text()).toBe("[1,2,3]");
   });
@@ -324,11 +342,52 @@ describe("transformHttpRequest", () => {
     build({ method: "POST", body: "not json", headers: { [SENTINEL_HEADER]: "1h" } }, "5m");
 
     for (const [i, [request, mode]] of cases.entries()) {
-      const out = await transformHttpRequest(request, mode);
+      const out = await transformHttpRequest(request, mode, transformOpts());
       expect(out).not.toBe(request);
       expect(out.signal.aborted).toBe(false);
       controllers[i]!.abort();
       expect(out.signal.aborted).toBe(true);
     }
+  });
+});
+
+describe("transformHttpRequest through a profile", () => {
+  const responses = (value: unknown, headers: Record<string, string> = {}) =>
+    new Request("https://openrouter.ai/api/v1/responses", { method: "POST", headers, body: JSON.stringify(value) });
+  const input = () => [{ role: "user", content: [{ type: "input_text", text: "hi" }] }];
+
+  test("the openai profile marks the last Responses input_text in 1h", async () => {
+    const out = await transformHttpRequest(responses({ input: input() }), "1h", transformOpts({ wire: "openai-responses", profile: openaiProfile }));
+    expect(await parsedBodyOf(out)).toEqual({
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi", prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" } }] }],
+    });
+    expect(out.headers.get("anthropic-beta")).toBeNull();
+  });
+
+  test("an OpenAI-wire request the profile does not change is returned as is", async () => {
+    const request = responses({ input: input() });
+    const out = await transformHttpRequest(request, "5m", transformOpts({ wire: "openai-responses", profile: openaiProfile }));
+    expect(out).toBe(request);
+  });
+
+  test("an unchanged OpenAI-wire request with the sentinel is rebuilt without it", async () => {
+    const out = await transformHttpRequest(
+      responses({ input: input() }, { [SENTINEL_HEADER]: "1h" }),
+      "5m",
+      transformOpts({ wire: "openai-responses", profile: implicitProfile }),
+    );
+    expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(await parsedBodyOf(out)).toEqual({ input: input() });
+  });
+
+  test("profile headers are set, and beta values merged without duplicates", async () => {
+    const profile: CacheProfile = {
+      ...implicitProfile,
+      headers: () => ({ "x-extra": "1", "anthropic-beta": `${EXTENDED_CACHE_BETA},other-beta` }),
+    };
+    const request = makeRequest(JSON.stringify(sampleBody()), { "anthropic-beta": `a-beta, ${EXTENDED_CACHE_BETA}` });
+    const out = await transformHttpRequest(request, "5m", transformOpts({ profile }));
+    expect(out.headers.get("x-extra")).toBe("1");
+    expect(out.headers.get("anthropic-beta")).toBe(`a-beta,${EXTENDED_CACHE_BETA},other-beta`);
   });
 });

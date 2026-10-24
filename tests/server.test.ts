@@ -166,6 +166,7 @@ describe("keepalive wiring", () => {
   const T0 = 1_700_000_000_000;
   const FIVE_MIN = 300_000;
   const FIFTY_MIN = 3_000_000;
+  const TEN_HOURS = 36_000_000;
   const open: MockCtx[] = [];
 
   beforeEach(() => {
@@ -414,6 +415,56 @@ describe("keepalive wiring", () => {
       expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
     });
 
+    test("a GPT model is pinged on the 12h schedule with an aligned request and the ping is a hit", async () => {
+      const mock = await start({ defaultMode: "1h" });
+      const model = "gpt-6-luna";
+      const drifted = chatBody(model, PING_PROMPT);
+      drifted.messages[1] = { role: "user", content: "rewritten by another plugin" };
+      const pings: Array<Record<string, any>> = [];
+      mock.generate.mockImplementation(async (input: any) => {
+        const ping = await roundTrip(mock, {
+          ...chatTurn(model, { sse: [READ_CHAT] }),
+          sessionID: input.sessionID,
+          kind: "generate",
+          body: drifted,
+        });
+        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
+        return {};
+      });
+
+      const first = await roundTrip(mock, chatTurn(model));
+      await flush();
+      const primary = (await parsedBodyOf(first.requestEvt.request)) as Record<string, any>;
+      expect(primary.prompt_cache_options).toBeUndefined();
+      const breakpoints = primary.messages.flatMap((message: any) =>
+        Array.isArray(message.content) ? message.content.filter((part: any) => part.prompt_cache_breakpoint) : [],
+      );
+      expect(breakpoints).toEqual([
+        { type: "text", text: "again", prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" } },
+      ]);
+      expect(first.requestEvt.request.headers.get("anthropic-beta")).toBeNull();
+      expect(lastSnapshot(mock)).toMatchObject({
+        ttl: "12h",
+        ttlSource: "requested",
+        contextTokens: 60_000,
+        skipReason: null,
+        nextPingAt: T0 + TEN_HOURS,
+      });
+
+      jest.advanceTimersByTime(TEN_HOURS - 1);
+      await flush();
+      expect(mock.generate).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await flush();
+
+      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(pings[0]?.messages.slice(0, 3)).toEqual(primary.messages.slice(0, 3));
+      expect(pings[0]?.messages[3]).toEqual({ role: "user", content: PING_PROMPT });
+      expect(pings[0]?.prompt_cache_options).toBeUndefined();
+      expect(pings[0]).toEqual(chatBody(model, PING_PROMPT));
+      expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
+    });
+
     test("a DeepSeek session is observed but never pings", async () => {
       const mock = await start({ defaultMode: "1h" });
       const model = "deepseek/deepseek-v4.1-flash";
@@ -442,7 +493,7 @@ describe("keepalive wiring", () => {
       await flush();
       expect(collectCacheControls(await parsedBodyOf(first.requestEvt.request))).toHaveLength(0);
       expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit" });
-      expect(mock.store.get("learned-models")).toEqual({ "omniroute/auto/opus-5": "explicit" });
+      expect(mock.store.get("learned-models")).toEqual({ "omniroute/auto/opus-5": "anthropic" });
 
       const second = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
       await flush();
@@ -450,7 +501,7 @@ describe("keepalive wiring", () => {
       expect(lastSnapshot(mock)).toMatchObject({ ttl: "1h", skipReason: null });
     });
 
-    test("a learned strategy survives a restart", async () => {
+    test("a learned profile survives a restart", async () => {
       const before = await start({ defaultMode: "1h" });
       const learned: Parameters<typeof openaiSse> = [WRITE_CHAT, { model: "claude-opus-5-5", provider: "Anthropic" }];
       await roundTrip(before, chatTurn("auto/opus-5", { sse: learned }));

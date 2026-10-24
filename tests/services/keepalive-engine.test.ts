@@ -271,6 +271,54 @@ describe("keepalive engine: scheduling", () => {
     expect(h.pings).toHaveLength(1);
   });
 
+  test("30m requested pings at 25m and stays requested without a breakdown", async () => {
+    const h = harness();
+    await h.request("s1", writeNoBreakdown, "30m");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "30m",
+      ttlSource: "requested",
+      expiresAt: TTL_MS["30m"],
+      nextPingAt: 25 * MIN,
+    });
+    await h.advance(25 * MIN - 1);
+    expect(h.pings).toHaveLength(0);
+    await h.advance(1);
+    expect(h.pings).toEqual([{ sessionID: "s1", at: 25 * MIN }]);
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "30m", ttlSource: "requested", lastPing: "hit" });
+  });
+
+  test("a detected Claude 1h gives way to a requested 30m after a switch to GPT", async () => {
+    const h = harness();
+    await h.request("s1", write1h, "1h");
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "1h", ttlSource: "detected" });
+    await h.advance(10 * MIN);
+    await h.request("s1", writeNoBreakdown, "30m");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "30m",
+      ttlSource: "requested",
+      expiresAt: 10 * MIN + TTL_MS["30m"],
+      nextPingAt: 35 * MIN,
+    });
+    await h.advance(25 * MIN);
+    expect(h.pings).toEqual([{ sessionID: "s1", at: 35 * MIN }]);
+  });
+
+  test("12h requested pings at 10h and stays requested without a breakdown", async () => {
+    const h = harness();
+    await h.request("s1", writeNoBreakdown, "12h");
+    expect(h.engine.snapshot("s1")).toMatchObject({
+      ttl: "12h",
+      ttlSource: "requested",
+      expiresAt: TTL_MS["12h"],
+      nextPingAt: 600 * MIN,
+    });
+    await h.advance(600 * MIN - 1);
+    expect(h.pings).toHaveLength(0);
+    await h.advance(1);
+    expect(h.pings).toEqual([{ sessionID: "s1", at: 600 * MIN }]);
+    expect(h.engine.snapshot("s1")).toMatchObject({ ttl: "12h", ttlSource: "requested", lastPing: "hit" });
+  });
+
   test("granted 1h overrides requested 5m", async () => {
     const h = harness();
     await h.request("s1", write1h, "5m");

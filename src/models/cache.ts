@@ -14,8 +14,8 @@ export function isCacheTtlMode(value: unknown): value is CacheTtlMode {
   return value === "5m" || value === "1h" || value === "hybrid";
 }
 
-/** Cache TTL granted by Anthropic for a cache write. */
-export type Ttl = "5m" | "1h";
+/** Cache TTL a provider grants for a cache write: Anthropic `5m` / `1h`, OpenAI `30m` / `12h`. */
+export type Ttl = "5m" | "1h" | "30m" | "12h";
 
 /** Token counts from an Anthropic `usage` block, relevant to prompt caching. */
 export interface CacheUsage {
@@ -28,15 +28,21 @@ export interface CacheUsage {
 }
 
 /** Request wire format the plugin understands. */
-export type Wire = "anthropic-messages" | "openai-chat";
+export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
 
 /**
  * How a model's prompt cache is controlled.
  *
- * - `"explicit"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
- * - `"implicit"` — provider-managed caching; observed only, never pinged.
+ * - `"anthropic"` — Claude-family: `cache_control` breakpoints, TTL, keepalive pings.
+ * - `"openai"`    — OpenAI models with `prompt_cache_options` / `prompt_cache_breakpoint`.
+ * - `"implicit"`  — provider-managed caching; observed only, never pinged.
  */
-export type CacheStrategy = "explicit" | "implicit";
+export type CacheProfileId = "anthropic" | "openai" | "implicit";
+
+/** Returns true when `value` is a known cache profile ID. */
+export function isCacheProfileId(value: unknown): value is CacheProfileId {
+  return value === "anthropic" || value === "openai" || value === "implicit";
+}
 
 /** Identifies an OpenCode model: provider plus model ID. */
 export interface ModelRef {
@@ -63,8 +69,8 @@ export interface ResponseParsers {
   fromSse(text: string): ObservedResponse;
 }
 
-/** A user-supplied `explicitCacheModels` entry, compiled. */
-export interface ModelPattern {
-  test: RegExp;
-  strategy: CacheStrategy;
+/** A user-supplied `cacheProfiles` entry, compiled. */
+export interface ProfilePattern {
+  matches(ref: ModelRef): boolean;
+  profile: CacheProfileId;
 }

@@ -10,17 +10,21 @@
 // sentinel header: the plugin applies that TTL and strips the header before the
 // request leaves. For 1h it also adds anthropic-beta: extended-cache-ttl-2025-04-11.
 //
-// Non-Claude models need no variants. The plugin only reports how much of each
+// GPT-5.6+ models are managed too (a 12h breakpoint in 1h / hybrid mode, caching
+// off for one-off calls, keepalive), so they can carry "-1h" variants the same
+// way. Other models need no variants: the plugin only reports how much of each
 // prompt was cached for them and never pings them.
 //
 // Plugin options go in the plugin entry of your own opencode.jsonc, not in this
-// file (see the README). The defaults are fine for OpenRouter:
+// file (see the README). The defaults are fine for OpenRouter. cacheProfiles
+// overrides how a model is classified ("anthropic", "openai" or "implicit"):
 //
 //   "plugins": [
 //     {
 //       "package": "@noppu-labs/opencode-cache-manager",
 //       "options": {
-//         "defaultMode": "5m"
+//         "defaultMode": "5m",
+//         "cacheProfiles": { "my-alias": "anthropic" }
 //       }
 //     }
 //   ]

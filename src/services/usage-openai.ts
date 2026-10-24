@@ -51,7 +51,7 @@ function readIdentity(body: unknown): OpenAiIdentity | undefined {
 }
 
 /** Parsed JSON payload of every `data:` line; `[DONE]` and junk are skipped. */
-function sseEvents(text: string): unknown[] {
+export function sseEvents(text: string): unknown[] {
   const events: unknown[] = [];
   for (const line of text.split("\n")) {
     if (!line.startsWith("data:")) continue;

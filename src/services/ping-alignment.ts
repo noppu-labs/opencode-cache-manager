@@ -28,15 +28,23 @@ export function alignPingMessages(pingMessages: unknown[], primaryMessages: unkn
   return pingMessages.map((message, i) => (i < shared ? primaryMessages[i] : withoutCacheControl(message)));
 }
 
-/** Parses a request body's `messages` array; undefined when absent or not JSON. */
+/** The array a ping is aligned on: chat and Messages `messages`, or Responses `input`. */
+export type MessagesKey = "messages" | "input";
+
+/** Parses a request body's `messages` array, or its Responses `input` array; undefined when neither is present or the body is not JSON. */
 export async function readMessages(
   request: Request,
-): Promise<{ body: Record<string, unknown>; messages: unknown[] } | undefined> {
+): Promise<{ body: Record<string, unknown>; key: MessagesKey; messages: unknown[] } | undefined> {
   try {
     const body: unknown = JSON.parse(await request.clone().text());
     if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
-    const messages = (body as Record<string, unknown>).messages;
-    return Array.isArray(messages) ? { body: body as Record<string, unknown>, messages } : undefined;
+    const record = body as Record<string, unknown>;
+    const key: MessagesKey | undefined = Array.isArray(record.messages)
+      ? "messages"
+      : Array.isArray(record.input)
+        ? "input"
+        : undefined;
+    return key === undefined ? undefined : { body: record, key, messages: record[key] as unknown[] };
   } catch {
     return undefined;
   }
@@ -46,7 +54,7 @@ export async function readMessages(
 export async function alignPingRequest(request: Request, primary: unknown[] | undefined): Promise<Request> {
   const parsed = primary && (await readMessages(request));
   if (!primary || !parsed) return request;
-  const body = JSON.stringify({ ...parsed.body, messages: alignPingMessages(parsed.messages, primary) });
+  const body = JSON.stringify({ ...parsed.body, [parsed.key]: alignPingMessages(parsed.messages, primary) });
   const headers = new Headers(request.headers);
   headers.delete("content-length");
   return new Request(request.url, { method: request.method, headers, body, signal: request.signal });

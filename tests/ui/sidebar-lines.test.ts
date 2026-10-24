@@ -72,6 +72,14 @@ describe("sidebarLines", () => {
     ]);
   });
 
+  test.each(["30m", "12h"] as const)("the ttl row shows the OpenAI lifetime %s as requested", (ttl) => {
+    expect(lines(snap({ ttl, ttlSource: "requested" })).find((line) => line.text === "ttl")).toEqual({
+      text: "ttl",
+      tone: "base",
+      right: `${ttl} (requested)`,
+    });
+  });
+
   test("an expired cache shows an error status and the ttl row only", () => {
     expect(lines(snap({ expiresAt: NOW - 5 * MIN, skipReason: "missed", nextPingAt: NOW + 1 }))).toEqual([
       TITLE,
