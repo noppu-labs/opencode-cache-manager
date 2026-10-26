@@ -742,15 +742,24 @@ describe("createRequestHook on the Messages wire by model", () => {
   const deepseek = { providerID: "some-proxy", modelID: "deepseek/deepseek-v4.1-flash" };
 
   test("a non-Claude model under another provider is observed only, at any mode", async () => {
+    const results: Record<string, unknown> = {};
     for (const mode of ["5m", "1h", "hybrid"] as const) {
       const h = harness();
       await h.store.setSession("ses_a", { mode });
       const request = messages(deepseek.modelID);
       const evt = await h.dispatch(request, deepseek);
-      expect(evt.request).toBe(request);
-      expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false, kind: "primary" } }]);
-      expect(h.primaryMessages.size).toBe(0);
+      results[mode] = {
+        passedThrough: evt.request === request,
+        sent: h.sent,
+        primaryMessages: h.primaryMessages.size,
+      };
     }
+    const unmanaged = {
+      passedThrough: true,
+      sent: [{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false, kind: "primary" } }],
+      primaryMessages: 0,
+    };
+    expect(results).toEqual({ "5m": unmanaged, "1h": unmanaged, hybrid: unmanaged });
   });
 
   test("a non-Claude ping candidate is never aligned with the last primary request", async () => {
@@ -774,17 +783,22 @@ describe("createRequestHook on the Messages wire by model", () => {
   });
 
   test("Claude under another provider gets the session's TTL and the beta header, with the option on or off", async () => {
+    const results: Record<string, unknown> = {};
     for (const openaiCompatible of [false, true]) {
       const h = harness({ options: { openaiCompatible } });
       await h.store.setSession("ses_a", { mode: "1h" });
       const evt = await h.dispatch(messages("claude-haiku-5-5"), { providerID: "some-proxy", modelID: "claude-haiku-5-5" });
       const controls = collectCacheControls(await parsedBodyOf(evt.request));
-      expect(controls.length).toBeGreaterThan(0);
-      for (const cc of controls) expect(cc.ttl).toBe("1h");
-      expect(evt.request.headers.get("anthropic-beta")).toContain(EXTENDED_CACHE_BETA);
-      expect(h.sent[0]?.info.requestedTtl).toBe("1h");
-      expect(h.primaryMessages.size).toBe(1);
+      results[`openaiCompatible=${openaiCompatible}`] = {
+        hasControls: controls.length > 0,
+        ttls: [...new Set(controls.map((cc) => cc.ttl))],
+        beta: evt.request.headers.get("anthropic-beta")?.includes(EXTENDED_CACHE_BETA),
+        requestedTtl: h.sent[0]?.info.requestedTtl,
+        primaryMessages: h.primaryMessages.size,
+      };
     }
+    const rewritten = { hasControls: true, ttls: ["1h"], beta: true, requestedTtl: "1h", primaryMessages: 1 };
+    expect(results).toEqual({ "openaiCompatible=false": rewritten, "openaiCompatible=true": rewritten });
   });
 
   test("an alias is classified from body.model, a pattern, or a learned profile", async () => {
@@ -818,7 +832,9 @@ describe("createRequestHook on the Messages wire by model", () => {
     const h = harness();
     await h.store.setSession("ses_a", { mode: "1h" });
     const evt = await h.dispatch(messages("m"), { providerID: "anthropic", modelID: "m" });
-    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect(cc.ttl).toBe("1h");
+    const controls = collectCacheControls(await parsedBodyOf(evt.request));
+    expect(controls.length).toBeGreaterThan(0);
+    for (const cc of controls) expect(cc.ttl).toBe("1h");
     expect(evt.request.headers.get("anthropic-beta")).toContain(EXTENDED_CACHE_BETA);
     expect(h.sent[0]?.info.requestedTtl).toBe("1h");
     expect(h.primaryMessages.size).toBe(1);

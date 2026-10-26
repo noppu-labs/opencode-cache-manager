@@ -535,6 +535,88 @@ describe("keepalive wiring", () => {
     expect(lastSnapshot(mock)).toMatchObject({ ttl: "1h" });
   });
 
+  describe("anthropic-messages under a non-Anthropic provider ID", () => {
+    const PROXY_URL = "https://proxy.example/v1/messages";
+    const messagesSse = (model: string, usage: unknown) =>
+      `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model, usage } })}\n\n` +
+      `event: message_stop\ndata: {"type":"message_stop"}\n\n`;
+    const proxyTurn = (modelID: string, usage: unknown, resolvedModel = modelID, turn: Turn = {}): Turn => ({
+      providerID: "some-proxy",
+      modelID,
+      url: PROXY_URL,
+      contentType: "text/event-stream",
+      body: { ...sampleBody(), model: modelID },
+      responseText: messagesSse(resolvedModel, usage),
+      ...turn,
+    });
+
+    test("a DeepSeek session is observed but never pings", async () => {
+      const mock = await start({ keepalive: { minContextTokens: 0 } });
+      const turn = proxyTurn("deepseek/deepseek-v4.1-flash", READ_HIT);
+      const raw = JSON.stringify(turn.body);
+      const { requestEvt } = await roundTrip(mock, turn);
+      await flush();
+
+      expect(await requestEvt.request.text()).toBe(raw);
+      expect(lastSnapshot(mock)).toMatchObject({
+        skipReason: "implicit",
+        nextPingAt: null,
+        lastCache: { read: 60_000, total: 60_010 },
+      });
+      jest.advanceTimersByTime(FIVE_MIN);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(mock.generate).not.toHaveBeenCalled();
+    });
+
+    test("an alias is untouched on turn 1, then rewritten and kept warm once its response names Claude", async () => {
+      const mock = await start({ defaultMode: "1h", keepalive: { minContextTokens: 0 } });
+      const alias = "auto/fast";
+      const pings: Array<Record<string, any>> = [];
+      mock.generate.mockImplementation(async (input: any) => {
+        const body = { ...sampleBody(), model: alias } as Record<string, any>;
+        body.messages = [...body.messages.slice(0, 2), { role: "user", content: [{ type: "text", text: PING_PROMPT }] }];
+        const ping = await roundTrip(
+          mock,
+          proxyTurn(alias, READ_HIT, "claude-haiku-5-5", { sessionID: input.sessionID, kind: "generate", body }),
+        );
+        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
+        return {};
+      });
+
+      const turn = proxyTurn(alias, WRITE_1H, "claude-haiku-5-5");
+      const raw = JSON.stringify(turn.body);
+      const first = await roundTrip(mock, turn);
+      await flush();
+      expect(await first.requestEvt.request.text()).toBe(raw);
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+      expect(mock.store.get("learned-models")).toEqual({ "some-proxy/auto/fast": "anthropic" });
+
+      const second = await roundTrip(mock, proxyTurn(alias, WRITE_1H, "claude-haiku-5-5"));
+      await flush();
+      const primary = (await parsedBodyOf(second.requestEvt.request)) as Record<string, any>;
+      const controls = collectCacheControls(primary);
+      expect(controls.length).toBeGreaterThan(0);
+      expect(controls.every((control) => control.ttl === "1h")).toBe(true);
+      expect(second.requestEvt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(lastSnapshot(mock)).toMatchObject({
+        ttl: "1h",
+        ttlSource: "detected",
+        skipReason: null,
+        nextPingAt: T0 + FIFTY_MIN,
+      });
+
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(pings[0]?.messages.slice(0, 2)).toEqual(primary.messages.slice(0, 2));
+      expect(JSON.stringify(pings[0]?.messages[2])).toContain(PING_PROMPT);
+      expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
+    });
+  });
+
   test("a session with a parent is skipped as a child", async () => {
     const mock = await start();
     mock.sessionGet.mockImplementation(async (input: any) => ({ id: input.sessionID, parentID: "ses_parent" }));
