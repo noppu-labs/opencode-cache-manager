@@ -12,3 +12,6 @@ export const MESSAGES_SUFFIX = "/messages";
 
 /** Request header carrying Anthropic beta flags. */
 export const BETA_HEADER = "anthropic-beta";
+
+/** Response statuses that mean the upstream rejected the request itself, so a learned profile may be wrong. */
+export const REJECTED_REQUEST_STATUSES: readonly number[] = [400, 422];

@@ -493,22 +493,30 @@ describe("routeRequest", () => {
 });
 
 describe("keepsWarm", () => {
-  const messages = chat("https://proxy.example/v1/messages");
+  const messages = () => chat("https://proxy.example/v1/messages");
   const alias = { providerID: "some-proxy", id: "auto/best" };
 
-  test("follows the classified profile on the Messages wire", () => {
-    expect(keepsWarm(messages, alias, { patterns: [], learned: () => "anthropic" })).toBe(true);
-    expect(keepsWarm(messages, alias, { patterns: [], learned: () => "implicit" })).toBe(false);
-    expect(keepsWarm(messages, alias, noDeps)).toBe(false);
-    expect(keepsWarm(messages, { providerID: "some-proxy", id: "claude-haiku-5-5" }, { patterns: [], learned: () => "implicit" })).toBe(true);
-    expect(keepsWarm(messages, { providerID: "anthropic", id: "auto/best" }, noDeps)).toBe(true);
+  test("follows the classified profile on the Messages wire", async () => {
+    expect(await keepsWarm(messages(), alias, { patterns: [], learned: () => "anthropic" })).toBe(true);
+    expect(await keepsWarm(messages(), alias, { patterns: [], learned: () => "implicit" })).toBe(false);
+    expect(await keepsWarm(messages(), alias, noDeps)).toBe(false);
+    expect(await keepsWarm(messages(), { providerID: "some-proxy", id: "claude-haiku-5-5" }, { patterns: [], learned: () => "implicit" })).toBe(true);
+    expect(await keepsWarm(messages(), { providerID: "anthropic", id: "auto/best" }, noDeps)).toBe(true);
   });
 
-  test("is false for a profile that cannot handle the wire, or an unknown wire", () => {
-    const responses = chat("https://omni.example/v1/responses");
-    expect(keepsWarm(responses, { providerID: "omniroute", id: "claude-haiku-5-5" }, noDeps)).toBe(false);
-    expect(keepsWarm(responses, { providerID: "omniroute", id: "gpt-6-luna" }, noDeps)).toBe(true);
-    expect(keepsWarm(chat("https://omni.example/v1/embeddings"), alias, noDeps)).toBe(false);
+  test("reads the body's model the way the request hook does", async () => {
+    const request = new Request("https://proxy.example/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({ model: "claude-sonnet-5-5" }),
+    });
+    expect(await keepsWarm(request, alias, { patterns: [], learned: () => "implicit" })).toBe(true);
+  });
+
+  test("is false for a profile that cannot handle the wire, or an unknown wire", async () => {
+    const responses = () => chat("https://omni.example/v1/responses");
+    expect(await keepsWarm(responses(), { providerID: "omniroute", id: "claude-haiku-5-5" }, noDeps)).toBe(false);
+    expect(await keepsWarm(responses(), { providerID: "omniroute", id: "gpt-6-luna" }, noDeps)).toBe(true);
+    expect(await keepsWarm(chat("https://omni.example/v1/embeddings"), alias, noDeps)).toBe(false);
   });
 });
 

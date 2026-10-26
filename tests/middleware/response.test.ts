@@ -500,6 +500,24 @@ describe("createResponseHook on the Messages wire for a non-Anthropic provider",
     expect(store.get(alias)).toBeUndefined();
   });
 
+  test("a 422 response forgets the learned entry too", async () => {
+    const { hook, forgetCalls } = harness();
+    await hook(messagesEvent({ response: jsonResponse({ type: "error" }, 422) }));
+    await flush();
+    expect(forgetCalls).toEqual([alias]);
+  });
+
+  test("rate-limit, overload and server errors keep the learned entry", async () => {
+    const { hook, forgetCalls, store } = harness();
+    await store.learnFromResponse(alias, { model: "claude-opus-5-5" });
+    for (const status of [401, 429, 500, 503, 529]) {
+      await hook(messagesEvent({ response: jsonResponse({ type: "error" }, status) }));
+    }
+    await flush();
+    expect(forgetCalls).toEqual([]);
+    expect(store.get(alias)).toBe("anthropic");
+  });
+
   test("an ok response does not forget", async () => {
     const { hook, forgetCalls } = harness();
     await hook(messagesEvent({ response: withModel("claude-opus-5-5") }));
@@ -552,6 +570,17 @@ describe("createResponseHook on the Messages wire for a non-Anthropic provider",
   test("a model whose name is Claude stays managed whatever the response names", async () => {
     const { hook, observed } = harness();
     await hook(messagesEvent({ model: { providerID: "omniroute", id: "claude-opus-5-5" }, response: withModel("deepseek/deepseek-v4.1-flash") }));
+    await flush();
+    expect(observed[0]?.info.unmanaged).toBe(false);
+  });
+
+  test("a request whose body names a Claude model stays managed whatever the response names", async () => {
+    const { hook, observed } = harness();
+    const request = new Request("https://omni.example/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({ model: "claude-sonnet-5-5" }),
+    });
+    await hook(messagesEvent({ request, response: withModel("best-route") }));
     await flush();
     expect(observed[0]?.info.unmanaged).toBe(false);
   });

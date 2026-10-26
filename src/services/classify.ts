@@ -175,9 +175,9 @@ export function profileForRoute(route: Route, openaiCompatible: boolean): CacheP
   return profileFor(id).wires.includes(wire) ? id : "implicit";
 }
 
-/** True when `ref`'s next request on this request's wire, classified without reading its body, goes through a profile that pings. */
-export function keepsWarm(request: Request, ref: ModelRef, deps: ClassifyDeps): boolean {
-  const cls = classifyRequest(request, ref, deps);
+/** True when `request`, classified as the Messages-wire request hook does (body included), goes through a profile that pings. */
+export async function keepsWarm(request: Request, ref: ModelRef, deps: ClassifyDeps): Promise<boolean> {
+  const cls = await classifyRequestWithBody(request, ref, deps, { openaiWires: false });
   if (cls === undefined) return false;
   const profile = profileFor(cls.profile);
   return profile.pings && profile.wires.includes(cls.wire);

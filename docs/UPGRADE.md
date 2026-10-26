@@ -4,7 +4,7 @@
 
 Update the version range in your `plugins` entry to `^0.6.0`: on 0.x, `^0.5.0` does not pick up 0.6.
 
-0.6.0 classifies requests on the Anthropic Messages wire (`POST …/messages`) by model, the way the OpenAI wires already were. The `anthropic` and `omniroute-anthropic` providers behave as before and are always Claude. Any other provider ID is resolved from, in order, your `cacheProfiles` patterns, a Claude model name (it contains `claude` or starts with `anthropic/`, on the OpenCode model ID or the request's `model`), and the model the latest response reported, applied from the next request. A router alias that switches models therefore runs one turn behind, and an error response from such an alias drops the learned entry. Anything else is `implicit`: observed, never rewritten or pinged. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
+0.6.0 classifies requests on the Anthropic Messages wire (`POST …/messages`) by model, the way the OpenAI wires already were. The `anthropic` and `omniroute-anthropic` providers behave as before and are always Claude. Any other provider ID is resolved from, in order, your `cacheProfiles` patterns, a Claude model name (it contains `claude` or starts with `anthropic/`, on the OpenCode model ID or the request's `model`), and the model the latest response reported, applied from the next request. A router alias that switches models therefore runs one turn behind, and a request such an alias rejects (status 400 or 422) drops the learned entry. Anything else is `implicit`: observed, never rewritten or pinged. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
 
 Behaviour you may notice:
 
