@@ -96,6 +96,32 @@ describe("ProfileStore", () => {
     expect(store.get(ref)).toBe("anthropic");
   });
 
+  test("forget drops the entry and persists, leaving other entries", async () => {
+    const { kv } = memoryKv();
+    const other = { providerID: "omniroute", id: "auto/other" };
+    const store = await loaded(kv);
+    await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
+    await store.learnFromResponse(other, { model: "claude-haiku-5-5" });
+    await store.forget(ref);
+    expect(store.get(ref)).toBeUndefined();
+    const reloaded = await loaded(kv);
+    expect(reloaded.get(ref)).toBeUndefined();
+    expect(reloaded.get(other)).toBe("anthropic");
+  });
+
+  test("forget of an unknown entry does not write storage, and a storage failure is swallowed", async () => {
+    const { kv } = memoryKv();
+    let writes = 0;
+    const failing: KV = { ...kv, set: async () => { writes++; throw new Error("disk full"); } };
+    const store = await loaded(failing);
+    await store.forget(ref);
+    expect(writes).toBe(0);
+    await store.learnFromResponse(ref, { model: "claude-haiku-5-5" });
+    await store.forget(ref);
+    expect(writes).toBe(2);
+    expect(store.get(ref)).toBeUndefined();
+  });
+
   test("a storage read error leaves load() resolved with an empty map", async () => {
     const { kv } = memoryKv();
     const store = await loaded({ ...kv, get: async () => { throw new Error("unreadable"); } });

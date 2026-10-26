@@ -380,6 +380,17 @@ describe("transformHttpRequest through a profile", () => {
     expect(await parsedBodyOf(out)).toEqual({ input: input() });
   });
 
+  test("an implicit Messages request with the sentinel keeps its original body bytes", async () => {
+    const text = '{"model":"deepseek-v4","temperature":1.0,"seed":12345678901234567890,"messages":[]}';
+    const out = await transformHttpRequest(
+      makeRequest(text, { [SENTINEL_HEADER]: "1h" }),
+      "5m",
+      transformOpts({ profile: implicitProfile }),
+    );
+    expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(await out.text()).toBe(text);
+  });
+
   test("profile headers are set, and beta values merged without duplicates", async () => {
     const profile: CacheProfile = {
       ...implicitProfile,

@@ -985,6 +985,26 @@ describe("keepalive engine: implicit-cache sessions", () => {
     expect(h.engine.snapshot("s1").skipReason).toBe("implicit");
   });
 
+  test("an unmanaged primary response turns a kept-warm session implicit and fires no ping", async () => {
+    const h = harness();
+    h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false, kind: "primary" });
+    await h.engine.responseObserved("s1", { usage: pureRead, ok: true, isPing: false, kind: "primary", unmanaged: true });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+    expect(h.timerCount).toBe(0);
+    await h.advance(60 * MIN);
+    expect(h.pings).toHaveLength(0);
+  });
+
+  test("unmanaged on a title response leaves the session scheduled", async () => {
+    const h = harness();
+    h.engine.requestSent("s1", { requestedTtl: "1h", isPing: false, kind: "primary" });
+    await h.engine.responseObserved("s1", { usage: write1h, ok: true, isPing: false, kind: "primary" });
+    await h.engine.responseObserved("s1", { usage: write1h, ok: true, isPing: false, kind: "title", unmanaged: true });
+    await h.flush();
+    expect(h.engine.snapshot("s1")).toMatchObject({ skipReason: null, nextPingAt: 50 * MIN });
+  });
+
   test("implicit is checked right after child", async () => {
     const h = harness({ child: true });
     await h.request("s1", pureRead, null);

@@ -46,7 +46,8 @@ export interface Classification {
 
 /**
  * Decides the wire and cache profile of an outgoing request, or `undefined` when it is not a known wire.
- * Precedence on the Messages wire: an Anthropic provider ID, user patterns, built-in Claude regex, learned, implicit.
+ * Precedence on the Messages wire: an Anthropic provider ID, user patterns, built-in Claude regex, learned, implicit;
+ * an `openai` outcome there is `implicit`, since that profile has no Messages rewrite.
  * Precedence on the OpenAI wires: user patterns, built-in Claude regex, built-in OpenAI regex, learned, implicit.
  * A learned `openai` only counts when the request's own model matches the OpenAI regex: a router alias can
  * send its next turn to a model that answers `prompt_cache_*` with a 400.
@@ -68,7 +69,7 @@ export function classifyRequest(
     (wire !== "anthropic-messages" && matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
     learnedProfile(deps, ref, matches) ??
     "implicit";
-  return { wire, profile };
+  return { wire, profile: wire === "anthropic-messages" && profile === "openai" ? "implicit" : profile };
 }
 
 function learnedProfile(
@@ -172,6 +173,14 @@ export function profileForRoute(route: Route, openaiCompatible: boolean): CacheP
   if (wire === undefined) return "anthropic";
   const id = openaiCompatible ? (route.profile ?? "anthropic") : "anthropic";
   return profileFor(id).wires.includes(wire) ? id : "implicit";
+}
+
+/** True when `ref`'s next request on this request's wire, classified without reading its body, goes through a profile that pings. */
+export function keepsWarm(request: Request, ref: ModelRef, deps: ClassifyDeps): boolean {
+  const cls = classifyRequest(request, ref, deps);
+  if (cls === undefined) return false;
+  const profile = profileFor(cls.profile);
+  return profile.pings && profile.wires.includes(cls.wire);
 }
 
 /** True when breakpoints are injected into the request: a managed Claude-profile `openai-chat` primary or compaction request that is not a ping. */

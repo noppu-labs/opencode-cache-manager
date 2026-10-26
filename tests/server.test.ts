@@ -617,6 +617,58 @@ describe("keepalive wiring", () => {
       expect(JSON.stringify(pings[0]?.messages[1])).toContain(PING_PROMPT);
       expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
     });
+
+    test("a learned alias whose response names a non-Claude model stops pinging and is left alone next turn", async () => {
+      const mock = await start({ defaultMode: "1h", keepalive: { minContextTokens: 0 } });
+      const alias = "auto/best";
+      await roundTrip(mock, proxyTurn(alias, WRITE_1H, "claude-haiku-5-5"));
+      await flush();
+      expect(mock.store.get("learned-models")).toEqual({ "some-proxy/auto/best": "anthropic" });
+
+      const stale = await roundTrip(mock, proxyTurn(alias, READ_HIT, "deepseek/deepseek-v4.1-flash"));
+      await flush();
+      expect(collectCacheControls(await parsedBodyOf(stale.requestEvt.request)).length).toBeGreaterThan(0);
+      expect(stale.requestEvt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(mock.store.get("learned-models")).toEqual({ "some-proxy/auto/best": "implicit" });
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(mock.generate).not.toHaveBeenCalled();
+
+      const next = proxyTurn(alias, READ_HIT, "deepseek/deepseek-v4.1-flash");
+      const raw = JSON.stringify(next.body);
+      const { requestEvt } = await roundTrip(mock, next);
+      expect(await requestEvt.request.text()).toBe(raw);
+    });
+
+    test("a learned alias answered with an error drops the entry, and the next turn is left alone", async () => {
+      const mock = await start({ defaultMode: "1h", keepalive: { minContextTokens: 0 } });
+      const alias = "auto/best";
+      await roundTrip(mock, proxyTurn(alias, WRITE_1H, "claude-haiku-5-5"));
+      await flush();
+
+      const rejected = await roundTrip(
+        mock,
+        proxyTurn(alias, READ_HIT, alias, {
+          status: 400,
+          contentType: "application/json",
+          responseText: JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "ttl" } }),
+        }),
+      );
+      await flush();
+      expect(rejected.requestEvt.request.headers.get("anthropic-beta")).toBe(EXTENDED_CACHE_BETA);
+      expect(mock.store.get("learned-models")).toEqual({});
+
+      const next = proxyTurn(alias, READ_HIT, alias);
+      const raw = JSON.stringify(next.body);
+      const { requestEvt } = await roundTrip(mock, next);
+      await flush();
+      expect(await requestEvt.request.text()).toBe(raw);
+      expect(lastSnapshot(mock)).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+    });
   });
 
   test("a session with a parent is skipped as a child", async () => {

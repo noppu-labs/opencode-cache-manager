@@ -3,6 +3,7 @@ import {
   classifyRequest,
   classifyRequestWithBody,
   isAnthropicMessagesRequest,
+  keepsWarm,
   observedWireFor,
   profileForRoute,
   requestWire,
@@ -122,8 +123,14 @@ describe("classifyRequest", () => {
     expect(classifyRequest(messages, ref, { patterns: [], learned: () => "implicit" })?.profile).toBe("implicit");
     expect(classifyRequest(messages, ref, { patterns: [], learned: () => "openai" })?.profile).toBe("implicit");
     const gpt = { providerID: "some-proxy", id: "gpt-6-luna" };
-    expect(classifyRequest(messages, gpt, { patterns: [], learned: () => "openai" })?.profile).toBe("openai");
+    expect(classifyRequest(messages, gpt, { patterns: [], learned: () => "openai" })?.profile).toBe("implicit");
     expect(classifyRequest(messages, gpt, noDeps)?.profile).toBe("implicit");
+  });
+
+  test("on the Messages wire a pattern mapping to openai classifies implicit", () => {
+    const messages = chat("https://proxy.example/v1/messages");
+    const deps = { patterns: parseCacheProfiles({ "auto/fast": "openai" }) };
+    expect(classifyRequest(messages, { providerID: "some-proxy", id: "auto/fast" }, deps)?.profile).toBe("implicit");
   });
 
   test("GET and other paths are not classified", () => {
@@ -482,6 +489,26 @@ describe("routeRequest", () => {
     expect(observedWireFor("openai-chat", true, false)).toBe("anthropic-messages");
     expect(observedWireFor(undefined, true, true)).toBe("anthropic-messages");
     expect(observedWireFor(undefined, false, true)).toBeUndefined();
+  });
+});
+
+describe("keepsWarm", () => {
+  const messages = chat("https://proxy.example/v1/messages");
+  const alias = { providerID: "some-proxy", id: "auto/best" };
+
+  test("follows the classified profile on the Messages wire", () => {
+    expect(keepsWarm(messages, alias, { patterns: [], learned: () => "anthropic" })).toBe(true);
+    expect(keepsWarm(messages, alias, { patterns: [], learned: () => "implicit" })).toBe(false);
+    expect(keepsWarm(messages, alias, noDeps)).toBe(false);
+    expect(keepsWarm(messages, { providerID: "some-proxy", id: "claude-haiku-5-5" }, { patterns: [], learned: () => "implicit" })).toBe(true);
+    expect(keepsWarm(messages, { providerID: "anthropic", id: "auto/best" }, noDeps)).toBe(true);
+  });
+
+  test("is false for a profile that cannot handle the wire, or an unknown wire", () => {
+    const responses = chat("https://omni.example/v1/responses");
+    expect(keepsWarm(responses, { providerID: "omniroute", id: "claude-haiku-5-5" }, noDeps)).toBe(false);
+    expect(keepsWarm(responses, { providerID: "omniroute", id: "gpt-6-luna" }, noDeps)).toBe(true);
+    expect(keepsWarm(chat("https://omni.example/v1/embeddings"), alias, noDeps)).toBe(false);
   });
 });
 
