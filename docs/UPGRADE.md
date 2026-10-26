@@ -1,5 +1,17 @@
 # Upgrading
 
+## From 0.5.x
+
+Update the version range in your `plugins` entry to `^0.6.0`: on 0.x, `^0.5.0` does not pick up 0.6.
+
+0.6.0 classifies requests on the Anthropic Messages wire (`POST …/messages`) by model, the way the OpenAI wires already were. The `anthropic` and `omniroute-anthropic` providers behave as before and are always Claude. Any other provider ID is resolved from, in order, your `cacheProfiles` patterns, a Claude model name (it contains `claude` or starts with `anthropic/`, on the OpenCode model ID or the request's `model`), and the model the first response reports. Anything else is `implicit`: observed, never rewritten or pinged. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
+
+Behaviour you may notice:
+
+- **Non-Claude models on an Anthropic-compatible endpoint** under another provider ID (DeepSeek, Kimi, MiniMax, GLM, a router) are no longer pinged, and a `-1h` variant only has its `x-cache-ttl` header stripped. In 0.5 they were pinged on Claude's schedule, and the pings missed the cache and were billed at full input price.
+- **Claude by name on an Anthropic-compatible endpoint** under another provider ID now gets the session's TTL mode and the `anthropic-beta` header. In 0.5 the session's mode was ignored there.
+- **A Claude alias without "claude" in its name** under another provider ID is `implicit` until a response names a Claude model or a `cacheProfiles` entry maps it (`"my-alias": "anthropic"`). In 0.5 it was kept warm, and rewritten if it had a `-1h` variant.
+
 ## From 0.4.x
 
 Update the version range in your `plugins` entry to `^0.5.0`: on 0.x, `^0.4.0` does not pick up 0.5.

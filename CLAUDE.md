@@ -43,7 +43,7 @@ src/
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   └── openai.ts              # /chat/completions and /responses suffixes, Claude-model and GPT-5.6+ regexes, OpenAI TTL per mode, finish-reason map
 ├── models/
-│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheProfileId, ModelRef, OpenAiIdentity, ObservedResponse, ResponseParsers, ProfilePattern
+│   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheProfileId, ModelRef, ResponseIdentity, ObservedResponse, ResponseParsers, ProfilePattern
 │   ├── profile.ts             # CacheProfile interface and RewriteContext
 │   ├── keepalive.ts           # KeepaliveSnapshot, CacheReadout, SkipReason, RequestKind
 │   └── storage.ts             # KV and ScannableKV plugin storage interfaces
@@ -64,12 +64,12 @@ src/
 │   ├── openai-breakpoints.ts  # stripBreakpoints: prompt_cache_breakpoint removal on both OpenAI wires
 │   ├── openai-responses-cache.ts # openai-responses input walking: breakpoint targets on messages and tool output
 │   ├── profiles/              # one CacheProfile per provider: anthropic.ts, openai.ts, implicit.ts; index.ts maps profile ID -> profile
-│   ├── classify.ts            # wire + cache profile (anthropic/openai/implicit) classification, Anthropic endpoint detection, request routing (routeRequest, shouldInject)
+│   ├── classify.ts            # wire + cache profile (anthropic/openai/implicit) classification on all three wires (Messages-wire requests from non-Anthropic provider IDs are classified by model), Anthropic endpoint detection, request routing (routeRequest, shouldInject)
 │   ├── model-patterns.ts      # matchProfilePatterns: first pattern matching <providerID>/<id> gives the profile
 │   ├── profile-store.ts       # profiles learned from responses, kept in memory and plugin storage
 │   ├── ping-alignment.ts      # aligning a ping's messages (or Responses input) with the last primary request
 │   ├── response-observer.ts   # observeResponseUsage: response tee that feeds a ResponseParsers set
-│   ├── usage.ts               # Anthropic usage/SSE parsing (ANTHROPIC_PARSERS), shared helpers: contextTokens, hasCacheActivity, grantedTtl
+│   ├── usage.ts               # Anthropic usage/SSE parsing and response model identity (ANTHROPIC_PARSERS), shared helpers: contextTokens, hasCacheActivity, grantedTtl
 │   ├── usage-openai.ts        # openai-chat usage, finish reason and model identity parsing (OPENAI_PARSERS)
 │   └── usage-responses.ts     # openai-responses usage, status and model parsing (RESPONSES_PARSERS)
 ├── ui/
@@ -125,6 +125,7 @@ Where new code goes:
 - `1h` / `hybrid` requests must carry `anthropic-beta: extended-cache-ttl-2025-04-11`, merged with any existing beta values. This applies to Claude on all wires; some OpenAI-compatible proxies (OmniRoute) need it for 1h to take effect. GPT requests never get it.
 - The `x-cache-ttl` header is a per-model override sentinel: read it, apply it, strip it before the request leaves. On the OpenAI wires this holds for `implicit` models too (strip it, rewrite nothing else).
 - `prompt_cache_options` and `prompt_cache_breakpoint` are only ever sent to a model the `openai` profile matched (name regex on the model ID or `body.model`, or a `cacheProfiles` entry): older GPT models answer 400. A learned `openai` entry never widens the regex, since a router alias can pick an older model on its next turn. Never send `prompt_cache_options` on primary, compaction or ping requests (explicit mode disables the automatic tail cache); 12h is always a `ttl` on a breakpoint, only one-off calls get `{ mode: "explicit" }`.
+- On the Messages wire only `ANTHROPIC_PROVIDER_IDS` are trusted as Claude; any other provider is classified by model, and a non-Claude model is never rewritten or pinged.
 - `learnFromResponse` keeps learning `implicit` for a model whose response names a non-matching identity, so a stale `openai` entry cannot survive (a wrong `openai` classification is a 400 on the user's turn).
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.

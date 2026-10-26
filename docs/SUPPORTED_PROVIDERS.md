@@ -2,7 +2,7 @@
 
 ## Endpoints
 
-The plugin handles three wire formats: the Anthropic Messages API (`POST …/messages`), OpenAI Chat Completions (`POST …/chat/completions`) and the OpenAI Responses API (`POST …/responses`, used by OpenCode's native `openai` provider). On the two OpenAI wires it also needs to know which cache profile a model belongs to:
+The plugin handles three wire formats: the Anthropic Messages API (`POST …/messages`), OpenAI Chat Completions (`POST …/chat/completions`) and the OpenAI Responses API (`POST …/responses`, used by OpenCode's native `openai` provider). On every wire it needs to know which cache profile a model belongs to, except for the two Anthropic provider IDs (`anthropic`, `omniroute-anthropic`), which are always Claude:
 
 | | Claude (`anthropic`) | GPT-5.6+ (`openai`) | Everything else (`implicit`) |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ The plugin handles three wire formats: the Anthropic Messages API (`POST …/mes
 | Cache usage observed (sidebar `cached` row) | yes | yes | yes |
 | Keepalive pings | yes (5m, 1h; hybrid follows its 5m tail) | yes (30m, 12h; hybrid follows its 30m tail) | never |
 
-The Claude column applies on the Anthropic Messages and Chat Completions wires; a Claude model on the Responses API is only observed, like an implicit one. Claude models cache only where a request marks a breakpoint. OpenCode's `openrouter` provider marks them for `anthropic/*` models, but its `openai-compatible` provider marks none, so the plugin adds the same three (the last tool, the system prompt, the last message) when the request has no `cache_control` at all. Other models, such as DeepSeek's, cache on the provider's side with no breakpoints to rewrite. The plugin only reads the usage in their responses.
+The Claude column applies on the Anthropic Messages and Chat Completions wires, for any provider ID once the model is classified as Claude; a Claude model on the Responses API is only observed, like an implicit one. Claude models cache only where a request marks a breakpoint. OpenCode's `openrouter` provider marks them for `anthropic/*` models, but its `openai-compatible` provider marks none, so the plugin adds the same three (the last tool, the system prompt, the last message) when the request has no `cache_control` at all. Other models, such as DeepSeek's, cache on the provider's side with no breakpoints to rewrite. The plugin only reads the usage in their responses.
 
 ### What the plugin sends to GPT-5.6+
 
@@ -31,11 +31,19 @@ OpenAI's usage reports how many tokens were read and written but not the lifetim
 
 Older models such as `gpt-5` answer 400 to `prompt_cache_options` and `prompt_cache_breakpoint`, so the plugin never sends them. A model counts as GPT-5.6+ only when its name matches (`gpt-5.6` and up, `gpt-6` and up) or when you map it yourself with `"openai"` in `cacheProfiles`.
 
+On the Messages wire, requests to the `anthropic` and `omniroute-anthropic` providers are always Claude and skip the list below. Any other provider ID on any wire goes through it. Examples of Anthropic-compatible endpoints under another provider ID:
+
+| Endpoint, model | Profile | Result |
+| --- | --- | --- |
+| Claude model on a proxy's `/messages` (name contains `claude`, or starts with `anthropic/`) | `anthropic` | The session's TTL mode and the beta header are applied, and keepalive pings |
+| DeepSeek, Kimi, MiniMax or GLM on their `/messages` endpoint, or OpenRouter `/api/v1/messages` with a non-Claude model | `implicit` | Observed only: nothing is rewritten and no pings are sent |
+| A Claude alias without "claude" in its name (`auto/fast`) | `implicit` until a response or a `cacheProfiles` entry says otherwise | Learned from the `model` the first response reports |
+
 A model counts as Claude or GPT-5.6+, in this order:
 
 1. Your `cacheProfiles` patterns (see [Settings](../README.md#settings)): `"anthropic"`, `"openai"` or `"implicit"`.
 2. Its name: the OpenCode model ID or the `model` in the request body contains `claude`, or has an `anthropic/` prefix (as in `openrouter/anthropic/…`) for Claude; matches the GPT-5.6+ pattern above for OpenAI.
-3. What the first response says it ran on, for Claude only: the response's `model` or `provider` field names Anthropic or Claude. This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so a Claude alias is unmanaged for its first turn only. A response naming a GPT-5.6+ model never makes an alias `openai`: a router alias can send its next turn to an older model, which answers the OpenAI cache fields with a 400. Map an alias that always lands on GPT-5.6+ yourself with `"openai"` in `cacheProfiles`, for example `"auto/coding": "openai"`.
+3. What the first response says it ran on, for Claude only: the response's `model` or `provider` field names Anthropic or Claude (on the Messages wire, the `model` the response reports). This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so a Claude alias is unmanaged for its first turn only. A response naming a GPT-5.6+ model never makes an alias `openai`: a router alias can send its next turn to an older model, which answers the OpenAI cache fields with a 400. Map an alias that always lands on GPT-5.6+ yourself with `"openai"` in `cacheProfiles`, for example `"auto/coding": "openai"`.
 
 Anything else is treated as implicit. A `-1h` variant on an implicit model has its `x-cache-ttl` header stripped and nothing else changed.
 
