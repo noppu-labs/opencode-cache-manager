@@ -37,13 +37,13 @@ On the Messages wire, requests to the `anthropic` and `omniroute-anthropic` prov
 | --- | --- | --- |
 | Claude model on a proxy's `/messages` (name contains `claude`, or starts with `anthropic/`) | `anthropic` | The session's TTL mode and the beta header are applied, and keepalive pings |
 | DeepSeek, Kimi, MiniMax or GLM on their `/messages` endpoint, or OpenRouter `/api/v1/messages` with a non-Claude model | `implicit` | Observed only: nothing is rewritten and no pings are sent |
-| A Claude alias without "claude" in its name (`auto/fast`) | `implicit` until a response or a `cacheProfiles` entry says otherwise | Learned from the `model` the first response reports |
+| A Claude alias without "claude" in its name (`auto/fast`) | `implicit` until a response or a `cacheProfiles` entry says otherwise | Learned from the `model` the latest response reported |
 
 A model counts as Claude or GPT-5.6+, in this order:
 
 1. Your `cacheProfiles` patterns (see [Settings](../README.md#settings)): `"anthropic"`, `"openai"` or `"implicit"`. On the Messages wire (`/messages`) an `"openai"` entry has no effect: the OpenAI profile doesn't apply to that wire, so the model falls back to `implicit` (observed only).
 2. Its name: the OpenCode model ID or the `model` in the request body contains `claude`, or has an `anthropic/` prefix (as in `openrouter/anthropic/…`) for Claude; matches the GPT-5.6+ pattern above for OpenAI.
-3. What the first response says it ran on, for Claude only: the response's `model` or `provider` field names Anthropic or Claude (on the Messages wire, the `model` the response reports). This is how an alias such as `auto/opus-5` gets picked up. The result is remembered across restarts, so a Claude alias is unmanaged for its first turn only. A response naming a GPT-5.6+ model never makes an alias `openai`: a router alias can send its next turn to an older model, which answers the OpenAI cache fields with a 400. Map an alias that always lands on GPT-5.6+ yourself with `"openai"` in `cacheProfiles`, for example `"auto/coding": "openai"`.
+3. What the latest response said it ran on, for Claude only: the response's `model` or `provider` field names Anthropic or Claude (on the Messages wire, the `model` the response reports). This is how an alias such as `auto/opus-5` gets picked up. The result applies from the next request and is remembered across restarts, so a Claude alias is unmanaged for its first turn only. A router alias that switches models runs one turn behind, and on the Messages wire an error response from it drops the learned entry. A response naming a GPT-5.6+ model never makes an alias `openai`: a router alias can send its next turn to an older model, which answers the OpenAI cache fields with a 400. Map an alias that always lands on GPT-5.6+ yourself with `"openai"` in `cacheProfiles`, for example `"auto/coding": "openai"`.
 
 Anything else is treated as implicit. A `-1h` variant on an implicit model has its `x-cache-ttl` header stripped and nothing else changed.
 
