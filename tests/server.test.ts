@@ -573,10 +573,11 @@ describe("keepalive wiring", () => {
     test("an alias is untouched on turn 1, then rewritten and kept warm once its response names Claude", async () => {
       const mock = await start({ defaultMode: "1h", keepalive: { minContextTokens: 0 } });
       const alias = "auto/fast";
+      const diverging = { role: "user", content: [{ type: "text", text: "rewritten 0" }] };
       const pings: Array<Record<string, any>> = [];
       mock.generate.mockImplementation(async (input: any) => {
         const body = { ...sampleBody(), model: alias } as Record<string, any>;
-        body.messages = [...body.messages.slice(0, 2), { role: "user", content: [{ type: "text", text: PING_PROMPT }] }];
+        body.messages = [diverging, { role: "user", content: [{ type: "text", text: PING_PROMPT }] }];
         const ping = await roundTrip(
           mock,
           proxyTurn(alias, READ_HIT, "claude-haiku-5-5", { sessionID: input.sessionID, kind: "generate", body }),
@@ -611,8 +612,9 @@ describe("keepalive wiring", () => {
       await flush();
 
       expect(mock.generate).toHaveBeenCalledTimes(1);
-      expect(pings[0]?.messages.slice(0, 2)).toEqual(primary.messages.slice(0, 2));
-      expect(JSON.stringify(pings[0]?.messages[2])).toContain(PING_PROMPT);
+      expect(pings[0]?.messages[0]).toEqual(primary.messages[0]);
+      expect(pings[0]?.messages[0]).not.toEqual(diverging);
+      expect(JSON.stringify(pings[0]?.messages[1])).toContain(PING_PROMPT);
       expect(lastSnapshot(mock)).toMatchObject({ lastPing: "hit", pingsUsed: 1 });
     });
   });
