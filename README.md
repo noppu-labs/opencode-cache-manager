@@ -41,7 +41,7 @@ The same three modes drive both providers. OpenAI caches automatically for 30 mi
 | --- | --- | --- |
 | `5m` | 5m breakpoints on tools, system and messages | Automatic 30m cache; nothing added to the request |
 | `1h` | 1h breakpoints everywhere | A 12h breakpoint on the last message or tool output |
-| `hybrid` | 1h on tools + system, 5m on messages | A 12h breakpoint at the end of the system prompt; the message tail keeps the automatic 30m cache |
+| `hybrid` | 1h on tools + system, 5m on messages | A 12h breakpoint at the end of the system prompt (on the Responses API, where the system prompt is the `instructions` string, on the first input item, which covers `instructions` and tools too); the message tail keeps the automatic 30m cache |
 
 One-off requests (titles and other one-off generate calls) also stop paying for cache writes on OpenAI models: the plugin sends them with caching turned off. Keepalive pings follow the shortest-lived part of the cache: every 25 minutes in `5m` and `hybrid` (the 30m cache and the 30m tail), every 10 hours in `1h`.
 

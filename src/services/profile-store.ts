@@ -31,7 +31,11 @@ export class ProfileStore {
     return this.learned.get(key(ref));
   }
 
-  /** Records the profile a response reveals; the latest response wins. Never rejects, so callers can fire and forget. */
+  /**
+   * Records the profile a response reveals; the latest response wins. Never rejects, so callers can fire and forget.
+   * A learned `openai` never widens classification (see `classifyRequest`), but storing it still replaces a stale
+   * `anthropic` entry for an alias that a router now answers with GPT.
+   */
   async learnFromResponse(
     ref: ModelRef,
     identity: OpenAiIdentity | undefined,

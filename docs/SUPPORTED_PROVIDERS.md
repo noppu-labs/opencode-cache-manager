@@ -22,7 +22,7 @@ The Claude column applies on the Anthropic Messages and Chat Completions wires; 
 | --- | --- | --- |
 | `5m` | nothing (automatic 30m cache) | nothing (automatic 30m cache) |
 | `1h` | `prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" }` on the last text part of the last user, system, developer or tool message | the same breakpoint on the last `input_text` part of a user or system message, or of a trailing tool output (`function_call_output`, whose string `output` is turned into an `input_text` part first), walking back past tool calls and assistant output |
-| `hybrid` | the 12h breakpoint on the last text part of the leading system messages; the tail keeps the automatic 30m cache | the same breakpoint on the first `input` item |
+| `hybrid` | the 12h breakpoint on the last text part of the leading system messages; the tail keeps the automatic 30m cache | the same breakpoint on the first `input` item, whatever its role: `instructions` is a plain string that can't carry one, and the prefix up to that item (`instructions`, tools, the first message) is the same every turn |
 | titles and other one-off generate calls | `prompt_cache_options: { mode: "explicit" }`, no breakpoints | the same |
 
 The plugin never sends a request-level `prompt_cache_options.ttl`. It is ignored on Chat Completions and OpenRouter rejects it with a 400 on Responses unless `mode` is `"explicit"`, and explicit mode on a normal turn would disable the automatic cache for the message tail. The 12h lifetime is always a `ttl` on the breakpoint itself. Pings are never changed beyond aligning their messages with the session's last request.

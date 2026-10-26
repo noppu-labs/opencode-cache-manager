@@ -21,8 +21,8 @@ Update the version range in your `plugins` entry to `^0.5.0`: on 0.x, `^0.4.0` d
 Behaviour you may notice:
 
 - **Sidebar.** OpenAI sessions show `ttl 30m (requested)` or `ttl 12h (requested)`: OpenAI's usage doesn't report the lifetime it granted.
-- **A `-1h` variant on an `implicit` model** (for example a `"gpt": "implicit"` mapping, or a model the plugin doesn't manage) has its `x-cache-ttl` header stripped and nothing else changed.
-- **Claude through a `…/responses` endpoint** now gets ping alignment like on the other wires. With the `openaiCompatible` option off, a `…/responses` request only has the `x-cache-ttl` header stripped; before, it went through the Anthropic rewrite.
+- **A `-1h` variant on an `implicit` model** (for example a `"gpt": "implicit"` mapping, or a model the plugin doesn't manage) has its `x-cache-ttl` header stripped and nothing else changed. In 0.4 the header still rewrote any `cache_control` blocks already in the request, which affected a Claude router alias whose ID doesn't name Claude. Map such an alias in `cacheProfiles` (`"my-alias": "anthropic"`) so its `-1h` variant applies from the first request; otherwise it applies once a response has taught the plugin the alias is Claude.
+- **Claude through a `…/responses` endpoint** is only observed: no TTL rewrite and no pings, since the Anthropic rewrite has nothing to act on in a Responses body. With the `openaiCompatible` option off, a `…/responses` request only has the `x-cache-ttl` header stripped; before, it went through the Anthropic rewrite.
 - **A non-Claude model behind an Anthropic-ID provider** on an OpenAI wire now follows its own profile instead of being rewritten as Claude.
 - **OmniRoute** drops `prompt_cache_breakpoint`, so GPT's 12-hour cache is not expected to reach OpenAI through it yet (not yet reported upstream; expected, not measured). Caching turned off for one-off calls does work. Pings on the 12-hour schedule are then expected to miss, so use `5m` for GPT sessions there.
 - **Older GPT models** (before 5.6) are never sent the new fields, since they answer 400.
