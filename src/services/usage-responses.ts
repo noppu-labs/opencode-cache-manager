@@ -1,4 +1,4 @@
-import type { CacheUsage, ObservedResponse, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
+import type { CacheUsage, ObservedResponse, ResponseIdentity, ResponseParsers } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
 import { sseEvents } from "./usage-openai.ts";
@@ -34,7 +34,7 @@ function readStopReason(response: Record<string, unknown>): string | undefined {
   return response.status === "completed" ? "stop" : response.status;
 }
 
-function readIdentity(response: Record<string, unknown>): OpenAiIdentity | undefined {
+function readIdentity(response: Record<string, unknown>): ResponseIdentity | undefined {
   return typeof response.model === "string" && response.model ? { model: response.model } : undefined;
 }
 

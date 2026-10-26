@@ -2,7 +2,8 @@ import type { PluginOptions } from "../config/settings.ts";
 import type { ModelRef, ResponseParsers, Wire } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import { isAnthropicProvider, observedWireFor, requestWire } from "../services/classify.ts";
+import { REJECTED_REQUEST_STATUSES } from "../constants/anthropic.ts";
+import { isAnthropicProvider, keepsWarm, observedWireFor, requestWire } from "../services/classify.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { ProfileStore } from "../services/profile-store.ts";
 import { observeResponseUsage } from "../services/response-observer.ts";
@@ -23,7 +24,7 @@ export interface ResponseHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
-  profiles: Pick<ProfileStore, "learnFromResponse">;
+  profiles: Pick<ProfileStore, "learnFromResponse" | "forget" | "get">;
 }
 
 const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
@@ -32,7 +33,11 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
   "openai-responses": RESPONSES_PARSERS,
 };
 
-/** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the profile from OpenAI-wire responses. */
+/**
+ * `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the
+ * profile from the model a response reports. A Messages request a non-Anthropic provider rejects (400 or 422) drops
+ * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
+ */
 export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
@@ -48,13 +53,26 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
       const observed = observeResponseUsage(evt.response, parsers);
       evt.response = observed.response;
 
-      const reported = Promise.all([observed.usage, observed.stopReason])
-        .then(([usage, stopReason]) => engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason }))
+      const learns = wire !== "anthropic-messages" || !isAnthropicProvider(ref.providerID);
+      if (learns && wire === "anthropic-messages" && REJECTED_REQUEST_STATUSES.includes(evt.response.status)) void profiles.forget(ref).catch(() => {});
+      // Learning settles before the engine hears of the response, so a flip to a non-pinging profile cannot leave a ping armed.
+      const unmanaged = learns
+        ? observed.identity
+            .then(async (identity) => {
+              await profiles.learnFromResponse(ref, identity);
+              const sessionTurn = wire === "anthropic-messages" && !isPing && (kind === "primary" || kind === "compaction");
+              if (!sessionTurn || !(identity?.model || identity?.provider)) return false;
+              return !(await keepsWarm(evt.request, ref, { patterns: options.cacheProfiles, learned: (r) => profiles.get(r) }));
+            })
+            .catch(() => false)
+        : Promise.resolve(false);
+
+      const reported = Promise.all([observed.usage, observed.stopReason, unmanaged])
+        .then(([usage, stopReason, unmanaged]) =>
+          engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason, unmanaged }),
+        )
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);
-      if (wire !== "anthropic-messages") {
-        void observed.identity.then((identity) => profiles.learnFromResponse(ref, identity)).catch(() => {});
-      }
     } catch {
       // Observation must never fail the host's response; it passes through unchanged.
     }

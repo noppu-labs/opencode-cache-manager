@@ -98,12 +98,23 @@ export class KeepaliveEngine {
     void this.schedule(sessionID);
   }
 
+  /** `unmanaged` on a primary or compaction response stops keeping the session warm until the next request sets a TTL. */
   async responseObserved(
     sessionID: string,
-    info: { usage: CacheUsage | undefined; ok: boolean; isPing: boolean; kind: RequestKind; stopReason?: string },
+    info: {
+      usage: CacheUsage | undefined;
+      ok: boolean;
+      isPing: boolean;
+      kind: RequestKind;
+      stopReason?: string;
+      unmanaged?: boolean;
+    },
   ): Promise<void> {
     if (this.disposed) return;
     const s = this.state(sessionID);
+    if (info.unmanaged && !info.isPing && (info.kind === "primary" || info.kind === "compaction")) {
+      s.requestedTtl = null;
+    }
 
     if (info.isPing) {
       const inflight = s.inflight;

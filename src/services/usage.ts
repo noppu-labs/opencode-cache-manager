@@ -114,14 +114,44 @@ export function parseStopReasonFromSse(text: string): string | undefined {
   return stopReason;
 }
 
-/** The Anthropic Messages parsers; the wire reports no resolved model or provider. */
+/** The top-level `model` of a non-streaming Messages response. */
+export function parseModelFromJson(body: unknown): string | undefined {
+  return isRecord(body) && typeof body.model === "string" && body.model !== "" ? body.model : undefined;
+}
+
+/** The `message.model` of the first `message_start` event of a streamed Messages response. */
+export function parseModelFromSse(text: string): string | undefined {
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      const event: unknown = JSON.parse(line.slice(5).trim());
+      if (isRecord(event) && event.type === "message_start" && isRecord(event.message)) {
+        const model = event.message.model;
+        if (typeof model === "string" && model !== "") return model;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+/** The Anthropic Messages parsers; the wire reports the resolved model but no provider. */
 export const ANTHROPIC_PARSERS: ResponseParsers = {
-  fromJson: (body) => ({
-    usage: parseUsageFromJson(body),
-    stopReason: parseStopReasonFromJson(body),
-  }),
-  fromSse: (text) => ({
-    usage: parseUsageFromSse(text),
-    stopReason: parseStopReasonFromSse(text),
-  }),
+  fromJson: (body) => {
+    const model = parseModelFromJson(body);
+    return {
+      usage: parseUsageFromJson(body),
+      stopReason: parseStopReasonFromJson(body),
+      identity: model === undefined ? undefined : { model },
+    };
+  },
+  fromSse: (text) => {
+    const model = parseModelFromSse(text);
+    return {
+      usage: parseUsageFromSse(text),
+      stopReason: parseStopReasonFromSse(text),
+      identity: model === undefined ? undefined : { model },
+    };
+  },
 };

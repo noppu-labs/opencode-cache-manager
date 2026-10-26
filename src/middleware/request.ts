@@ -3,7 +3,6 @@ import type { PluginOptions } from "../config/settings.ts";
 import type { CacheTtlMode, ModelRef } from "../models/cache.ts";
 import type { RequestKind } from "../models/keepalive.ts";
 import {
-  classifyRequest,
   classifyRequestWithBody,
   isAnthropicProvider,
   profileForRoute,
@@ -42,9 +41,7 @@ export function createRequestHook({ store, engine, pings, options, profiles, pri
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
     const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
-    const cls = options.openaiCompatible
-      ? await classifyRequestWithBody(evt.request, ref, deps)
-      : classifyRequest(evt.request, ref, deps);
+    const cls = await classifyRequestWithBody(evt.request, ref, deps, { openaiWires: options.openaiCompatible });
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
     const profileId = profileForRoute(route, options.openaiCompatible);

@@ -1,5 +1,5 @@
 import { FINISH_REASON_MAP } from "../constants/openai.ts";
-import type { CacheUsage, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
+import type { CacheUsage, ResponseIdentity, ResponseParsers } from "../models/cache.ts";
 import { isRecord } from "../utils/is-record.ts";
 import { num } from "../utils/num.ts";
 
@@ -39,12 +39,12 @@ function readFinishReason(body: unknown): string | undefined {
   return isRecord(choice) ? mapFinishReason(choice.finish_reason) : undefined;
 }
 
-function readIdentity(body: unknown): OpenAiIdentity | undefined {
+function readIdentity(body: unknown): ResponseIdentity | undefined {
   if (!isRecord(body)) return undefined;
   const model = typeof body.model === "string" && body.model ? body.model : undefined;
   const provider = typeof body.provider === "string" && body.provider ? body.provider : undefined;
   if (!model && !provider) return undefined;
-  const out: OpenAiIdentity = {};
+  const out: ResponseIdentity = {};
   if (model) out.model = model;
   if (provider) out.provider = provider;
   return out;
@@ -92,13 +92,13 @@ export function parseOpenAiFinishReasonFromSse(text: string): string | undefined
 }
 
 /** Top-level `model` and `provider` of a non-streaming body. */
-export function parseOpenAiIdentityFromJson(body: unknown): OpenAiIdentity | undefined {
+export function parseOpenAiIdentityFromJson(body: unknown): ResponseIdentity | undefined {
   return readIdentity(body);
 }
 
 /** `model` and `provider` of a stream; later chunks override earlier ones field by field. */
-export function parseOpenAiIdentityFromSse(text: string): OpenAiIdentity | undefined {
-  let merged: OpenAiIdentity | undefined;
+export function parseOpenAiIdentityFromSse(text: string): ResponseIdentity | undefined {
+  let merged: ResponseIdentity | undefined;
   for (const event of sseEvents(text)) {
     const identity = readIdentity(event);
     if (identity) merged = { ...merged, ...identity };

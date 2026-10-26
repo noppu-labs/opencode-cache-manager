@@ -1,5 +1,5 @@
 import { ANTHROPIC_UPSTREAM, CLAUDE_MODEL, OPENAI_CACHE_MODEL } from "../constants/openai.ts";
-import { isCacheProfileId, type CacheProfileId, type ModelRef, type OpenAiIdentity } from "../models/cache.ts";
+import { isCacheProfileId, type CacheProfileId, type ModelRef, type ResponseIdentity } from "../models/cache.ts";
 import type { KV } from "../models/storage.ts";
 import { isRecord } from "../utils/is-record.ts";
 
@@ -38,7 +38,7 @@ export class ProfileStore {
    */
   async learnFromResponse(
     ref: ModelRef,
-    identity: OpenAiIdentity | undefined,
+    identity: ResponseIdentity | undefined,
   ): Promise<void> {
     try {
       const { model, provider } = identity ?? {};
@@ -52,9 +52,23 @@ export class ProfileStore {
             : "implicit";
       if (this.learned.get(key(ref)) === profile) return;
       this.learned.set(key(ref), profile);
-      await this.kv.set(STORAGE_KEY, Object.fromEntries(this.learned));
+      await this.persist();
     } catch {
       // The in-memory value stays; only persistence is lost.
     }
+  }
+
+  /** Drops the learned entry for `ref`, so classification falls back to name and patterns. Never rejects. */
+  async forget(ref: ModelRef): Promise<void> {
+    try {
+      if (!this.learned.delete(key(ref))) return;
+      await this.persist();
+    } catch {
+      // The entry stays dropped in memory; only persistence is lost.
+    }
+  }
+
+  private persist(): Promise<void> {
+    return this.kv.set(STORAGE_KEY, Object.fromEntries(this.learned));
   }
 }

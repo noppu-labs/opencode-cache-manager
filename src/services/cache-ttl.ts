@@ -136,9 +136,10 @@ function applyProfileHeaders(headers: Headers, extra: Record<string, string>): v
 /**
  * Transforms an outbound request through its cache profile: strips the internal
  * `x-cache-ttl` sentinel, lets the profile rewrite the body for the active mode,
- * and merges the profile's headers. On `anthropic-messages` a JSON body is always
- * re-serialized; on the OpenAI wires the original request is returned when there
- * was no sentinel and nothing changed.
+ * and merges the profile's headers. The `anthropic` profile on `anthropic-messages`
+ * always re-serializes a JSON body; otherwise a body the profile did not change keeps
+ * its original bytes, and on the OpenAI wires the original request is returned when
+ * there was no sentinel.
  */
 export async function transformHttpRequest(
   request: Request,
@@ -176,6 +177,10 @@ export async function transformHttpRequest(
   const { wire, profile, kind, isPing, inject } = opts;
   const changed = profile.rewrite(parsed, { wire, mode: activeMode, kind, isPing, inject });
   applyProfileHeaders(headers, profile.headers?.(parsed, { wire, mode: activeMode }) ?? {});
-  if (wire !== "anthropic-messages" && !hadSentinel && !changed) return request;
-  return finalizeRequest(request, parsed, headers);
+  if (changed || (wire === "anthropic-messages" && profile.id === "anthropic")) {
+    return finalizeRequest(request, parsed, headers);
+  }
+  if (wire !== "anthropic-messages" && !hadSentinel) return request;
+  const original = await request.clone().arrayBuffer();
+  return new Request(request.url, { method: request.method, headers, body: original, signal: request.signal });
 }

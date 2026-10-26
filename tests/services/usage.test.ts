@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ANTHROPIC_PARSERS,
   contextTokens,
   grantedTtl,
   hasCacheActivity,
@@ -99,5 +100,42 @@ describe("parseStopReason", () => {
     expect(parseStopReasonFromJson({ stop_reason: "end_turn" })).toBe("end_turn");
     expect(parseStopReasonFromJson({ stop_reason: null })).toBeUndefined();
     expect(parseStopReasonFromJson(null)).toBeUndefined();
+  });
+});
+
+describe("ANTHROPIC_PARSERS identity", () => {
+  const start = (message: unknown) => `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message })}\n\n`;
+
+  test("reads the model of a JSON body", () => {
+    expect(ANTHROPIC_PARSERS.fromJson({ model: "claude-haiku-5-5", usage: fullUsage }).identity).toEqual({
+      model: "claude-haiku-5-5",
+    });
+  });
+
+  test("reports no identity for a JSON body without a model", () => {
+    expect(ANTHROPIC_PARSERS.fromJson({ usage: fullUsage }).identity).toBeUndefined();
+    expect(ANTHROPIC_PARSERS.fromJson({ model: "" }).identity).toBeUndefined();
+    expect(ANTHROPIC_PARSERS.fromJson({ model: 5 }).identity).toBeUndefined();
+    expect(ANTHROPIC_PARSERS.fromJson("nope").identity).toBeUndefined();
+  });
+
+  test("reads the model of the message_start event", () => {
+    const text = start({ model: "claude-haiku-5-5", usage: fullUsage });
+    expect(ANTHROPIC_PARSERS.fromSse(text).identity).toEqual({ model: "claude-haiku-5-5" });
+  });
+
+  test("keeps a router-prefixed model as reported", () => {
+    const text = start({ model: "deepseek/deepseek-v4.1-flash" });
+    expect(ANTHROPIC_PARSERS.fromSse(text).identity).toEqual({ model: "deepseek/deepseek-v4.1-flash" });
+  });
+
+  test("the first message_start wins and junk lines are skipped", () => {
+    const text = `data: {nope\n\n${start({ model: "first" })}${start({ model: "second" })}`;
+    expect(ANTHROPIC_PARSERS.fromSse(text).identity).toEqual({ model: "first" });
+  });
+
+  test("reports no identity for a stream without a message model", () => {
+    expect(ANTHROPIC_PARSERS.fromSse(sse(fullUsage)).identity).toBeUndefined();
+    expect(ANTHROPIC_PARSERS.fromSse(start({ model: "" })).identity).toBeUndefined();
   });
 });
