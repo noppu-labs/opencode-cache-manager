@@ -50,8 +50,8 @@ export interface ModelRef {
   id: string;
 }
 
-/** The resolved `model` / `provider` an OpenAI-format response reports. */
-export interface OpenAiIdentity {
+/** The resolved `model` / `provider` a response reports; the Messages wire reports only `model`. */
+export interface ResponseIdentity {
   model?: string;
   provider?: string;
 }
@@ -60,7 +60,7 @@ export interface OpenAiIdentity {
 export interface ObservedResponse {
   usage?: CacheUsage;
   stopReason?: string;
-  identity?: OpenAiIdentity;
+  identity?: ResponseIdentity;
 }
 
 /** The per-wire parsers the response tee applies: `fromJson` gets the body parsed once, `fromSse` the raw stream text. */

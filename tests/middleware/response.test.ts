@@ -378,11 +378,37 @@ describe("createResponseHook on openai-chat", () => {
     expect(learnCalls).toHaveLength(0);
   });
 
-  test("anthropic-messages responses never trigger learning", async () => {
+  test("an Anthropic provider's Messages responses never trigger learning", async () => {
     const { hook, learnCalls } = harness();
-    await hook(event());
+    await hook(event({ response: jsonResponse({ model: "claude-sonnet-5-5", usage: WRITE_1H }) }));
     await flush();
     expect(learnCalls).toHaveLength(0);
+  });
+
+  describe("on a Messages-wire proxy", () => {
+    const proxyEvent = (response: Response) =>
+      event({
+        model: { providerID: "some-proxy", id: "auto/claude-haiku-5-5" },
+        request: new Request("https://proxy.example/v1/messages", { method: "POST", body: "{}" }),
+        response,
+      });
+
+    test("learns the model a JSON response reports", async () => {
+      const { hook, learnCalls } = harness();
+      await hook(proxyEvent(jsonResponse({ model: "claude-haiku-5-5", usage: WRITE_1H })));
+      await flush();
+      expect(learnCalls).toEqual([
+        { ref: { providerID: "some-proxy", id: "auto/claude-haiku-5-5" }, identity: { model: "claude-haiku-5-5" } },
+      ]);
+    });
+
+    test("learns the model a streamed response reports", async () => {
+      const { hook, learnCalls } = harness();
+      const text = `data: ${JSON.stringify({ type: "message_start", message: { model: "deepseek/deepseek-v4.1-flash", usage: WRITE_1H } })}\n\n`;
+      await hook(proxyEvent(new Response(text, { headers: { "content-type": "text/event-stream" } })));
+      await flush();
+      expect(learnCalls.map((call) => call.identity)).toEqual([{ model: "deepseek/deepseek-v4.1-flash" }]);
+    });
   });
 });
 

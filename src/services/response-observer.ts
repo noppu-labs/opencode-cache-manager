@@ -1,4 +1,4 @@
-import type { CacheUsage, ObservedResponse, OpenAiIdentity, ResponseParsers } from "../models/cache.ts";
+import type { CacheUsage, ObservedResponse, ResponseIdentity, ResponseParsers } from "../models/cache.ts";
 
 /**
  * Tees the response body so usage, the stop reason and, where `parsers`
@@ -13,7 +13,7 @@ export function observeResponseUsage(
   response: Response;
   usage: Promise<CacheUsage | undefined>;
   stopReason: Promise<string | undefined>;
-  identity: Promise<OpenAiIdentity | undefined>;
+  identity: Promise<ResponseIdentity | undefined>;
 } {
   if (!response.body) {
     return {

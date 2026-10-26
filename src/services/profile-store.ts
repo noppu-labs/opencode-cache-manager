@@ -1,5 +1,5 @@
 import { ANTHROPIC_UPSTREAM, CLAUDE_MODEL, OPENAI_CACHE_MODEL } from "../constants/openai.ts";
-import { isCacheProfileId, type CacheProfileId, type ModelRef, type OpenAiIdentity } from "../models/cache.ts";
+import { isCacheProfileId, type CacheProfileId, type ModelRef, type ResponseIdentity } from "../models/cache.ts";
 import type { KV } from "../models/storage.ts";
 import { isRecord } from "../utils/is-record.ts";
 
@@ -38,7 +38,7 @@ export class ProfileStore {
    */
   async learnFromResponse(
     ref: ModelRef,
-    identity: OpenAiIdentity | undefined,
+    identity: ResponseIdentity | undefined,
   ): Promise<void> {
     try {
       const { model, provider } = identity ?? {};

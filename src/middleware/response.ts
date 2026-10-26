@@ -32,7 +32,7 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
   "openai-responses": RESPONSES_PARSERS,
 };
 
-/** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the profile from OpenAI-wire responses. */
+/** `http.response`: reads usage and the stop reason in the background, reports them to the engine and learns the profile from the model a response reports. */
 export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
@@ -52,7 +52,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
         .then(([usage, stopReason]) => engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason }))
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);
-      if (wire !== "anthropic-messages") {
+      if (wire !== "anthropic-messages" || !isAnthropicProvider(ref.providerID)) {
         void observed.identity.then((identity) => profiles.learnFromResponse(ref, identity)).catch(() => {});
       }
     } catch {
