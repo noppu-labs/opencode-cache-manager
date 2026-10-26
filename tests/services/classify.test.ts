@@ -17,6 +17,8 @@ import { memoryKv } from "../helpers/memory-kv.ts";
 
 const chat = (url = "https://omni.example/v1/chat/completions", method = "POST") => new Request(url, { method });
 const noDeps = { patterns: [] };
+const on = { openaiWires: true };
+const off = { openaiWires: false };
 
 describe("requestWire", () => {
   const post = (url: string, method = "POST") => new Request(url, { method, body: method === "POST" ? "{}" : undefined });
@@ -79,13 +81,49 @@ describe("classifyRequest", () => {
     expect(classifyRequest(chat(), ref, { patterns: parseCacheProfiles({ opus: "anthropic" }) })?.profile).toBe("anthropic");
   });
 
-  test("POST …/messages is anthropic-messages / explicit regardless of model or patterns", () => {
+  test("POST …/messages from an Anthropic provider is anthropic-messages / explicit regardless of model or patterns", () => {
     const request = chat("https://api.anthropic.com/v1/messages");
     const ref = { providerID: "anthropic", id: "whatever" };
     expect(classifyRequest(request, ref, { patterns: parseCacheProfiles({ whatever: "implicit" }) })).toEqual({
       wire: "anthropic-messages",
       profile: "anthropic",
     });
+  });
+
+  test("the Messages wire is classified by model outside the Anthropic provider IDs", () => {
+    const messages = chat("https://proxy.example/v1/messages");
+    const claude = ["claude-haiku-5-5", "anthropic/claude-haiku-5.5", "auto/claude-haiku-5-5"];
+    const others = ["deepseek/deepseek-v4.1-flash", "auto/fast", "gpt-6-luna"];
+    const got: string[] = [];
+    const want: string[] = [];
+    for (const providerID of ["anthropic", "omniroute-anthropic", "some-proxy"]) {
+      for (const id of [...claude, ...others]) {
+        got.push(`${providerID}/${id} ${JSON.stringify(classifyRequest(messages, { providerID, id }, noDeps))}`);
+        const profile = providerID !== "some-proxy" || claude.includes(id) ? "anthropic" : "implicit";
+        want.push(`${providerID}/${id} ${JSON.stringify({ wire: "anthropic-messages", profile })}`);
+      }
+    }
+    expect(got).toEqual(want);
+  });
+
+  test("on the Messages wire a pattern decides for other providers and is ignored for the Anthropic IDs", () => {
+    const messages = chat("https://proxy.example/v1/messages");
+    const fast = { patterns: parseCacheProfiles({ "auto/fast": "anthropic" }) };
+    expect(classifyRequest(messages, { providerID: "some-proxy", id: "auto/fast" }, fast)?.profile).toBe("anthropic");
+    const noClaude = { patterns: parseCacheProfiles({ claude: "implicit" }) };
+    expect(classifyRequest(messages, { providerID: "some-proxy", id: "claude-haiku-5-5" }, noClaude)?.profile).toBe("implicit");
+    expect(classifyRequest(messages, { providerID: "anthropic", id: "claude-haiku-5-5" }, noClaude)?.profile).toBe("anthropic");
+  });
+
+  test("on the Messages wire a learned profile counts after the Claude regex", () => {
+    const messages = chat("https://proxy.example/v1/messages");
+    const ref = { providerID: "some-proxy", id: "auto/fast" };
+    expect(classifyRequest(messages, ref, { patterns: [], learned: () => "anthropic" })?.profile).toBe("anthropic");
+    expect(classifyRequest(messages, ref, { patterns: [], learned: () => "implicit" })?.profile).toBe("implicit");
+    expect(classifyRequest(messages, ref, { patterns: [], learned: () => "openai" })?.profile).toBe("implicit");
+    const gpt = { providerID: "some-proxy", id: "gpt-6-luna" };
+    expect(classifyRequest(messages, gpt, { patterns: [], learned: () => "openai" })?.profile).toBe("openai");
+    expect(classifyRequest(messages, gpt, noDeps)?.profile).toBe("implicit");
   });
 
   test("GET and other paths are not classified", () => {
@@ -145,33 +183,71 @@ describe("classifyRequestWithBody", () => {
     new Request("https://omni.example/v1/chat/completions", { method: "POST", body: JSON.stringify({ model }) });
 
   test("reads body.model when the model ID alone is implicit", async () => {
-    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, noDeps))?.profile).toBe("anthropic");
+    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, noDeps, on))?.profile).toBe("anthropic");
   });
 
   test("leaves the request body readable", async () => {
     const request = withBody("anthropic/claude-opus-5");
-    await classifyRequestWithBody(request, ref, noDeps);
+    await classifyRequestWithBody(request, ref, noDeps, on);
     expect(await request.json()).toEqual({ model: "anthropic/claude-opus-5" });
   });
 
   test("a non-Claude body model, a missing model and an unparseable body stay implicit", async () => {
-    expect((await classifyRequestWithBody(withBody("deepseek/v4"), ref, noDeps))?.profile).toBe("implicit");
-    expect((await classifyRequestWithBody(withBody(7), ref, noDeps))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody("deepseek/v4"), ref, noDeps, on))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody(7), ref, noDeps, on))?.profile).toBe("implicit");
     const broken = new Request("https://omni.example/v1/chat/completions", { method: "POST", body: "{" });
-    expect((await classifyRequestWithBody(broken, ref, noDeps))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(broken, ref, noDeps, on))?.profile).toBe("implicit");
   });
 
-  test("does not read the body for anthropic-messages or unclassified requests", async () => {
-    const messages = new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
-    expect((await classifyRequestWithBody(messages, ref, noDeps))?.wire).toBe("anthropic-messages");
-    expect(await classifyRequestWithBody(new Request("https://x.test/v1/embeddings", { method: "POST" }), ref, noDeps)).toBeUndefined();
+  test("does not read the body for an unclassified request", async () => {
+    const request = new Request("https://x.test/v1/embeddings", { method: "POST", body: "{}" });
+    const spy = spyOn(request, "clone");
+    expect(await classifyRequestWithBody(request, ref, noDeps, on)).toBeUndefined();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test("on the Messages wire reads body.model behind an alias, with or without the option", async () => {
+    const messages = () =>
+      new Request("https://proxy.example/v1/messages", { method: "POST", body: JSON.stringify({ model: "anthropic/claude-x" }) });
+    const alias = { providerID: "some-proxy", id: "auto/fast" };
+    for (const openaiWires of [false, true]) {
+      expect(await classifyRequestWithBody(messages(), alias, noDeps, { openaiWires })).toEqual({
+        wire: "anthropic-messages",
+        profile: "anthropic",
+      });
+    }
+    const deepseek = new Request("https://proxy.example/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({ model: "deepseek/deepseek-v4.1-flash" }),
+    });
+    expect((await classifyRequestWithBody(deepseek, alias, noDeps, off))?.profile).toBe("implicit");
+  });
+
+  test("on the Messages wire never reads the body for an Anthropic ID or a Claude model ID", async () => {
+    for (const ref of [
+      { providerID: "anthropic", id: "auto/fast" },
+      { providerID: "omniroute-anthropic", id: "auto/fast" },
+      { providerID: "some-proxy", id: "claude-haiku-5-5" },
+    ]) {
+      const request = new Request("https://proxy.example/v1/messages", { method: "POST", body: "{}" });
+      const spy = spyOn(request, "clone");
+      expect((await classifyRequestWithBody(request, ref, noDeps, off))?.profile).toBe("anthropic");
+      expect(spy).not.toHaveBeenCalled();
+    }
+  });
+
+  test("with the option off an OpenAI-wire request never costs a parse", async () => {
+    const request = withBody("anthropic/claude-opus-5");
+    const spy = spyOn(request, "clone");
+    expect((await classifyRequestWithBody(request, ref, noDeps, off))?.profile).toBe("implicit");
+    expect(spy).not.toHaveBeenCalled();
   });
 
   test("a learned openai never widens the GPT regex: the body model decides", async () => {
     const learned = () => "openai" as const;
     expect(classifyRequest(withBody("gpt-6-luna"), ref, { patterns: [], learned })?.profile).toBe("implicit");
-    expect((await classifyRequestWithBody(withBody("gpt-5"), ref, { patterns: [], learned }))?.profile).toBe("implicit");
-    expect((await classifyRequestWithBody(withBody("gpt-6-luna"), ref, { patterns: [], learned }))?.profile).toBe("openai");
+    expect((await classifyRequestWithBody(withBody("gpt-5"), ref, { patterns: [], learned }, on))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody("gpt-6-luna"), ref, { patterns: [], learned }, on))?.profile).toBe("openai");
   });
 
   test("reads body.model on the Responses wire too", async () => {
@@ -179,20 +255,20 @@ describe("classifyRequestWithBody", () => {
       method: "POST",
       body: JSON.stringify({ model: "openai/gpt-6-luna" }),
     });
-    expect(await classifyRequestWithBody(request, ref, noDeps)).toEqual({ wire: "openai-responses", profile: "openai" });
+    expect(await classifyRequestWithBody(request, ref, noDeps, on)).toEqual({ wire: "openai-responses", profile: "openai" });
     expect(await request.json()).toEqual({ model: "openai/gpt-6-luna" });
   });
 
   test("a pattern still outranks the body model", async () => {
     const deps = { patterns: parseCacheProfiles({ opus: "implicit" }) };
-    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, deps))?.profile).toBe("implicit");
+    expect((await classifyRequestWithBody(withBody("anthropic/claude-opus-5"), ref, deps, on))?.profile).toBe("implicit");
   });
 
   test("a matching pattern, either way, never parses the body", async () => {
     for (const profile of ["implicit", "anthropic"] as const) {
       const request = withBody("anthropic/claude-opus-5");
       const spy = spyOn(request, "clone");
-      await classifyRequestWithBody(request, ref, { patterns: parseCacheProfiles({ opus: profile }) });
+      await classifyRequestWithBody(request, ref, { patterns: parseCacheProfiles({ opus: profile }) }, on);
       expect(spy).not.toHaveBeenCalled();
     }
   });
@@ -214,7 +290,14 @@ describe("isAnthropicMessagesRequest", () => {
 describe("routeRequest", () => {
   const base: RouteInput = { cls: undefined, anthropicProvider: false, hasSentinel: false, openaiCompatible: false };
   const route = (over: Partial<RouteInput>) => routeRequest({ ...base, ...over });
-  const none: Route = { rewrites: false, observedWire: undefined, profile: undefined, managed: false, transformWire: undefined };
+  const none: Route = {
+    rewrites: false,
+    wire: undefined,
+    observedWire: undefined,
+    profile: undefined,
+    managed: false,
+    transformWire: undefined,
+  };
 
   test("an unclassified request is left alone", () => {
     expect(route({})).toEqual(none);
@@ -227,15 +310,40 @@ describe("routeRequest", () => {
       expect(route({ cls, anthropicProvider: true, openaiCompatible })).toEqual({
         ...none,
         rewrites: true,
+        wire: "anthropic-messages",
         observedWire: "anthropic-messages",
         profile: "anthropic",
+        managed: true,
       });
     }
   });
 
-  test("a proxied /messages request is observed but not rewritten", () => {
-    const cls = { wire: "anthropic-messages", profile: "anthropic" } as const;
-    expect(route({ cls })).toEqual({ ...none, observedWire: "anthropic-messages", profile: "anthropic" });
+  test("a proxied /messages request is rewritten when it is Claude, and only observed when implicit", () => {
+    for (const openaiCompatible of [false, true]) {
+      const claude = { wire: "anthropic-messages", profile: "anthropic" } as const;
+      expect(route({ cls: claude, openaiCompatible })).toEqual({
+        ...none,
+        rewrites: true,
+        wire: "anthropic-messages",
+        observedWire: "anthropic-messages",
+        profile: "anthropic",
+        managed: true,
+      });
+      const implicit = { wire: "anthropic-messages", profile: "implicit" } as const;
+      expect(route({ cls: implicit, openaiCompatible })).toEqual({
+        ...none,
+        wire: "anthropic-messages",
+        observedWire: "anthropic-messages",
+        profile: "implicit",
+      });
+      expect(route({ cls: implicit, openaiCompatible, hasSentinel: true })).toEqual({
+        ...none,
+        rewrites: true,
+        wire: "anthropic-messages",
+        observedWire: "anthropic-messages",
+        profile: "implicit",
+      });
+    }
   });
 
   test("an Anthropic provider on /chat/completions with the option off is rewritten as an Anthropic body", () => {
@@ -243,6 +351,7 @@ describe("routeRequest", () => {
     expect(route({ cls, anthropicProvider: true })).toEqual({
       ...none,
       rewrites: true,
+      wire: "openai-chat",
       observedWire: "anthropic-messages",
       profile: "anthropic",
     });
@@ -252,6 +361,7 @@ describe("routeRequest", () => {
     const cls = { wire: "openai-chat", profile: "anthropic" } as const;
     expect(route({ cls, openaiCompatible: true })).toEqual({
       rewrites: true,
+      wire: "openai-chat",
       observedWire: "openai-chat",
       profile: "anthropic",
       managed: true,
@@ -261,13 +371,14 @@ describe("routeRequest", () => {
 
   test("openai-chat explicit with the option off is untouched", () => {
     const cls = { wire: "openai-chat", profile: "anthropic" } as const;
-    expect(route({ cls })).toEqual({ ...none, profile: "anthropic" });
+    expect(route({ cls })).toEqual({ ...none, wire: "openai-chat", profile: "anthropic" });
   });
 
   test("openai-chat implicit with the option on is observed only", () => {
     const cls = { wire: "openai-chat", profile: "implicit" } as const;
     expect(route({ cls, openaiCompatible: true })).toEqual({
       ...none,
+      wire: "openai-chat",
       observedWire: "openai-chat",
       profile: "implicit",
       transformWire: "openai-chat",
@@ -276,7 +387,7 @@ describe("routeRequest", () => {
 
   test("openai-chat implicit with the option off is untouched", () => {
     const cls = { wire: "openai-chat", profile: "implicit" } as const;
-    expect(route({ cls })).toEqual({ ...none, profile: "implicit" });
+    expect(route({ cls })).toEqual({ ...none, wire: "openai-chat", profile: "implicit" });
   });
 
   test("an openai profile is managed on both OpenAI wires with the option on, and only observed with it off", () => {
@@ -284,12 +395,13 @@ describe("routeRequest", () => {
       const cls = { wire, profile: "openai" } as const;
       expect(route({ cls, openaiCompatible: true })).toEqual({
         rewrites: true,
+        wire,
         observedWire: wire,
         profile: "openai",
         managed: true,
         transformWire: wire,
       });
-      expect(route({ cls })).toEqual({ ...none, profile: "openai" });
+      expect(route({ cls })).toEqual({ ...none, wire, profile: "openai" });
     }
   });
 
@@ -297,6 +409,7 @@ describe("routeRequest", () => {
     const cls = { wire: "openai-responses", profile: "implicit" } as const;
     expect(route({ cls, openaiCompatible: true })).toEqual({
       ...none,
+      wire: "openai-responses",
       observedWire: "openai-responses",
       profile: "implicit",
       transformWire: "openai-responses",
@@ -308,21 +421,24 @@ describe("routeRequest", () => {
     expect(route({ hasSentinel: true, cls: { wire: "openai-chat", profile: "implicit" } })).toEqual({
       ...none,
       rewrites: true,
+      wire: "openai-chat",
       profile: "implicit",
       transformWire: "openai-chat",
     });
     expect(route({ hasSentinel: true, cls: { wire: "anthropic-messages", profile: "anthropic" } })).toEqual({
       ...none,
       rewrites: true,
+      wire: "anthropic-messages",
       observedWire: "anthropic-messages",
       profile: "anthropic",
+      managed: true,
     });
   });
 
   // The former `implicit` flag is derived in the middleware now; request.test.ts covers it.
   test("matches the former inline expressions for every input", () => {
     const wires = [undefined, "anthropic-messages", "openai-chat"] as const;
-    const profiles = ["anthropic", "implicit"] as const;
+    const profiles = ["anthropic", "openai", "implicit"] as const;
     const bools = [false, true];
     for (const wire of wires)
       for (const profile of profiles)
@@ -331,16 +447,19 @@ describe("routeRequest", () => {
             for (const openaiCompatible of bools) {
               const cls = wire ? { wire, profile } : undefined;
               const chat = cls?.wire === "openai-chat";
-              const explicitChat = chat && openaiCompatible && cls.profile === "anthropic";
+              const managedChat = chat && openaiCompatible && cls.profile !== "implicit";
+              const explicitChat = managedChat && cls.profile === "anthropic";
+              const claudeMessages = cls?.wire === "anthropic-messages" && cls.profile === "anthropic";
               const observed = anthropicProvider || cls?.wire === "anthropic-messages" || (chat && openaiCompatible);
               const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
               expect(got.profile).toBe(cls?.profile);
-              expect(got.managed).toBe(explicitChat);
+              expect(got.wire).toBe(cls?.wire);
+              expect(got.managed).toBe(managedChat || claudeMessages);
               for (const kind of ["primary", "compaction", "title", "generate"] as const) {
                 expect(shouldInject(got, kind, false)).toBe(explicitChat && (kind === "primary" || kind === "compaction"));
                 expect(shouldInject(got, kind, true)).toBe(false);
               }
-              expect(got.rewrites).toBe(anthropicProvider || hasSentinel || explicitChat);
+              expect(got.rewrites).toBe(anthropicProvider || hasSentinel || managedChat || claudeMessages);
               expect(got.observedWire !== undefined).toBe(observed);
               expect(got.transformWire).toBe(chat && (openaiCompatible || hasSentinel) ? "openai-chat" : undefined);
               const responseWire =
@@ -424,6 +543,20 @@ describe("profileForRoute", () => {
     for (const openaiCompatible of [false, true]) {
       expect(pick({ cls, openaiCompatible })).toBe("anthropic");
       expect(pick({ cls, anthropicProvider: true, openaiCompatible })).toBe("anthropic");
+    }
+  });
+
+  test("a Messages request uses its classified profile, and openai falls back to implicit", () => {
+    for (const openaiCompatible of [false, true]) {
+      for (const hasSentinel of [false, true]) {
+        const pickMessages = (profile: "anthropic" | "openai" | "implicit") =>
+          pick({ cls: { wire: "anthropic-messages", profile }, openaiCompatible, hasSentinel });
+        expect([pickMessages("anthropic"), pickMessages("openai"), pickMessages("implicit")]).toEqual([
+          "anthropic",
+          "implicit",
+          "implicit",
+        ]);
+      }
     }
   });
 

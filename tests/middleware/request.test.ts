@@ -96,11 +96,11 @@ describe("createRequestHook TTL rewrite", () => {
     for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect("ttl" in cc).toBe(false);
   });
 
-  test("ignores unrelated providers without a sentinel header", async () => {
+  test("ignores unrelated providers and models without a sentinel header", async () => {
     const h = harness();
     await h.store.setSession("ses_a", { mode: "1h" });
-    const request = body();
-    const evt = await h.dispatch(request, { providerID: "omniroute" });
+    const request = body({ ...sampleBody(), model: "deepseek/deepseek-v4.1-flash" });
+    const evt = await h.dispatch(request, { providerID: "omniroute", modelID: "deepseek/deepseek-v4.1-flash" });
     expect(evt.request).toBe(request);
   });
 
@@ -201,7 +201,7 @@ describe("createRequestHook engine reporting", () => {
     expect(h.primaryMessages.size).toBe(0);
   });
 
-  test("an Anthropic-shaped URL on an unknown provider is reported but not rewritten", async () => {
+  test("an Anthropic-shaped URL on an unknown provider is rewritten when the model is Claude", async () => {
     const h = harness();
     await h.store.setSession("ses_a", { mode: "1h" });
     const request = new Request("https://proxy.example/anthropic/v1/messages", {
@@ -209,8 +209,21 @@ describe("createRequestHook engine reporting", () => {
       body: JSON.stringify(sampleBody()),
     });
     const evt = await h.dispatch(request, { providerID: "some-proxy" });
-    expect(evt.request).toBe(request);
+    expect(evt.request).not.toBe(request);
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect(cc.ttl).toBe("1h");
     expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: "1h", isPing: false, kind: "primary" } }]);
+  });
+
+  test("an Anthropic-shaped URL on an unknown provider is reported but not rewritten when the model is not Claude", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = new Request("https://proxy.example/anthropic/v1/messages", {
+      method: "POST",
+      body: JSON.stringify({ ...sampleBody(), model: "deepseek/deepseek-v4.1-flash" }),
+    });
+    const evt = await h.dispatch(request, { providerID: "some-proxy", modelID: "deepseek/deepseek-v4.1-flash" });
+    expect(evt.request).toBe(request);
+    expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false, kind: "primary" } }]);
   });
 
   test("a sentinel request on an unobserved URL is rewritten but not reported", async () => {
@@ -718,6 +731,100 @@ describe("createRequestHook on openai-chat", () => {
   });
 });
 
+describe("createRequestHook on the Messages wire by model", () => {
+  const MESSAGES_URL = "https://omni.example/v1/messages";
+  const messages = (model: string, headers: Record<string, string> = {}) =>
+    new Request(MESSAGES_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ ...sampleBody(), model }),
+    });
+  const deepseek = { providerID: "some-proxy", modelID: "deepseek/deepseek-v4.1-flash" };
+
+  test("a non-Claude model under another provider is observed only, at any mode", async () => {
+    for (const mode of ["5m", "1h", "hybrid"] as const) {
+      const h = harness();
+      await h.store.setSession("ses_a", { mode });
+      const request = messages(deepseek.modelID);
+      const evt = await h.dispatch(request, deepseek);
+      expect(evt.request).toBe(request);
+      expect(h.sent).toEqual([{ sessionID: "ses_a", info: { requestedTtl: null, isPing: false, kind: "primary" } }]);
+      expect(h.primaryMessages.size).toBe(0);
+    }
+  });
+
+  test("a non-Claude ping candidate is never aligned with the last primary request", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    await h.dispatch(messages(deepseek.modelID), deepseek);
+    const ping = messages(deepseek.modelID);
+    const evt = await h.duringPing("ses_a", () => h.dispatch(ping, { ...deepseek, kind: "generate" }));
+    expect(evt.request).toBe(ping);
+    expect(h.sent.map((s) => s.info.requestedTtl)).toEqual([null, null]);
+    expect(h.primaryMessages.size).toBe(0);
+  });
+
+  test("a non-Claude model with the sentinel only loses the sentinel", async () => {
+    const h = harness();
+    const evt = await h.dispatch(messages(deepseek.modelID, { [SENTINEL_HEADER]: "1h" }), deepseek);
+    expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
+    expect(evt.request.headers.get("anthropic-beta") ?? "").not.toContain(EXTENDED_CACHE_BETA);
+    expect(await parsedBodyOf(evt.request)).toEqual({ ...sampleBody(), model: deepseek.modelID });
+    expect(h.sent[0]?.info.requestedTtl).toBeNull();
+  });
+
+  test("Claude under another provider gets the session's TTL and the beta header, with the option on or off", async () => {
+    for (const openaiCompatible of [false, true]) {
+      const h = harness({ options: { openaiCompatible } });
+      await h.store.setSession("ses_a", { mode: "1h" });
+      const evt = await h.dispatch(messages("claude-haiku-5-5"), { providerID: "some-proxy", modelID: "claude-haiku-5-5" });
+      const controls = collectCacheControls(await parsedBodyOf(evt.request));
+      expect(controls.length).toBeGreaterThan(0);
+      for (const cc of controls) expect(cc.ttl).toBe("1h");
+      expect(evt.request.headers.get("anthropic-beta")).toContain(EXTENDED_CACHE_BETA);
+      expect(h.sent[0]?.info.requestedTtl).toBe("1h");
+      expect(h.primaryMessages.size).toBe(1);
+    }
+  });
+
+  test("an alias is classified from body.model, a pattern, or a learned profile", async () => {
+    const alias = { providerID: "some-proxy", modelID: "auto/fast" };
+    const viaBody = harness({ options: { openaiCompatible: false } });
+    await viaBody.store.setSession("ses_a", { mode: "1h" });
+    await viaBody.dispatch(messages("anthropic/claude-x"), alias);
+    const viaPattern = harness({ options: { cacheProfiles: parseCacheProfiles({ "auto/fast": "anthropic" }) } });
+    await viaPattern.store.setSession("ses_a", { mode: "1h" });
+    await viaPattern.dispatch(messages("auto/fast"), alias);
+    const learned = harness({ profiles: new Map([["some-proxy/auto/fast", "anthropic" as const]]) });
+    await learned.store.setSession("ses_a", { mode: "1h" });
+    await learned.dispatch(messages("auto/fast"), alias);
+    const unknown = harness();
+    await unknown.store.setSession("ses_a", { mode: "1h" });
+    await unknown.dispatch(messages("auto/fast"), alias);
+    expect([viaBody, viaPattern, learned, unknown].map((h) => h.sent[0]?.info.requestedTtl)).toEqual(["1h", "1h", "1h", null]);
+  });
+
+  test("a learned openai profile on the Messages wire is observed only", async () => {
+    const gpt = { providerID: "some-proxy", modelID: "gpt-6-luna" };
+    const h = harness({ profiles: new Map([["some-proxy/gpt-6-luna", "openai" as const]]) });
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const request = messages(gpt.modelID);
+    const evt = await h.dispatch(request, gpt);
+    expect(evt.request).toBe(request);
+    expect(h.sent[0]?.info.requestedTtl).toBeNull();
+  });
+
+  test("the anthropic provider keeps its rewrite for any model name", async () => {
+    const h = harness();
+    await h.store.setSession("ses_a", { mode: "1h" });
+    const evt = await h.dispatch(messages("m"), { providerID: "anthropic", modelID: "m" });
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) expect(cc.ttl).toBe("1h");
+    expect(evt.request.headers.get("anthropic-beta")).toContain(EXTENDED_CACHE_BETA);
+    expect(h.sent[0]?.info.requestedTtl).toBe("1h");
+    expect(h.primaryMessages.size).toBe(1);
+  });
+});
+
 describe("createRequestHook with the real keepalive engine", () => {
   const url = "https://omni.example/v1/chat/completions";
   const chat = (model: string) =>
@@ -763,13 +870,37 @@ describe("createRequestHook with the real keepalive engine", () => {
     });
     const send = (kind: HttpRequestEvent["kind"], id: string) =>
       hook({ sessionID: "ses_a", kind, model: { providerID: "omniroute", id }, request: chat(id) });
+    const sendMessages = (providerID: string, id: string) =>
+      hook({
+        sessionID: "ses_a",
+        kind: "primary",
+        model: { providerID, id },
+        request: new Request("https://omni.example/v1/messages", {
+          method: "POST",
+          body: JSON.stringify({ ...sampleBody(), model: id }),
+        }),
+      });
     const respond = async () => {
       await engine.responseObserved("ses_a", { usage, ok: true, isPing: false, kind: "primary" });
       await new Promise((resolve) => setTimeout(resolve, 0));
       return engine.snapshot("ses_a");
     };
-    return { send, respond };
+    return { send, sendMessages, respond };
   }
+
+  test("a non-Claude model on the Messages wire under another provider never schedules a ping", async () => {
+    const h = real();
+    await h.sendMessages("some-proxy", "deepseek/deepseek-v4.1-flash");
+    expect(await h.respond()).toMatchObject({ skipReason: "implicit", nextPingAt: null });
+  });
+
+  test("Claude on the Messages wire under another provider schedules a ping", async () => {
+    const h = real();
+    await h.sendMessages("some-proxy", "claude-haiku-5-5");
+    const snapshot = await h.respond();
+    expect(snapshot.skipReason).toBeNull();
+    expect(snapshot.nextPingAt).not.toBeNull();
+  });
 
   test("a Claude title request after a GPT primary request never schedules a ping", async () => {
     const h = real();

@@ -40,6 +40,12 @@ describe("ProfileStore", () => {
     expect(store.get(ref)).toBe("implicit");
   });
 
+  test("a non-Claude model with no provider, as the Messages wire reports it, is learned as implicit", async () => {
+    const store = await loaded(memoryKv().kv);
+    await store.learnFromResponse(ref, { model: "deepseek/deepseek-v4.1-flash" });
+    expect(store.get(ref)).toBe("implicit");
+  });
+
   test("the latest response replaces a stale openai profile", async () => {
     const store = await loaded(memoryKv().kv);
     await store.learnFromResponse(ref, { model: "openai/gpt-6-luna" });

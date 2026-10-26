@@ -46,6 +46,7 @@ export interface Classification {
 
 /**
  * Decides the wire and cache profile of an outgoing request, or `undefined` when it is not a known wire.
+ * Precedence on the Messages wire: an Anthropic provider ID, user patterns, built-in Claude regex, learned, implicit.
  * Precedence on the OpenAI wires: user patterns, built-in Claude regex, built-in OpenAI regex, learned, implicit.
  * A learned `openai` only counts when the request's own model matches the OpenAI regex: a router alias can
  * send its next turn to a model that answers `prompt_cache_*` with a 400.
@@ -58,13 +59,13 @@ export function classifyRequest(
 ): Classification | undefined {
   const wire = requestWire(request);
   if (wire === undefined) return undefined;
-  if (wire === "anthropic-messages") return { wire, profile: "anthropic" };
+  if (wire === "anthropic-messages" && isAnthropicProvider(ref.providerID)) return { wire, profile: "anthropic" };
 
   const matches = (regex: RegExp) => regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
   const profile =
     matchProfilePatterns(deps.patterns, ref) ??
     (matches(CLAUDE_MODEL) ? "anthropic" : undefined) ??
-    (matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
+    (wire !== "anthropic-messages" && matches(OPENAI_CACHE_MODEL) ? "openai" : undefined) ??
     learnedProfile(deps, ref, matches) ??
     "implicit";
   return { wire, profile };
@@ -82,16 +83,19 @@ function learnedProfile(
 /**
  * `classifyRequest` plus `body.model` as a second look: OpenCode's model ID is its own key, while the
  * body carries the upstream ID. The body is read from a clone, and only when the first pass is
- * `implicit` on an OpenAI wire and no user pattern matched, so a pattern, a Claude or GPT ID or a
- * learned `anthropic` never costs a parse.
+ * `implicit` on the Messages wire, or on an OpenAI wire with `openaiWires`, and no user pattern
+ * matched, so a pattern, an Anthropic provider ID, a Claude or GPT ID or a learned `anthropic` never
+ * costs a parse.
  */
 export async function classifyRequestWithBody(
   request: Request,
   ref: ModelRef,
   deps: ClassifyDeps,
+  opts: { openaiWires: boolean },
 ): Promise<Classification | undefined> {
   const first = classifyRequest(request, ref, deps);
-  if (!isOpenAiWire(first?.wire) || first?.profile !== "implicit") return first;
+  if (first?.profile !== "implicit") return first;
+  if (first.wire !== "anthropic-messages" && !(opts.openaiWires && isOpenAiWire(first.wire))) return first;
   if (matchProfilePatterns(deps.patterns, ref) !== undefined) return first;
   try {
     const body: unknown = await request.clone().json();
@@ -112,11 +116,13 @@ export interface RouteInput {
 export interface Route {
   /** The request body or headers are rewritten. */
   rewrites: boolean;
+  /** The wire the request classified to, or `undefined` when it is not a known wire. */
+  wire: Wire | undefined;
   /** The wire whose response and usage are observed; `undefined` leaves the request and response alone. */
   observedWire: Wire | undefined;
   /** The profile the request classified to, or `undefined` when it is not a known wire. */
   profile: CacheProfileId | undefined;
-  /** An OpenAI-wire request whose profile is managed (only with the option on): not `implicit`. */
+  /** A Claude Messages-wire request, or an OpenAI-wire one whose profile is not `implicit` (only with the option on). */
   managed: boolean;
   /** The wire to hand `transformHttpRequest`, or `undefined` to rewrite as an Anthropic body. */
   transformWire: Wire | undefined;
@@ -135,9 +141,12 @@ export function observedWireFor(
 /** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
 export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible }: RouteInput): Route {
   const openaiWire = isOpenAiWire(cls?.wire) ? cls.wire : undefined;
-  const managed = openaiWire !== undefined && openaiCompatible && cls?.profile !== "implicit";
+  const managed =
+    (openaiWire !== undefined && openaiCompatible && cls?.profile !== "implicit") ||
+    (cls?.wire === "anthropic-messages" && cls.profile === "anthropic");
   return {
     rewrites: anthropicProvider || hasSentinel || managed,
+    wire: cls?.wire,
     observedWire: observedWireFor(cls?.wire, anthropicProvider, openaiCompatible),
     profile: cls?.profile,
     managed,
@@ -147,13 +156,18 @@ export function routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompat
 
 /**
  * The profile a routed request is rewritten and kept warm through, or `undefined` to leave it alone.
- * An Anthropic-wire request, or one rewritten as an Anthropic body, uses `anthropic`. With the option
+ * A Messages-wire request uses its classified profile when that profile lists the wire, else `implicit`.
+ * Any other request rewritten as an Anthropic body uses `anthropic`. With the option
  * off an OpenAI-wire request is only reached through the sentinel, and keeps the Claude rewrite it had
  * before profiles existed, so an `openai` model never gets fields it was not opted into. A profile that
  * cannot handle the request's wire (Claude on `/responses`) falls back to `implicit`: observed only.
  */
 export function profileForRoute(route: Route, openaiCompatible: boolean): CacheProfileId | undefined {
   if (!route.rewrites && route.observedWire === undefined) return undefined;
+  if (route.wire === "anthropic-messages") {
+    const id = route.profile ?? "implicit";
+    return profileFor(id).wires.includes(route.wire) ? id : "implicit";
+  }
   const wire = route.transformWire;
   if (wire === undefined) return "anthropic";
   const id = openaiCompatible ? (route.profile ?? "anthropic") : "anthropic";
