@@ -537,6 +537,18 @@ describe("createResponseHook on the Messages wire for a non-Anthropic provider",
     for (const { info } of observed) expect(info.unmanaged).toBe(false);
   });
 
+  test("an OpenAI-wire response never marks the session unmanaged", async () => {
+    const { hook, observed } = harness();
+    const chat = new Request("https://omni.example/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "openai/gpt-5.6" }),
+    });
+    await hook(event({ model: { providerID: "openrouter", id: "fast" }, request: chat, response: jsonResponse({ model: "deepseek/deepseek-v4.1-flash", usage: {} }) }));
+    await flush();
+    expect(observed).toHaveLength(1);
+    expect(observed[0]?.info.unmanaged).toBe(false);
+  });
+
   test("a model whose name is Claude stays managed whatever the response names", async () => {
     const { hook, observed } = harness();
     await hook(messagesEvent({ model: { providerID: "omniroute", id: "claude-opus-5-5" }, response: withModel("deepseek/deepseek-v4.1-flash") }));

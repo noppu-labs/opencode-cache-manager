@@ -59,7 +59,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
         ? observed.identity
             .then(async (identity) => {
               await profiles.learnFromResponse(ref, identity);
-              const sessionTurn = !isPing && (kind === "primary" || kind === "compaction");
+              const sessionTurn = wire === "anthropic-messages" && !isPing && (kind === "primary" || kind === "compaction");
               if (!sessionTurn || !(identity?.model || identity?.provider)) return false;
               return !keepsWarm(evt.request, ref, { patterns: options.cacheProfiles, learned: (r) => profiles.get(r) });
             })
