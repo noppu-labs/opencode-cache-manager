@@ -13,11 +13,15 @@
 // anthropic-beta: extended-cache-ttl-2025-04-11, which some proxies need before
 // they honour the 1h TTL.
 //
-// The plugin tells Claude models from the rest by their model ID, or by the model
-// the first response names. If your proxy uses aliases the ID doesn't reveal,
-// list them in explicitCacheModels. Entries are matched against
-// "<providerID>/<modelID>": plain text is a case-insensitive substring, /regex/flags
-// is a regex, and a leading ! means never manage that model.
+// The plugin tells Claude models and GPT-5.6+ from the rest by their model ID, and
+// Claude also by the model the first response names. If your proxy uses aliases
+// the ID doesn't reveal, map them in cacheProfiles (GPT-5.6+ aliases always need it). Entries are matched against
+// "<providerID>/<modelID>": plain text is a case-insensitive substring and
+// /regex/flags is a regex. The value is "anthropic" (manage as Claude), "openai"
+// (manage as GPT-5.6+) or "implicit" (observe only, never rewrite or ping).
+//
+// Some proxies (OmniRoute) drop prompt_cache_breakpoint, so the 12h cache of
+// GPT-5.6+ doesn't reach OpenAI through them; see docs/SUPPORTED_PROVIDERS.md.
 //
 // Plugin options go in the plugin entry of your own opencode.jsonc, not in this
 // file:
@@ -27,7 +31,7 @@
 //       "package": "@noppu-labs/opencode-cache-manager",
 //       "options": {
 //         "openaiCompatible": true,
-//         "explicitCacheModels": ["opus", "!gpt"]
+//         "cacheProfiles": { "opus": "anthropic", "gpt": "implicit" }
 //       }
 //     }
 //   ]

@@ -39,7 +39,23 @@ describe("readMessages", () => {
 
   test("returns an empty messages array as-is", async () => {
     const parsed = await readMessages(makeRequest(JSON.stringify({ model: "m", messages: [] })));
-    expect(parsed).toEqual({ body: { model: "m", messages: [] }, messages: [] });
+    expect(parsed).toEqual({ body: { model: "m", messages: [] }, key: "messages", messages: [] });
+  });
+
+  test("reads a Responses body's input array", async () => {
+    const input = [{ role: "user", content: [{ type: "input_text", text: "hi" }] }];
+    const parsed = await readMessages(makeRequest(JSON.stringify({ model: "gpt-6-luna", input })));
+    expect(parsed).toEqual({ body: { model: "gpt-6-luna", input }, key: "input", messages: input });
+  });
+
+  test("prefers messages over input", async () => {
+    const parsed = await readMessages(makeRequest(JSON.stringify({ messages: [1], input: [2] })));
+    expect(parsed?.key).toBe("messages");
+    expect(parsed?.messages).toEqual([1]);
+  });
+
+  test("is undefined when input is a string", async () => {
+    expect(await readMessages(makeRequest(JSON.stringify({ input: "hi" })))).toBeUndefined();
   });
 
   test("is undefined for invalid JSON", async () => {
@@ -107,6 +123,22 @@ describe("alignPingRequest", () => {
     expect((await parsedBodyOf(aligned)).messages).toEqual(
       alignPingMessages(body.messages as unknown[], primary),
     );
+  });
+
+  test("aligns a Responses body's input and keeps it under input", async () => {
+    const input = [
+      { role: "user", content: [{ type: "input_text", text: "ping one" }] },
+      { role: "assistant", content: [{ type: "output_text", text: "ping two" }] },
+      { role: "user", content: [{ type: "input_text", text: "ping last" }] },
+    ];
+    const responsesPrimary = [
+      { role: "user", content: [{ type: "input_text", text: "primary one", prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" } }] },
+      { role: "assistant", content: [{ type: "output_text", text: "primary two" }] },
+    ];
+    const request = makeRequest(JSON.stringify({ model: "gpt-6-luna", instructions: "be brief", input }));
+    const aligned = await parsedBodyOf(await alignPingRequest(request, responsesPrimary));
+    expect(aligned).toEqual({ model: "gpt-6-luna", instructions: "be brief", input: [...responsesPrimary, input[2]] });
+    expect("messages" in aligned).toBe(false);
   });
 
   test("keeps the other body fields", async () => {

@@ -77,6 +77,18 @@ const STATES: readonly Block[] = [
     }),
   },
   {
+    caption: "OpenAI GPT-5.6+, 30m cache",
+    snapshot: snapshot({
+      ttl: "30m",
+      ttlSource: "requested",
+      lastRequestAt: CAPTURE_NOW - 4 * MINUTE,
+      expiresAt: CAPTURE_NOW + 26 * MINUTE,
+      nextPingAt: CAPTURE_NOW + 21 * MINUTE,
+      pingsUsed: 1,
+      lastCache: { read: 88_000, total: 97_000 },
+    }),
+  },
+  {
     caption: "Ping failed, retrying in 30s",
     snapshot: snapshot({ nextPingAt: CAPTURE_NOW + 30_000, pingsUsed: 3, lastPing: "failed" }),
   },

@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from "../src/constants/anthropic.ts";
 import { transformHttpRequest } from "../src/services/cache-ttl.ts";
-import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody } from "./helpers/fixtures.ts";
+import { openaiProfile } from "../src/services/profiles/openai.ts";
+import { collectCacheControls, makeRequest, parsedBodyOf, sampleBody, transformOpts } from "./helpers/fixtures.ts";
 
 // ---------------------------------------------------------------------------
 // docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
@@ -92,11 +93,78 @@ function openAiChatRequest(url: string, headers: Record<string, string>): Reques
   });
 }
 
+function openAiResponsesRequest(url: string, headers: Record<string, string>): Request {
+  const body = {
+    model: "gpt-6-luna",
+    stream: true,
+    instructions: "You are a coding agent.",
+    input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Say hello." }] }],
+    tools: [{ type: "function", name: "read", description: "Read a file", parameters: { type: "object" } }],
+  };
+  return new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+type ExampleKind = "anthropic" | "chat" | "responses";
+
+const EXAMPLE_KIND: Record<string, ExampleKind> = {
+  "opencode.anthropic.jsonc": "anthropic",
+  "opencode.openai-compatible.jsonc": "chat",
+  "opencode.openai.jsonc": "responses",
+  "opencode.openrouter.jsonc": "chat",
+};
+
+/** Per endpoint kind: rewrites a request carrying the variant's headers and checks the result. */
+const CHECKS: Record<ExampleKind, (variant: ExampleVariant, label: string) => Promise<void>> = {
+  async anthropic(variant, label) {
+    const out = await transformHttpRequest(
+      makeRequest(JSON.stringify(sampleBody()), variant.headers),
+      "5m",
+      transformOpts(),
+    );
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
+    const controls = collectCacheControls(await parsedBodyOf(out));
+    expect(controls.length, label).toBeGreaterThan(0);
+    for (const cc of controls) expect(cc.ttl, label).toBe("1h");
+  },
+  async chat(variant, label) {
+    const request = openAiChatRequest("https://your-proxy.example/v1/chat/completions", variant.headers ?? {});
+    const out = await transformHttpRequest(request, "5m", transformOpts({ wire: "openai-chat", inject: true }));
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
+    const controls = collectCacheControls(await parsedBodyOf(out));
+    expect(controls.length, label).toBeGreaterThan(0);
+    for (const cc of controls) expect(cc.ttl, label).toBe("1h");
+  },
+  async responses(variant, label) {
+    const request = openAiResponsesRequest("https://api.openai.com/v1/responses", variant.headers ?? {});
+    const out = await transformHttpRequest(
+      request,
+      "5m",
+      transformOpts({ wire: "openai-responses", profile: openaiProfile, inject: true }),
+    );
+    expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
+    expect(out.headers.has("anthropic-beta"), label).toBe(false);
+    const body = (await parsedBodyOf(out)) as any;
+    expect(body.prompt_cache_options, label).toBeUndefined();
+    expect(body.input[0].content[0], label).toEqual({
+      type: "input_text",
+      text: "Say hello.",
+      prompt_cache_breakpoint: { mode: "explicit", ttl: "12h" },
+    });
+  },
+};
+
 describe("docs/examples", () => {
   test("has an example per supported endpoint", () => {
     expect(EXAMPLE_FILES).toEqual([
       "opencode.anthropic.jsonc",
       "opencode.openai-compatible.jsonc",
+      "opencode.openai.jsonc",
       "opencode.openrouter.jsonc",
     ]);
   });
@@ -104,7 +172,7 @@ describe("docs/examples", () => {
   describe.each(EXAMPLE_FILES)("%s", (file) => {
     const config = parseExample(file);
     const variants = oneHourVariants(config);
-    const openai = file !== "opencode.anthropic.jsonc";
+    const kind = EXAMPLE_KIND[file]!;
 
     test("parses and declares providers with models", () => {
       expect(config.$schema).toBe("https://opencode.ai/config.json");
@@ -125,22 +193,9 @@ describe("docs/examples", () => {
       }
     });
 
-    test("every -1h variant rewrites its request to 1h", async () => {
-      for (const { label, variant } of variants) {
-        const request = openai
-          ? openAiChatRequest("https://your-proxy.example/v1/chat/completions", variant.headers ?? {})
-          : makeRequest(JSON.stringify(sampleBody()), variant.headers);
-        const out = await transformHttpRequest(
-          request,
-          "5m",
-          openai ? { wire: "openai-chat", inject: true } : {},
-        );
-        expect(out.headers.has(SENTINEL_HEADER), label).toBe(false);
-        expect(out.headers.get("anthropic-beta"), label).toBe(EXTENDED_CACHE_BETA);
-        const controls = collectCacheControls(await parsedBodyOf(out));
-        expect(controls.length, label).toBeGreaterThan(0);
-        for (const cc of controls) expect(cc.ttl, label).toBe("1h");
-      }
+    test("every -1h variant rewrites its request", async () => {
+      expect(variants.length).toBeGreaterThan(0);
+      for (const { label, variant } of variants) await CHECKS[kind](variant, label);
     });
 
     test("holds no secrets or personal hostnames", () => {

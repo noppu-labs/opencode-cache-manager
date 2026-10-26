@@ -1,4 +1,6 @@
 import type { CacheUsage } from "../../src/models/cache.ts";
+import type { TransformOptions } from "../../src/services/cache-ttl.ts";
+import { anthropicProfile } from "../../src/services/profiles/anthropic.ts";
 
 export function ephemeral(extra: Record<string, unknown> = {}) {
   return { type: "ephemeral", ...extra };
@@ -160,4 +162,45 @@ export function sse(usage: unknown): string {
     `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { usage } })}\n\n` +
     `event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5,"cache_read_input_tokens":61000}}\n\n`
   );
+}
+
+/** Usage objects captured from OpenRouter's `/responses` endpoint on `openai/gpt-6-luna` (probe notes, "Responses wire"). */
+export const responsesUsage = {
+  write: {
+    input_tokens: 8888,
+    input_tokens_details: { cached_tokens: 0, cache_write_tokens: 8885 },
+    output_tokens: 5,
+    output_tokens_details: { reasoning_tokens: 0 },
+    total_tokens: 8893,
+  },
+  read: {
+    input_tokens: 8907,
+    input_tokens_details: { cached_tokens: 8885, cache_write_tokens: 19 },
+    output_tokens: 16,
+    output_tokens_details: { reasoning_tokens: 8 },
+    total_tokens: 8923,
+  },
+};
+
+/** A streamed Responses reply: created, a text delta, the output item, then the closing `response.completed` (or `response.incomplete`). */
+export function responsesSse(
+  usage: unknown,
+  options: { model?: string; status?: string; toolCall?: boolean; event?: string } = {},
+): string {
+  const { model = "openai/gpt-6-luna", status = "completed", toolCall = false, event = "response.completed" } = options;
+  const frame = (name: string, value: Record<string, unknown>) =>
+    `event: ${name}\ndata: ${JSON.stringify({ type: name, ...value })}\n\n`;
+  const output = toolCall
+    ? [{ type: "function_call", name: "read", call_id: "call_1", arguments: "{}" }]
+    : [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "hi" }] }];
+  return (
+    frame("response.created", { response: { model, status: "in_progress", output: [] } }) +
+    frame("response.output_text.delta", { delta: "hi" }) +
+    frame(event, { response: { model, status, output, usage } })
+  );
+}
+
+/** `transformHttpRequest` options for a primary request through the anthropic profile, with overrides. */
+export function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
+  return { wire: "anthropic-messages", profile: anthropicProfile, kind: "primary", isPing: false, inject: false, ...overrides };
 }

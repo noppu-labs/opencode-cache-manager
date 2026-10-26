@@ -8,7 +8,7 @@ const isPrefixRole = (message: unknown): boolean =>
   isRecord(message) && (message.role === "system" || message.role === "developer");
 
 /** Index of the first message that is not `system`/`developer`. */
-function leadingPrefixEnd(messages: unknown[]): number {
+export function leadingPrefixEnd(messages: unknown[]): number {
   const index = messages.findIndex((message) => !isPrefixRole(message));
   return index === -1 ? messages.length : index;
 }
@@ -60,7 +60,7 @@ const isText = (part: unknown): part is Rec =>
   isRecord(part) && part.type === "text" && typeof part.text === "string" && part.text !== "";
 
 /** The last text part of `message`, turning string content into parts first. */
-function lastTextPart(message: Rec): Rec | undefined {
+export function lastTextPart(message: Rec): Rec | undefined {
   const { content } = message;
   if (typeof content === "string") {
     if (content === "") return undefined;

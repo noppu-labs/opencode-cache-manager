@@ -1,0 +1,108 @@
+// Sample opencode.jsonc for the opencode-cache-manager plugin: GPT-5.6 and later
+// through OpenCode's built-in "openai" provider (OpenAI Responses API,
+// POST .../responses).
+//
+// The test suite (tests/opencode-config.test.ts) parses this file and checks its
+// -1h variants. The apiKey is an env-var reference, so there are no secrets here.
+//
+// OpenAI caches automatically for 30 minutes. The plugin leaves that alone in 5m
+// mode, and in 1h / hybrid mode adds a prompt_cache_breakpoint with ttl "12h".
+// Each "-1h" variant carries the x-cache-ttl sentinel header: the plugin applies
+// the 1h mode (a 12h cache on OpenAI) and strips the header before the request
+// leaves. Keepalive pings follow the lifetime: every 25 minutes on the 30m cache,
+// every 10 hours on the 12h cache.
+//
+// Only GPT-5.6 and later accept prompt_cache_breakpoint; older models answer 400,
+// so the plugin recognises them by name. If your model IDs hide the version, map
+// them in the cacheProfiles plugin option ("openai" manages a model, "implicit"
+// leaves it alone).
+//
+// Plugin options go in the plugin entry of your own opencode.jsonc, not in this
+// file (see the README):
+//
+//   "plugins": [
+//     {
+//       "package": "@noppu-labs/opencode-cache-manager",
+//       "options": {
+//         "defaultMode": "5m",
+//         "cacheProfiles": { "my-gpt-alias": "openai" }
+//       }
+//     }
+//   ]
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "package": "@opencode/ai/providers/openai",
+      "settings": {
+        "apiKey": "{env:OPENAI_API_KEY}"
+      },
+      "models": {
+        "gpt-6-luna": {
+          "name": "GPT-6 Luna",
+          "capabilities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 400000,
+            "output": 128000
+          },
+          "variants": [
+            {
+              "id": "low",
+              "settings": {
+                "reasoningEffort": "low"
+              }
+            },
+            {
+              "id": "medium",
+              "settings": {
+                "reasoningEffort": "medium"
+              }
+            },
+            {
+              "id": "high",
+              "settings": {
+                "reasoningEffort": "high"
+              }
+            },
+            {
+              "id": "low-1h",
+              "settings": {
+                "reasoningEffort": "low"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "medium-1h",
+              "settings": {
+                "reasoningEffort": "medium"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            },
+            {
+              "id": "high-1h",
+              "settings": {
+                "reasoningEffort": "high"
+              },
+              "headers": {
+                "x-cache-ttl": "1h"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

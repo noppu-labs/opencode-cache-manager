@@ -6,15 +6,17 @@ import {
   classifyRequest,
   classifyRequestWithBody,
   isAnthropicProvider,
+  profileForRoute,
   routeRequest,
   shouldInject,
 } from "../services/classify.ts";
-import { resolveActiveMode, transformHttpRequest, ttlForMode } from "../services/cache-ttl.ts";
+import { resolveActiveMode, transformHttpRequest } from "../services/cache-ttl.ts";
+import { profileFor } from "../services/profiles/index.ts";
 import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
 import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
 import type { PingTracker } from "../services/ping-tracker.ts";
 import type { SettingsStore } from "../services/settings-store.ts";
-import type { StrategyStore } from "../services/strategy-store.ts";
+import type { ProfileStore } from "../services/profile-store.ts";
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 export interface HttpRequestEvent {
@@ -29,25 +31,27 @@ export interface RequestHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
-  strategies: Pick<StrategyStore, "get">;
+  profiles: Pick<ProfileStore, "get">;
   /** Latest primary request messages per session, in memory only, kept while a ping may still use them. */
   primaryMessages: Map<string, unknown[]>;
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
-export function createRequestHook({ store, engine, pings, options, strategies, primaryMessages }: RequestHookDeps) {
+export function createRequestHook({ store, engine, pings, options, profiles, primaryMessages }: RequestHookDeps) {
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { patterns: options.explicitCacheModels, learned: (r: ModelRef) => strategies.get(r) };
+    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
     const cls = options.openaiCompatible
       ? await classifyRequestWithBody(evt.request, ref, deps)
       : classifyRequest(evt.request, ref, deps);
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
-    const { rewrites, implicit } = route;
+    const profileId = profileForRoute(route, options.openaiCompatible);
+    if (profileId === undefined) return;
+    const profile = profileFor(profileId);
+    const rewrites = route.rewrites;
     const observed = route.observedWire !== undefined;
-    if (!rewrites && !observed) return;
 
     const sessionID = evt.sessionID;
     let mode: CacheTtlMode;
@@ -58,11 +62,12 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
     }
     const original = evt.request;
     const isPing = observed && pings.isPing(evt.kind, sessionID);
+    const keptWarm = observed && profile.pings;
 
     // Alignment runs before the TTL rewrite so the copied primary messages
     // take the ping's own mode and beta header, keeping 1h ahead of 5m.
     let request = original;
-    if (isPing) {
+    if (isPing && keptWarm) {
       try {
         request = await alignPingRequest(original, primaryMessages.get(sessionID));
       } catch {
@@ -70,24 +75,29 @@ export function createRequestHook({ store, engine, pings, options, strategies, p
       }
     }
     if (rewrites) {
-      // With the option off an `openai-chat` request is rewritten as an Anthropic body (`opts` stays empty),
-      // unless it carries the sentinel: then it goes through the OpenAI rewriter so the header is applied.
-      const opts = route.transformWire
-        ? { wire: route.transformWire, inject: shouldInject(route, evt.kind, isPing) }
-        : {};
-      request = await transformHttpRequest(request, mode, opts);
+      try {
+        request = await transformHttpRequest(request, mode, {
+          wire: route.transformWire ?? "anthropic-messages",
+          profile,
+          kind: evt.kind,
+          isPing,
+          inject: shouldInject(route, evt.kind, isPing),
+        });
+      } catch {
+        // A rewrite failure sends the request as it was rather than failing it.
+      }
     }
     evt.request = request;
     if (!observed) return;
 
     try {
       if (evt.kind === "compaction") primaryMessages.delete(sessionID);
-      if (!implicit && evt.kind === "primary" && engine.snapshot(sessionID).skipReason !== "child") {
+      if (keptWarm && evt.kind === "primary" && engine.snapshot(sessionID).skipReason !== "child") {
         const parsed = await readMessages(request);
         if (parsed) primaryMessages.set(sessionID, parsed.messages);
       }
       engine.requestSent(sessionID, {
-        requestedTtl: implicit ? null : ttlForMode(resolveActiveMode(original, mode)),
+        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
         isPing,
         kind: evt.kind,
       });

@@ -11,7 +11,7 @@ import { KeepaliveEngine } from "./services/keepalive-engine.ts";
 import { releasesMessages } from "./services/ping-alignment.ts";
 import { PingTracker } from "./services/ping-tracker.ts";
 import { SettingsStore, sweepDeletedSessions } from "./services/settings-store.ts";
-import { StrategyStore } from "./services/strategy-store.ts";
+import { ProfileStore } from "./services/profile-store.ts";
 
 /**
  * Server entrypoint for the Anthropic prompt-cache plugin.
@@ -32,8 +32,8 @@ export default Plugin.define({
     const store = new SettingsStore(ctx.storage, settingsFromOptions(ctx.options));
     await store.load();
     const options = pluginOptions(ctx.options);
-    const strategies = new StrategyStore(ctx.storage);
-    await strategies.load();
+    const profiles = new ProfileStore(ctx.storage);
+    await profiles.load();
 
     // Referenced from inside its own handlers so they can emit the update
     // event; declared before the `await` to avoid a temporal-dead-zone hazard.
@@ -82,8 +82,8 @@ export default Plugin.define({
       );
     });
 
-    await ctx.session.hook("http.request", createRequestHook({ store, engine, pings, options, strategies, primaryMessages }));
-    await ctx.session.hook("http.response", createResponseHook({ engine, pings, options, strategies }));
+    await ctx.session.hook("http.request", createRequestHook({ store, engine, pings, options, profiles, primaryMessages }));
+    await ctx.session.hook("http.response", createResponseHook({ engine, pings, options, profiles }));
 
     void sweepDeletedSessions(ctx.storage, (sessionID) => ctx.session.get({ sessionID })).catch(() => {});
 
