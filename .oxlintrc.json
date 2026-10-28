@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "plugins": ["typescript", "unicorn", "oxc", "import", "jsdoc", "promise"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -91,7 +91,22 @@
         "array": false,
         "object": true
       }
-    ]
+    ],
+    "import/no-cycle": "error",
+    "jsdoc/require-param": "off",
+    "jsdoc/require-returns": "off",
+    "jsdoc/require-param-type": "off",
+    "jsdoc/require-returns-type": "off",
+    "jsdoc/require-throws-type": "off",
+    "jsdoc/require-yields-type": "off",
+    "promise/no-return-in-finally": "error",
+    "jsdoc/check-tag-names": ["error", { "definedTags": ["jsxImportSource"] }],
+    "promise/prefer-await-to-then": "off",
+    "promise/avoid-new": "off",
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/catch-or-return": "off",
+    "promise/always-return": "off",
+    "promise/prefer-catch": "off"
   },
   "overrides": [
     {
