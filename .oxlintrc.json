@@ -1,13 +1,24 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "import"],
-  "categories": { "correctness": "error" },
-  "env": { "builtin": true },
-  "options": { "typeAware": true },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "env": {
+    "builtin": true
+  },
+  "options": {
+    "typeAware": true
+  },
   "overrides": [
     {
       "files": ["tests/**"],
-      "rules": { "typescript/await-thenable": "off" }
+      "rules": {
+        "typescript/await-thenable": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
     }
   ],
   "ignorePatterns": ["src/ui/sidebar.compiled.js", ".gitnexus/**", ".codegraph/**"]
