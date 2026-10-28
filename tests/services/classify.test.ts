@@ -25,7 +25,7 @@ const off = { openaiWires: false };
 
 describe('requestWire', () => {
   const post = (url: string, method = 'POST') =>
-    new Request(url, { method, body: method === 'POST' ? '{}' : undefined });
+    new Request(url, method === 'POST' ? { method, body: '{}' } : { method });
 
   test('names the wire from the method and path alone', () => {
     expect(requestWire(post('https://api.anthropic.com/v1/messages'))).toBe('anthropic-messages');

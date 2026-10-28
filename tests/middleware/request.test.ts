@@ -551,8 +551,8 @@ describe('createRequestHook ping alignment', () => {
 
   describe('after the session mode changes', () => {
     const breakpointTtls = (value: any): string[] =>
-      collectCacheControls([value.tools, value.system, value.messages]).map((cc) =>
-        String(cc.ttl ?? '5m')
+      collectCacheControls([value.tools, value.system, value.messages]).map(
+        (cc) => (cc.ttl ?? '5m') as string
       );
 
     /** Stores a primary in `from`, switches the session to `to` and returns the ping request. */

@@ -6,7 +6,7 @@ import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 // `solid-js` peer that is only present in the live TUI host. `define` is an
 // identity helper, so stub it here (before importing the TUI entrypoint) to keep
 // the test harness dependency-free.
-mock.module('@opencode/plugin/tui', () => ({
+await mock.module('@opencode/plugin/tui', () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
 // Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
@@ -23,7 +23,7 @@ type SidebarCall = {
 };
 const sidebarCalls: SidebarCall[] = [];
 let sidebarThrows = false;
-mock.module('../src/ui/sidebar.tsx', () => ({
+await mock.module('../src/ui/sidebar.tsx', () => ({
   CacheLines,
   paletteFromTheme,
   registerSidebar: (

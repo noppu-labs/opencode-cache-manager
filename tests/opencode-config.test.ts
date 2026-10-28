@@ -250,7 +250,7 @@ describe('docs/examples', () => {
     };
     const models = parseExample('opencode.anthropic.jsonc').providers['omniroute-anthropic'].models;
     for (const [modelID, baseIds] of Object.entries(EXPECTED)) {
-      const ids = (models[modelID]?.variants as ExampleVariant[]).map((v) => v.id);
+      const ids = ((models[modelID]?.variants ?? []) as ExampleVariant[]).map((v) => v.id);
       for (const base of baseIds) {
         expect(ids).toContain(base);
         expect(ids).toContain(`${base}-1h`);
