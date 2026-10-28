@@ -1,10 +1,15 @@
-import { isCacheTtlMode } from "../models/cache.ts";
-import type { KV, ScannableKV } from "../models/storage.ts";
-import { mergeSettings, sanitizePatch, type Settings, type SettingsPatch } from "../config/settings.ts";
+import {
+  mergeSettings,
+  sanitizePatch,
+  type Settings,
+  type SettingsPatch,
+} from '../config/settings.ts';
+import { isCacheTtlMode } from '../models/cache.ts';
+import type { KV, ScannableKV } from '../models/storage.ts';
 
-const GLOBAL_KEY = "global";
-const LEGACY_MODE_KEY = "mode";
-const SESSION_KEY_PREFIX = "session/";
+const GLOBAL_KEY = 'global';
+const LEGACY_MODE_KEY = 'mode';
+const SESSION_KEY_PREFIX = 'session/';
 const sessionKey = (sessionID: string) => `${SESSION_KEY_PREFIX}${sessionID}`;
 
 /** Layered settings: built-in defaults < plugin options < stored global < stored per-session. */
@@ -14,7 +19,7 @@ export class SettingsStore {
 
   constructor(
     private readonly kv: KV,
-    private readonly optionsPatch: SettingsPatch,
+    private readonly optionsPatch: SettingsPatch
   ) {}
 
   async load(): Promise<void> {
@@ -60,15 +65,15 @@ export class SettingsStore {
 }
 
 function isSessionNotFound(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
+  if (typeof error !== 'object' || error === null) return false;
   const { _tag, name } = error as { _tag?: unknown; name?: unknown };
-  return [_tag, name].some((tag) => typeof tag === "string" && /SessionNotFound/.test(tag));
+  return [_tag, name].some((tag) => typeof tag === 'string' && /SessionNotFound/.test(tag));
 }
 
 /** Drops stored settings for sessions that were deleted while the plugin was not running. */
 export async function sweepDeletedSessions(
   storage: ScannableKV,
-  getSession: (sessionID: string) => Promise<unknown>,
+  getSession: (sessionID: string) => Promise<unknown>
 ): Promise<void> {
   let after: string | undefined;
   do {

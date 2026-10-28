@@ -1,4 +1,9 @@
-import type { CacheTtlRpcClient, RawCacheTtlRpcClient, RpcCallOptions, RpcLocation } from "../rpc.ts";
+import type {
+  CacheTtlRpcClient,
+  RawCacheTtlRpcClient,
+  RpcCallOptions,
+  RpcLocation,
+} from '../rpc.ts';
 
 /**
  * Wraps the RPC client so every call carries a location. OpenCode runs one
@@ -7,7 +12,7 @@ import type { CacheTtlRpcClient, RawCacheTtlRpcClient, RpcCallOptions, RpcLocati
  */
 export function withLocation(
   rpc: RawCacheTtlRpcClient,
-  locate: (sessionID: string | undefined) => RpcLocation | undefined,
+  locate: (sessionID: string | undefined) => RpcLocation | undefined
 ): CacheTtlRpcClient {
   const options = (sessionID: string | undefined): RpcCallOptions | undefined => {
     const location = locate(sessionID);

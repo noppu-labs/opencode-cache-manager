@@ -1,8 +1,8 @@
-import type { CacheProfileId } from "../../models/cache.ts";
-import type { CacheProfile } from "../../models/profile.ts";
-import { anthropicProfile } from "./anthropic.ts";
-import { implicitProfile } from "./implicit.ts";
-import { openaiProfile } from "./openai.ts";
+import type { CacheProfileId } from '../../models/cache.ts';
+import type { CacheProfile } from '../../models/profile.ts';
+import { anthropicProfile } from './anthropic.ts';
+import { implicitProfile } from './implicit.ts';
+import { openaiProfile } from './openai.ts';
 
 /** Every cache profile by ID. */
 const PROFILES: Record<CacheProfileId, CacheProfile> = {

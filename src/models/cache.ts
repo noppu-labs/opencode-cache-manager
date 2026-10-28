@@ -8,15 +8,15 @@
  *                satisfies Anthropic's requirement that longer-lived (1h)
  *                breakpoints precede shorter-lived (5m) ones.
  */
-export type CacheTtlMode = "5m" | "1h" | "hybrid";
+export type CacheTtlMode = '5m' | '1h' | 'hybrid';
 
 /** Returns true when `value` is one of the three valid cache TTL modes. */
 export function isCacheTtlMode(value: unknown): value is CacheTtlMode {
-  return value === "5m" || value === "1h" || value === "hybrid";
+  return value === '5m' || value === '1h' || value === 'hybrid';
 }
 
 /** Cache TTL a provider grants for a cache write: Anthropic `5m` / `1h`, OpenAI `30m` / `12h`. */
-export type Ttl = "5m" | "1h" | "30m" | "12h";
+export type Ttl = '5m' | '1h' | '30m' | '12h';
 
 /** Token counts from an Anthropic `usage` block, relevant to prompt caching. */
 export interface CacheUsage {
@@ -29,7 +29,7 @@ export interface CacheUsage {
 }
 
 /** Request wire format the plugin understands. */
-export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
+export type Wire = 'anthropic-messages' | 'openai-chat' | 'openai-responses';
 
 /**
  * How a model's prompt cache is controlled.
@@ -38,11 +38,11 @@ export type Wire = "anthropic-messages" | "openai-chat" | "openai-responses";
  * - `"openai"`    — OpenAI models with `prompt_cache_options` / `prompt_cache_breakpoint`.
  * - `"implicit"`  — provider-managed caching; observed only, never pinged.
  */
-export type CacheProfileId = "anthropic" | "openai" | "implicit";
+export type CacheProfileId = 'anthropic' | 'openai' | 'implicit';
 
 /** Returns true when `value` is a known cache profile ID. */
 export function isCacheProfileId(value: unknown): value is CacheProfileId {
-  return value === "anthropic" || value === "openai" || value === "implicit";
+  return value === 'anthropic' || value === 'openai' || value === 'implicit';
 }
 
 /** Identifies an OpenCode model: provider plus model ID. */

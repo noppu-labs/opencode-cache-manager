@@ -34,7 +34,7 @@
       "package": "@opencode/ai/providers/anthropic-compatible",
       "settings": {
         "baseURL": "https://your-proxy.example/v1",
-        "authToken": "{env:OMNIROUTE_API_KEY}"
+        "authToken": "{env:OMNIROUTE_API_KEY}",
       },
       "models": {
         "auto/claude-haiku-5-5": {
@@ -44,115 +44,109 @@
             "output": 0.5,
             "cache": {
               "read": 0.01,
-              "write": 0.125
-            }
+              "write": 0.125,
+            },
           },
           "capabilities": {
-            "input": [
-              "text",
-              "image",
-              "pdf"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image", "pdf"],
+            "output": ["text"],
           },
           "limit": {
             "context": 1000000,
-            "output": 100000
+            "output": 100000,
           },
           "variants": [
             {
               "id": "none",
               "settings": {
-                "reasoningEffort": "none"
-              }
+                "reasoningEffort": "none",
+              },
             },
             {
               "id": "low",
               "settings": {
-                "reasoningEffort": "low"
-              }
+                "reasoningEffort": "low",
+              },
             },
             {
               "id": "medium",
               "settings": {
-                "reasoningEffort": "medium"
-              }
+                "reasoningEffort": "medium",
+              },
             },
             {
               "id": "high",
               "settings": {
-                "reasoningEffort": "high"
-              }
+                "reasoningEffort": "high",
+              },
             },
             {
               "id": "xhigh",
               "settings": {
-                "reasoningEffort": "xhigh"
-              }
+                "reasoningEffort": "xhigh",
+              },
             },
             {
               "id": "max",
               "settings": {
-                "reasoningEffort": "max"
-              }
+                "reasoningEffort": "max",
+              },
             },
             {
               "id": "none-1h",
               "settings": {
-                "reasoningEffort": "none"
+                "reasoningEffort": "none",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "low-1h",
               "settings": {
-                "reasoningEffort": "low"
+                "reasoningEffort": "low",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "medium-1h",
               "settings": {
-                "reasoningEffort": "medium"
+                "reasoningEffort": "medium",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "high-1h",
               "settings": {
-                "reasoningEffort": "high"
+                "reasoningEffort": "high",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "xhigh-1h",
               "settings": {
-                "reasoningEffort": "xhigh"
+                "reasoningEffort": "xhigh",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "max-1h",
               "settings": {
-                "reasoningEffort": "max"
+                "reasoningEffort": "max",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
-            }
-          ]
+                "x-cache-ttl": "1h",
+              },
+            },
+          ],
         },
         "auto/claude-sonnet-5-5": {
           "name": "Sonnet 5.5",
@@ -161,115 +155,109 @@
             "output": 10,
             "cache": {
               "read": 0.1,
-              "write": 2.5
-            }
+              "write": 2.5,
+            },
           },
           "capabilities": {
-            "input": [
-              "text",
-              "image",
-              "pdf"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image", "pdf"],
+            "output": ["text"],
           },
           "limit": {
             "context": 1000000,
-            "output": 128000
+            "output": 128000,
           },
           "variants": [
             {
               "id": "none",
               "settings": {
-                "reasoningEffort": "none"
-              }
+                "reasoningEffort": "none",
+              },
             },
             {
               "id": "low",
               "settings": {
-                "reasoningEffort": "low"
-              }
+                "reasoningEffort": "low",
+              },
             },
             {
               "id": "medium",
               "settings": {
-                "reasoningEffort": "medium"
-              }
+                "reasoningEffort": "medium",
+              },
             },
             {
               "id": "high",
               "settings": {
-                "reasoningEffort": "high"
-              }
+                "reasoningEffort": "high",
+              },
             },
             {
               "id": "xhigh",
               "settings": {
-                "reasoningEffort": "xhigh"
-              }
+                "reasoningEffort": "xhigh",
+              },
             },
             {
               "id": "max",
               "settings": {
-                "reasoningEffort": "max"
-              }
+                "reasoningEffort": "max",
+              },
             },
             {
               "id": "none-1h",
               "settings": {
-                "reasoningEffort": "none"
+                "reasoningEffort": "none",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "low-1h",
               "settings": {
-                "reasoningEffort": "low"
+                "reasoningEffort": "low",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "medium-1h",
               "settings": {
-                "reasoningEffort": "medium"
+                "reasoningEffort": "medium",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "high-1h",
               "settings": {
-                "reasoningEffort": "high"
+                "reasoningEffort": "high",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "xhigh-1h",
               "settings": {
-                "reasoningEffort": "xhigh"
+                "reasoningEffort": "xhigh",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "max-1h",
               "settings": {
-                "reasoningEffort": "max"
+                "reasoningEffort": "max",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
-            }
-          ]
+                "x-cache-ttl": "1h",
+              },
+            },
+          ],
         },
         "auto/claude-opus-5-5": {
           "name": "Opus 5.5",
@@ -278,115 +266,109 @@
             "output": 20,
             "cache": {
               "read": 0.2,
-              "write": 5
-            }
+              "write": 5,
+            },
           },
           "capabilities": {
-            "input": [
-              "text",
-              "image",
-              "pdf"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image", "pdf"],
+            "output": ["text"],
           },
           "limit": {
             "context": 1000000,
-            "output": 128000
+            "output": 128000,
           },
           "variants": [
             {
               "id": "none",
               "settings": {
-                "reasoningEffort": "none"
-              }
+                "reasoningEffort": "none",
+              },
             },
             {
               "id": "low",
               "settings": {
-                "reasoningEffort": "low"
-              }
+                "reasoningEffort": "low",
+              },
             },
             {
               "id": "medium",
               "settings": {
-                "reasoningEffort": "medium"
-              }
+                "reasoningEffort": "medium",
+              },
             },
             {
               "id": "high",
               "settings": {
-                "reasoningEffort": "high"
-              }
+                "reasoningEffort": "high",
+              },
             },
             {
               "id": "xhigh",
               "settings": {
-                "reasoningEffort": "xhigh"
-              }
+                "reasoningEffort": "xhigh",
+              },
             },
             {
               "id": "max",
               "settings": {
-                "reasoningEffort": "max"
-              }
+                "reasoningEffort": "max",
+              },
             },
             {
               "id": "none-1h",
               "settings": {
-                "reasoningEffort": "none"
+                "reasoningEffort": "none",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "low-1h",
               "settings": {
-                "reasoningEffort": "low"
+                "reasoningEffort": "low",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "medium-1h",
               "settings": {
-                "reasoningEffort": "medium"
+                "reasoningEffort": "medium",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "high-1h",
               "settings": {
-                "reasoningEffort": "high"
+                "reasoningEffort": "high",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "xhigh-1h",
               "settings": {
-                "reasoningEffort": "xhigh"
+                "reasoningEffort": "xhigh",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "max-1h",
               "settings": {
-                "reasoningEffort": "max"
+                "reasoningEffort": "max",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
-            }
-          ]
+                "x-cache-ttl": "1h",
+              },
+            },
+          ],
         },
         "auto/claude-fable-5-1": {
           "name": "Fable 5.1",
@@ -395,102 +377,96 @@
             "output": 50,
             "cache": {
               "read": 0.25,
-              "write": 12.5
-            }
+              "write": 12.5,
+            },
           },
           "capabilities": {
-            "input": [
-              "text",
-              "image",
-              "pdf"
-            ],
-            "output": [
-              "text"
-            ]
+            "input": ["text", "image", "pdf"],
+            "output": ["text"],
           },
           "limit": {
             "context": 1000000,
-            "output": 128000
+            "output": 128000,
           },
           "variants": [
             {
               "id": "low",
               "settings": {
-                "reasoningEffort": "low"
-              }
+                "reasoningEffort": "low",
+              },
             },
             {
               "id": "medium",
               "settings": {
-                "reasoningEffort": "medium"
-              }
+                "reasoningEffort": "medium",
+              },
             },
             {
               "id": "high",
               "settings": {
-                "reasoningEffort": "high"
-              }
+                "reasoningEffort": "high",
+              },
             },
             {
               "id": "xhigh",
               "settings": {
-                "reasoningEffort": "xhigh"
-              }
+                "reasoningEffort": "xhigh",
+              },
             },
             {
               "id": "max",
               "settings": {
-                "reasoningEffort": "max"
-              }
+                "reasoningEffort": "max",
+              },
             },
             {
               "id": "low-1h",
               "settings": {
-                "reasoningEffort": "low"
+                "reasoningEffort": "low",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "medium-1h",
               "settings": {
-                "reasoningEffort": "medium"
+                "reasoningEffort": "medium",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "high-1h",
               "settings": {
-                "reasoningEffort": "high"
+                "reasoningEffort": "high",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "xhigh-1h",
               "settings": {
-                "reasoningEffort": "xhigh"
+                "reasoningEffort": "xhigh",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
+                "x-cache-ttl": "1h",
+              },
             },
             {
               "id": "max-1h",
               "settings": {
-                "reasoningEffort": "max"
+                "reasoningEffort": "max",
               },
               "headers": {
-                "x-cache-ttl": "1h"
-              }
-            }
-          ]
-        }
-      }
-    }
-  }
+                "x-cache-ttl": "1h",
+              },
+            },
+          ],
+        },
+      },
+    },
+  },
 }

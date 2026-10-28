@@ -1,23 +1,23 @@
 /** Applies a TTL (or removes it, when `undefined`) to a single cache_control block. */
-export function applyTtlToBlock(block: unknown, ttl: "1h" | undefined): boolean {
-  if (!block || typeof block !== "object") return false;
+export function applyTtlToBlock(block: unknown, ttl: '1h' | undefined): boolean {
+  if (!block || typeof block !== 'object') return false;
   const rec = block as Record<string, unknown>;
   const cacheControl = rec.cache_control;
 
   if (
     cacheControl &&
-    typeof cacheControl === "object" &&
-    (cacheControl as Record<string, unknown>).type === "ephemeral"
+    typeof cacheControl === 'object' &&
+    (cacheControl as Record<string, unknown>).type === 'ephemeral'
   ) {
     const cc = cacheControl as Record<string, unknown>;
-    if (ttl === "1h") {
-      if (cc.ttl !== "1h") {
-        cc.ttl = "1h";
+    if (ttl === '1h') {
+      if (cc.ttl !== '1h') {
+        cc.ttl = '1h';
         return true;
       }
       return false;
     }
-    if ("ttl" in cc) {
+    if ('ttl' in cc) {
       delete cc.ttl;
       return true;
     }
@@ -29,12 +29,12 @@ export function applyTtlToBlock(block: unknown, ttl: "1h" | undefined): boolean 
 /** Returns true when any ephemeral breakpoint in the payload carries a 1h TTL. */
 export function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
   const isOneHour = (block: unknown): boolean => {
-    if (!block || typeof block !== "object") return false;
+    if (!block || typeof block !== 'object') return false;
     const cacheControl = (block as Record<string, unknown>).cache_control;
     return (
       !!cacheControl &&
-      typeof cacheControl === "object" &&
-      (cacheControl as Record<string, unknown>).ttl === "1h"
+      typeof cacheControl === 'object' &&
+      (cacheControl as Record<string, unknown>).ttl === '1h'
     );
   };
 

@@ -1,7 +1,7 @@
-import { FINISH_REASON_MAP } from "../constants/openai.ts";
-import type { CacheUsage, ResponseIdentity, ResponseParsers } from "../models/cache.ts";
-import { isRecord } from "../utils/is-record.ts";
-import { num } from "../utils/num.ts";
+import { FINISH_REASON_MAP } from '../constants/openai.ts';
+import type { CacheUsage, ResponseIdentity, ResponseParsers } from '../models/cache.ts';
+import { isRecord } from '../utils/is-record.ts';
+import { num } from '../utils/num.ts';
 
 /**
  * Maps a Chat Completions `usage` block into `CacheUsage`. Cache writes are
@@ -30,7 +30,7 @@ function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
 }
 
 function mapFinishReason(reason: unknown): string | undefined {
-  return typeof reason === "string" ? (FINISH_REASON_MAP[reason] ?? reason) : undefined;
+  return typeof reason === 'string' ? (FINISH_REASON_MAP[reason] ?? reason) : undefined;
 }
 
 function readFinishReason(body: unknown): string | undefined {
@@ -41,8 +41,8 @@ function readFinishReason(body: unknown): string | undefined {
 
 function readIdentity(body: unknown): ResponseIdentity | undefined {
   if (!isRecord(body)) return undefined;
-  const model = typeof body.model === "string" && body.model ? body.model : undefined;
-  const provider = typeof body.provider === "string" && body.provider ? body.provider : undefined;
+  const model = typeof body.model === 'string' && body.model ? body.model : undefined;
+  const provider = typeof body.provider === 'string' && body.provider ? body.provider : undefined;
   if (!model && !provider) return undefined;
   const out: ResponseIdentity = {};
   if (model) out.model = model;
@@ -53,8 +53,8 @@ function readIdentity(body: unknown): ResponseIdentity | undefined {
 /** Parsed JSON payload of every `data:` line; `[DONE]` and junk are skipped. */
 export function sseEvents(text: string): unknown[] {
   const events: unknown[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
     try {
       events.push(JSON.parse(line.slice(5).trim()));
     } catch {

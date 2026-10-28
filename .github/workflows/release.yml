@@ -23,7 +23,7 @@ name: release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -46,7 +46,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: "1.4.2"
+          bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test tests/
@@ -84,7 +84,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: "1.4.2"
+          bun-version: '1.4.2'
 
       - run: bun install --frozen-lockfile
 
@@ -169,8 +169,8 @@ jobs:
       # bundles a new enough npm. npm exchanges the job's OIDC token itself.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       # Publish the exact verified artifact under the scoped name, then
       # the same artifact under the unscoped name. Each name is guarded:

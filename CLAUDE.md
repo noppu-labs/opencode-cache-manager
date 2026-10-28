@@ -9,7 +9,13 @@ bun install
 bun test             # all tests in tests/
 bun run typecheck    # tsc -p . (noEmit, strict), covers src/, tests/ and scripts/ with Bun types
 bun run build        # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js (also runs on prepack)
+bun run lint         # oxlint, correctness rules, type-aware
+bun run lint:fix     # oxlint --fix
+bun run fmt          # oxfmt, rewrites files in place
+bun run fmt:check    # oxfmt --check, what CI runs
 ```
+
+Lint is type-aware through `oxlint-tsgolint`; type checking itself stays with `tsc` (`bun run typecheck`).
 
 Runtime is Bun (>= 1.3). The `.ts` sources ship as-is and OpenCode loads them directly, with one exception: OpenCode only runs the Solid JSX transform on files outside `node_modules`, so `bun run build` compiles `src/ui/sidebar.tsx` into `src/ui/sidebar.compiled.js` (gitignored, shipped in the tarball), and `tui.ts` loads that copy when installed from npm.
 
@@ -130,8 +136,9 @@ Where new code goes:
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.
 - The release workflow and the package smoke test pack with `--ignore-scripts`, so they run `bun run build` explicitly. Keep that if the pack command changes.
-- Run `bun test` and `bun run typecheck` before calling work done.
+- Run `bun run fmt:check`, `bun run lint`, `bun test` and `bun run typecheck` before calling work done.
 
+<!-- prettier-ignore-start -->
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
@@ -165,3 +172,4 @@ This project is indexed by GitNexus as **opencode-cache-manager**. Use the GitNe
 | `gitnexus://repo/opencode-cache-manager/process/{name}` | Step-by-step execution trace |
 
 <!-- gitnexus:end -->
+<!-- prettier-ignore-end -->

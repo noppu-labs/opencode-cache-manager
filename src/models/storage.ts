@@ -7,6 +7,9 @@ export interface KV {
 
 /** The plugin storage operations the startup sweep needs. */
 export interface ScannableKV {
-  scan(input: { prefix: string; after?: string }): Promise<{ entries: readonly { key: string }[]; next?: string }>;
+  scan(input: {
+    prefix: string;
+    after?: string;
+  }): Promise<{ entries: readonly { key: string }[]; next?: string }>;
   remove(key: string): Promise<void>;
 }

@@ -1,14 +1,14 @@
-import { isCacheProfileId, type ProfilePattern } from "../models/cache.ts";
-import { isRecord } from "../utils/is-record.ts";
+import { isCacheProfileId, type ProfilePattern } from '../models/cache.ts';
+import { isRecord } from '../utils/is-record.ts';
 
 const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
 const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
 
-const substring = (source: string) => new RegExp(source.replace(REGEX_SPECIALS, "\\$&"), "i");
+const substring = (source: string) => new RegExp(source.replace(REGEX_SPECIALS, '\\$&'), 'i');
 
 function validFlags(flags: string): boolean {
   try {
-    new RegExp("", flags);
+    new RegExp('', flags);
     return true;
   } catch {
     return false;
@@ -31,7 +31,7 @@ export function parseCacheProfiles(value: unknown): ProfilePattern[] {
   if (!isRecord(value)) return [];
   const patterns: ProfilePattern[] = [];
   for (const [source, profile] of Object.entries(value)) {
-    if (source === "" || !isCacheProfileId(profile)) continue;
+    if (source === '' || !isCacheProfileId(profile)) continue;
     const test = compile(source);
     if (test === undefined) continue;
     patterns.push({

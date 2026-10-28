@@ -1,15 +1,16 @@
 /** @jsxImportSource @opentui/solid */
-import type { Plugin } from "@opencode/plugin/tui";
-import type { RGBA } from "@opentui/core";
-import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
-import { LABEL_WIDTH, sidebarLines, type Tone } from "./sidebar-lines.ts";
-import { SIDEBAR_REFRESH_MS } from "../constants/keepalive.ts";
-import type { KeepaliveSnapshot } from "../models/keepalive.ts";
+import type { Plugin } from '@opencode/plugin/tui';
+import type { RGBA } from '@opentui/core';
+import { createEffect, createSignal, Index, onCleanup, Show } from 'solid-js';
+
+import { SIDEBAR_REFRESH_MS } from '../constants/keepalive.ts';
+import type { KeepaliveSnapshot } from '../models/keepalive.ts';
+import { LABEL_WIDTH, sidebarLines, type Tone } from './sidebar-lines.ts';
 
 /** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
 export type SidebarPalette = Readonly<Record<Tone, RGBA>>;
 
-export function paletteFromTheme(theme: Plugin.Context["theme"]): SidebarPalette {
+export function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
   return {
     base: theme.text.base,
     muted: theme.text.muted,
@@ -19,7 +20,10 @@ export function paletteFromTheme(theme: Plugin.Context["theme"]): SidebarPalette
   };
 }
 
-export function CacheLines(props: { palette: () => SidebarPalette; snapshot: () => KeepaliveSnapshot | undefined }) {
+export function CacheLines(props: {
+  palette: () => SidebarPalette;
+  snapshot: () => KeepaliveSnapshot | undefined;
+}) {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(timer));
@@ -44,10 +48,12 @@ export function CacheLines(props: { palette: () => SidebarPalette; snapshot: () 
           >
             <box flexDirection="row">
               <text width={LABEL_WIDTH}>
-                <span style={{ fg: toneColor(line().bullet ?? "base") }}>{line().bullet ? "• " : "  "}</span>
+                <span style={{ fg: toneColor(line().bullet ?? 'base') }}>
+                  {line().bullet ? '• ' : '  '}
+                </span>
                 <span style={{ fg: toneColor(line().tone) }}>{line().text}</span>
               </text>
-              <text fg={toneColor(line().rightTone ?? "muted")}>{line().right}</text>
+              <text fg={toneColor(line().rightTone ?? 'muted')}>{line().right}</text>
             </box>
           </Show>
         )}
@@ -91,13 +97,19 @@ export function registerSidebar(
   ctx: Plugin.Context,
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>,
   load: (sessionID: string) => void,
-  refresh: (sessionID: string) => void,
+  refresh: (sessionID: string) => void
 ): () => void {
   return ctx.ui.slot({
-    append: "sidebar.content",
+    append: 'sidebar.content',
     // `input` is reactive: read `sessionID` through it so the section follows session switches.
     render: (input) => (
-      <CacheSection ctx={ctx} sessionID={input.sessionID} snapshots={snapshots} load={load} refresh={refresh} />
+      <CacheSection
+        ctx={ctx}
+        sessionID={input.sessionID}
+        snapshots={snapshots}
+        load={load}
+        refresh={refresh}
+      />
     ),
   });
 }

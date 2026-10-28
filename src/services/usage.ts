@@ -1,6 +1,6 @@
-import type { CacheUsage, ResponseParsers, Ttl } from "../models/cache.ts";
-import { isRecord } from "../utils/is-record.ts";
-import { num } from "../utils/num.ts";
+import type { CacheUsage, ResponseParsers, Ttl } from '../models/cache.ts';
+import { isRecord } from '../utils/is-record.ts';
+import { num } from '../utils/num.ts';
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
 export function contextTokens(u: CacheUsage): number {
@@ -17,8 +17,8 @@ export function hasCacheActivity(u: CacheUsage): boolean {
  * was no write or no breakdown.
  */
 export function grantedTtl(u: CacheUsage): Ttl | undefined {
-  if ((u.write5mTokens ?? 0) > 0) return "5m";
-  if ((u.write1hTokens ?? 0) > 0) return "1h";
+  if ((u.write5mTokens ?? 0) > 0) return '5m';
+  if ((u.write1hTokens ?? 0) > 0) return '1h';
   return undefined;
 }
 
@@ -63,8 +63,8 @@ export function parseUsageFromJson(body: unknown): CacheUsage | undefined {
 export function parseUsageFromSse(text: string): CacheUsage | undefined {
   let merged: PartialUsage | undefined;
 
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
     let event: unknown;
     try {
       event = JSON.parse(line.slice(5).trim());
@@ -74,9 +74,9 @@ export function parseUsageFromSse(text: string): CacheUsage | undefined {
     if (!isRecord(event)) continue;
 
     const raw =
-      event.type === "message_start" && isRecord(event.message)
+      event.type === 'message_start' && isRecord(event.message)
         ? event.message.usage
-        : event.type === "message_delta"
+        : event.type === 'message_delta'
           ? event.usage
           : undefined;
     const partial = readUsage(raw);
@@ -93,19 +93,19 @@ export function parseUsageFromSse(text: string): CacheUsage | undefined {
 
 /** The top-level `stop_reason` of a non-streaming Messages response. */
 export function parseStopReasonFromJson(body: unknown): string | undefined {
-  return isRecord(body) && typeof body.stop_reason === "string" ? body.stop_reason : undefined;
+  return isRecord(body) && typeof body.stop_reason === 'string' ? body.stop_reason : undefined;
 }
 
 /** The last `message_delta.delta.stop_reason` of a streamed Messages response. */
 export function parseStopReasonFromSse(text: string): string | undefined {
   let stopReason: string | undefined;
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
     try {
       const event: unknown = JSON.parse(line.slice(5).trim());
-      if (isRecord(event) && event.type === "message_delta" && isRecord(event.delta)) {
+      if (isRecord(event) && event.type === 'message_delta' && isRecord(event.delta)) {
         const reason = event.delta.stop_reason;
-        if (typeof reason === "string") stopReason = reason;
+        if (typeof reason === 'string') stopReason = reason;
       }
     } catch {
       continue;
@@ -116,18 +116,20 @@ export function parseStopReasonFromSse(text: string): string | undefined {
 
 /** The top-level `model` of a non-streaming Messages response. */
 export function parseModelFromJson(body: unknown): string | undefined {
-  return isRecord(body) && typeof body.model === "string" && body.model !== "" ? body.model : undefined;
+  return isRecord(body) && typeof body.model === 'string' && body.model !== ''
+    ? body.model
+    : undefined;
 }
 
 /** The `message.model` of the first `message_start` event of a streamed Messages response. */
 export function parseModelFromSse(text: string): string | undefined {
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data:")) continue;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
     try {
       const event: unknown = JSON.parse(line.slice(5).trim());
-      if (isRecord(event) && event.type === "message_start" && isRecord(event.message)) {
+      if (isRecord(event) && event.type === 'message_start' && isRecord(event.message)) {
         const model = event.message.model;
-        if (typeof model === "string" && model !== "") return model;
+        if (typeof model === 'string' && model !== '') return model;
       }
     } catch {
       continue;

@@ -1,4 +1,9 @@
-import type { CacheUsage, ObservedResponse, ResponseIdentity, ResponseParsers } from "../models/cache.ts";
+import type {
+  CacheUsage,
+  ObservedResponse,
+  ResponseIdentity,
+  ResponseParsers,
+} from '../models/cache.ts';
 
 /**
  * Tees the response body so usage, the stop reason and, where `parsers`
@@ -8,7 +13,7 @@ import type { CacheUsage, ObservedResponse, ResponseIdentity, ResponseParsers } 
  */
 export function observeResponseUsage(
   response: Response,
-  parsers: ResponseParsers,
+  parsers: ResponseParsers
 ): {
   response: Response;
   usage: Promise<CacheUsage | undefined>;
@@ -40,7 +45,7 @@ export function observeResponseUsage(
         await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
       },
     },
-    { highWaterMark: 0 },
+    { highWaterMark: 0 }
   );
   const passthrough = new Response(forCaller, {
     status: response.status,
@@ -48,11 +53,11 @@ export function observeResponseUsage(
     headers: response.headers,
   });
 
-  const contentType = response.headers.get("content-type") ?? "";
+  const contentType = response.headers.get('content-type') ?? '';
   const parsed = (async (): Promise<ObservedResponse> => {
     try {
       const decoder = new TextDecoder();
-      let text = "";
+      let text = '';
       for (;;) {
         const { done, value } = await observerReader.read();
         if (done) break;
@@ -60,7 +65,7 @@ export function observeResponseUsage(
       }
       text += decoder.decode();
       if (cancelled || !response.ok) return {};
-      if (contentType.includes("text/event-stream")) return parsers.fromSse(text);
+      if (contentType.includes('text/event-stream')) return parsers.fromSse(text);
       return parsers.fromJson(JSON.parse(text));
     } catch {
       return {};

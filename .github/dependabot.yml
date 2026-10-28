@@ -10,7 +10,7 @@ updates:
     groups:
       opentui:
         patterns:
-          - "@opentui/*"
+          - '@opentui/*'
       dev-dependencies:
         dependency-type: development
         update-types:
@@ -26,4 +26,4 @@ updates:
     groups:
       actions:
         patterns:
-          - "*"
+          - '*'

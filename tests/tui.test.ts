@@ -1,11 +1,12 @@
-import { describe, expect, mock, test } from "bun:test";
-import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
+import { describe, expect, mock, test } from 'bun:test';
+
+import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
 // `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
 // `solid-js` peer that is only present in the live TUI host. `define` is an
 // identity helper, so stub it here (before importing the TUI entrypoint) to keep
 // the test harness dependency-free.
-mock.module("@opencode/plugin/tui", () => ({
+await mock.module('@opencode/plugin/tui', () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
 // Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
@@ -13,7 +14,7 @@ mock.module("@opencode/plugin/tui", () => ({
 // Bun shares module mocks across test files, so the rest of the module stays
 // real for tests/scripts/capture-sidebar.test.ts, which renders the component.
 ensureSolidTransformPlugin();
-const { CacheLines, paletteFromTheme } = await import("../src/ui/sidebar.tsx");
+const { CacheLines, paletteFromTheme } = await import('../src/ui/sidebar.tsx');
 type SidebarCall = {
   snapshots: () => ReadonlyMap<string, any>;
   load: (sessionID: string) => void;
@@ -22,16 +23,16 @@ type SidebarCall = {
 };
 const sidebarCalls: SidebarCall[] = [];
 let sidebarThrows = false;
-mock.module("../src/ui/sidebar.tsx", () => ({
+await mock.module('../src/ui/sidebar.tsx', () => ({
   CacheLines,
   paletteFromTheme,
   registerSidebar: (
     _ctx: unknown,
-    snapshots: SidebarCall["snapshots"],
-    load: SidebarCall["load"],
-    refresh: SidebarCall["refresh"],
+    snapshots: SidebarCall['snapshots'],
+    load: SidebarCall['load'],
+    refresh: SidebarCall['refresh']
   ) => {
-    if (sidebarThrows) throw new Error("sidebar unavailable");
+    if (sidebarThrows) throw new Error('sidebar unavailable');
     const call: SidebarCall = { snapshots, load, refresh, disposed: false };
     sidebarCalls.push(call);
     return () => {
@@ -39,14 +40,14 @@ mock.module("../src/ui/sidebar.tsx", () => ({
     };
   },
 }));
-const { default: tuiPlugin } = await import("../src/tui.ts");
+const { default: tuiPlugin } = await import('../src/tui.ts');
 
 // ---------------------------------------------------------------------------
 // TUI plugin (keymap layer + dialog modal + toasts)
 // ---------------------------------------------------------------------------
 
 type TuiMockOptions = {
-  route?: { type: "home" } | { type: "session"; sessionID: string };
+  route?: { type: 'home' } | { type: 'session'; sessionID: string };
   global?: Record<string, unknown>;
   session?: Record<string, unknown> | null;
   selects?: unknown[];
@@ -91,34 +92,40 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   const listeners = new Set<(event: any) => void>();
   const selects = [...(options.selects ?? [])];
   const prompts = [...(options.prompts ?? [])];
-  const route = options.route ?? { type: "session", sessionID: "ses_tui" };
-  const global = { mode: "5m", keepalive: true, maxPings: 5, minContextTokens: 50_000, ...options.global };
+  const route = options.route ?? { type: 'session', sessionID: 'ses_tui' };
+  const global = {
+    mode: '5m',
+    keepalive: true,
+    maxPings: 5,
+    minContextTokens: 50_000,
+    ...options.global,
+  };
 
   const ctx = {
     client: {
       rpc: () => ({
         getSettings: async (_input: any, opts?: any) => {
-          rpcOptions.push(["getSettings", opts]);
+          rpcOptions.push(['getSettings', opts]);
           return { global, session: options.session ?? null };
         },
         setSession: async (input: any, opts?: any) => {
-          rpcOptions.push(["setSession", opts]);
+          rpcOptions.push(['setSession', opts]);
           setSessionCalls.push(input);
           if (options.setSessionImpl) return options.setSessionImpl(input);
           return {};
         },
         setGlobal: async (input: any, opts?: any) => {
-          rpcOptions.push(["setGlobal", opts]);
+          rpcOptions.push(['setGlobal', opts]);
           setGlobalCalls.push(input);
           return {};
         },
         resetSession: async (input: any, opts?: any) => {
-          rpcOptions.push(["resetSession", opts]);
+          rpcOptions.push(['resetSession', opts]);
           resetCalls.push(input);
           return {};
         },
         getKeepalive: async (input: any, opts?: any) => {
-          rpcOptions.push(["getKeepalive", opts]);
+          rpcOptions.push(['getKeepalive', opts]);
           getKeepaliveCalls.push(input);
           return options.keepalive?.[input.sessionID];
         },
@@ -133,7 +140,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
                 wake?.();
               };
               listeners.add(push);
-              opts?.signal?.addEventListener("abort", () => wake?.());
+              opts?.signal?.addEventListener('abort', () => wake?.());
               try {
                 while (!opts?.signal?.aborted) {
                   if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
@@ -150,7 +157,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     location: options.location,
     data: {
       session: { get: (sessionID: string) => options.sessions?.[sessionID] },
-      location: { default: () => ({ directory: "/home/default" }) },
+      location: { default: () => ({ directory: '/home/default' }) },
     },
     storage: {
       memory: (_key: string, { initial }: { initial: object }) => {
@@ -197,7 +204,8 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     rpcOptions,
     subscriptions,
     emitKeepalive: async (snapshot: any) => {
-      for (const listener of listeners) listener({ type: "rpc.opencode-cache-manager.keepalive.updated", data: snapshot });
+      for (const listener of listeners)
+        listener({ type: 'rpc.opencode-cache-manager.keepalive.updated', data: snapshot });
       await new Promise((resolve) => setTimeout(resolve, 0));
     },
     layer: () => layer,
@@ -211,91 +219,93 @@ async function setupTui(options: TuiMockOptions = {}): Promise<TuiMock> {
   return mock;
 }
 
-describe("cache-manager TUI plugin", () => {
-  test("registers the cache-manager command", async () => {
+describe('cache-manager TUI plugin', () => {
+  test('registers the cache-manager command', async () => {
     const mock = await setupTui();
     const command = mock.layer().commands[0];
 
-    expect(command.id).toBe("cache-manager.open");
-    expect(command.title).toBe("Cache Manager");
-    expect(command.group).toBe("Provider");
-    expect(command.slash).toEqual({ name: "cache-manager", arguments: true });
+    expect(command.id).toBe('cache-manager.open');
+    expect(command.title).toBe('Cache Manager');
+    expect(command.group).toBe('Provider');
+    expect(command.slash).toEqual({ name: 'cache-manager', arguments: true });
   });
 
-  test("an RPC failure surfaces as an error toast without throwing", async () => {
+  test('an RPC failure surfaces as an error toast without throwing', async () => {
     const mock = await setupTui({
-      selects: ["session:mode", "1h"],
+      selects: ['session:mode', '1h'],
       setSessionImpl: async () => {
-        throw new Error("rpc down");
+        throw new Error('rpc down');
       },
     });
 
-    await expect(mock.run("")).resolves.toBeUndefined();
+    await expect(mock.run('')).resolves.toBeUndefined();
 
     expect(mock.setSessionCalls).toHaveLength(1);
     expect(mock.toasts).toHaveLength(1);
-    expect(mock.toasts[0].variant).toBe("error");
-    expect(mock.toasts[0].message).toContain("rpc down");
+    expect(mock.toasts[0].variant).toBe('error');
+    expect(mock.toasts[0].message).toContain('rpc down');
   });
 
-  describe("RPC location", () => {
-    const sessions = { ses_tui: { location: { directory: "/work/project" } } };
+  describe('RPC location', () => {
+    const sessions = { ses_tui: { location: { directory: '/work/project' } } };
 
     test("session commands target the session's directory", async () => {
       const mock = await setupTui({ sessions });
 
-      await mock.run("1h");
-      await mock.run("reset");
+      await mock.run('1h');
+      await mock.run('reset');
 
       expect(mock.rpcOptions).toEqual([
-        ["setSession", { location: { directory: "/work/project" } }],
-        ["resetSession", { location: { directory: "/work/project" } }],
+        ['setSession', { location: { directory: '/work/project' } }],
+        ['resetSession', { location: { directory: '/work/project' } }],
       ]);
     });
 
     test("global changes from the home screen use the TUI's location", async () => {
       const mock = await setupTui({
-        route: { type: "home" },
-        location: { directory: "/work/tui" },
-        selects: ["global:mode", "1h"],
+        route: { type: 'home' },
+        location: { directory: '/work/tui' },
+        selects: ['global:mode', '1h'],
       });
 
-      await mock.run("");
+      await mock.run('');
 
       expect(mock.rpcOptions).toEqual([
-        ["getSettings", { location: { directory: "/work/tui" } }],
-        ["setGlobal", { location: { directory: "/work/tui" } }],
+        ['getSettings', { location: { directory: '/work/tui' } }],
+        ['setGlobal', { location: { directory: '/work/tui' } }],
       ]);
     });
 
-    test("falls back to the default location when nothing else is known", async () => {
+    test('falls back to the default location when nothing else is known', async () => {
       const mock = await setupTui({ selects: [undefined] });
 
-      await mock.run("");
+      await mock.run('');
 
-      expect(mock.rpcOptions).toEqual([["getSettings", { location: { directory: "/home/default" } }]]);
+      expect(mock.rpcOptions).toEqual([
+        ['getSettings', { location: { directory: '/home/default' } }],
+      ]);
     });
 
     test("sidebar load and refresh fetch from the session's directory", async () => {
-      const mock = await setupTui({ sessions, keepalive: { ses_tui: { sessionID: "ses_tui" } } });
+      const mock = await setupTui({ sessions, keepalive: { ses_tui: { sessionID: 'ses_tui' } } });
       const sidebar = sidebarCalls[sidebarCalls.length - 1]!;
 
-      sidebar.load("ses_tui");
+      sidebar.load('ses_tui');
       await new Promise((resolve) => setTimeout(resolve, 0));
-      sidebar.refresh("ses_tui");
+      sidebar.refresh('ses_tui');
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mock.rpcOptions).toEqual([
-        ["getKeepalive", { location: { directory: "/work/project" } }],
-        ["getKeepalive", { location: { directory: "/work/project" } }],
+        ['getKeepalive', { location: { directory: '/work/project' } }],
+        ['getKeepalive', { location: { directory: '/work/project' } }],
       ]);
     });
   });
 
-  describe("sidebar", () => {
+  describe('sidebar', () => {
     const lastSidebar = () => sidebarCalls[sidebarCalls.length - 1]!;
 
-    test("registers the sidebar slot with an initially empty snapshot map", async () => {
+    test('registers the sidebar slot with an initially empty snapshot map', async () => {
       sidebarCalls.length = 0;
       await setupTui();
 
@@ -303,15 +313,15 @@ describe("cache-manager TUI plugin", () => {
       expect(lastSidebar().snapshots().size).toBe(0);
     });
 
-    test("a sidebar that fails to register leaves the command and subscription working", async () => {
+    test('a sidebar that fails to register leaves the command and subscription working', async () => {
       sidebarThrows = true;
       try {
         const mock = await setupTui();
 
-        await mock.run("status");
+        await mock.run('status');
         expect(mock.toasts).toHaveLength(1);
-        expect(mock.toasts[0].variant).toBe("info");
-        expect(mock.subscriptions.map((s) => s.name)).toEqual(["keepalive.updated"]);
+        expect(mock.toasts[0].variant).toBe('info');
+        expect(mock.subscriptions.map((s) => s.name)).toEqual(['keepalive.updated']);
         expect(() => mock.cleanup!()).not.toThrow();
         expect(mock.subscriptions[0]!.signal?.aborted).toBe(true);
       } finally {
@@ -319,7 +329,7 @@ describe("cache-manager TUI plugin", () => {
       }
     });
 
-    test("cleanup disposes the slot and aborts the subscription", async () => {
+    test('cleanup disposes the slot and aborts the subscription', async () => {
       const mock = await setupTui();
       const sub = mock.subscriptions[0]!;
       expect(sub.signal?.aborted).toBe(false);

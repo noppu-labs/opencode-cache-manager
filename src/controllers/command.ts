@@ -1,15 +1,15 @@
-import type { Settings } from "../config/settings.ts";
-import type { SettingsStore } from "../services/settings-store.ts";
-import { parseCommandArg } from "./command-args.ts";
+import type { Settings } from '../config/settings.ts';
+import type { SettingsStore } from '../services/settings-store.ts';
+import { parseCommandArg } from './command-args.ts';
 
 const INVALID_ARGUMENT_TEXT =
-  "Unknown cache argument. Use `5m`, `1h`, `hybrid`, `keepalive on|off`, " +
-  "`pings <0-100>`, `min <tokens|50k>`, `status`, or `reset`, " +
-  "or run `/cache-manager` with no argument to toggle this session between 5m and 1h.";
+  'Unknown cache argument. Use `5m`, `1h`, `hybrid`, `keepalive on|off`, ' +
+  '`pings <0-100>`, `min <tokens|50k>`, `status`, or `reset`, ' +
+  'or run `/cache-manager` with no argument to toggle this session between 5m and 1h.';
 
 function describeSettings(settings: Settings): string {
   return (
-    `mode ${settings.mode}, keepalive ${settings.keepalive ? "on" : "off"}, ` +
+    `mode ${settings.mode}, keepalive ${settings.keepalive ? 'on' : 'off'}, ` +
     `max pings ${settings.maxPings}, min context ${settings.minContextTokens} tokens`
   );
 }
@@ -17,15 +17,15 @@ function describeSettings(settings: Settings): string {
 export interface CommandDeps {
   store: SettingsStore;
   /** Applies a settings change to the keepalive schedule and tells the TUI. */
-  settingsChanged(sessionID: string | null): Promise<unknown>;
+  settingsChanged: (sessionID: string | null) => Promise<unknown>;
   /** Shows `text` in the session without resuming it. */
-  say(sessionID: string, text: string): Promise<unknown>;
+  say: (sessionID: string, text: string) => Promise<unknown>;
 }
 
 /** The `/cache-manager` command: typed arguments edit the current session's settings. */
 export function createCacheManagerCommand({ store, settingsChanged, say }: CommandDeps) {
   return {
-    name: "cache-manager",
+    name: 'cache-manager',
     description:
       "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
     async execute(input: { sessionID: string; prompt: unknown }): Promise<void> {
@@ -33,28 +33,37 @@ export function createCacheManagerCommand({ store, settingsChanged, say }: Comma
       const action = parseCommandArg(input.prompt);
 
       switch (action.type) {
-        case "status":
-          await say(sessionID, `Session cache settings: ${describeSettings(await store.effective(sessionID))}.`);
+        case 'status':
+          await say(
+            sessionID,
+            `Session cache settings: ${describeSettings(await store.effective(sessionID))}.`
+          );
           return;
-        case "invalid":
+        case 'invalid':
           await say(sessionID, INVALID_ARGUMENT_TEXT);
           return;
-        case "reset":
+        case 'reset':
           await store.resetSession(sessionID);
           await settingsChanged(sessionID);
-          await say(sessionID, `Session cache settings reset: ${describeSettings(await store.effective(sessionID))}.`);
+          await say(
+            sessionID,
+            `Session cache settings reset: ${describeSettings(await store.effective(sessionID))}.`
+          );
           return;
-        case "toggle": {
+        case 'toggle': {
           const { mode } = await store.effective(sessionID);
-          await store.setSession(sessionID, { mode: mode === "5m" ? "1h" : "5m" });
+          await store.setSession(sessionID, { mode: mode === '5m' ? '1h' : '5m' });
           break;
         }
-        case "set":
+        case 'set':
           await store.setSession(sessionID, action.patch);
           break;
       }
       await settingsChanged(sessionID);
-      await say(sessionID, `Session cache settings updated: ${describeSettings(await store.effective(sessionID))}.`);
+      await say(
+        sessionID,
+        `Session cache settings updated: ${describeSettings(await store.effective(sessionID))}.`
+      );
     },
   };
 }

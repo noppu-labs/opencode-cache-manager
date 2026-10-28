@@ -1,8 +1,20 @@
-import { BUILTIN_DEFAULTS, type Settings } from "../config/settings.ts";
-import { DETECTABLE_TTLS, EXPIRY_MARGIN_MS, HIT_RATIO, PING_OFFSET_MS, RETRY_DELAY_MS, TTL_MS } from "../constants/keepalive.ts";
-import type { CacheUsage, Ttl } from "../models/cache.ts";
-import type { CacheReadout, KeepaliveSnapshot, RequestKind, SkipReason } from "../models/keepalive.ts";
-import { contextTokens, grantedTtl, hasCacheActivity } from "./usage.ts";
+import { BUILTIN_DEFAULTS, type Settings } from '../config/settings.ts';
+import {
+  DETECTABLE_TTLS,
+  EXPIRY_MARGIN_MS,
+  HIT_RATIO,
+  PING_OFFSET_MS,
+  RETRY_DELAY_MS,
+  TTL_MS,
+} from '../constants/keepalive.ts';
+import type { CacheUsage, Ttl } from '../models/cache.ts';
+import type {
+  CacheReadout,
+  KeepaliveSnapshot,
+  RequestKind,
+  SkipReason,
+} from '../models/keepalive.ts';
+import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
 
 export interface EngineDeps {
   now(): number;
@@ -23,7 +35,7 @@ interface PingInFlight {
 
 interface SessionState {
   ttl: Ttl | null;
-  ttlSource: "detected" | "requested" | null;
+  ttlSource: 'detected' | 'requested' | null;
   /** Null for sessions whose provider manages the cache itself. */
   requestedTtl: Ttl | null;
   lastRequestAt: number | null;
@@ -35,7 +47,7 @@ interface SessionState {
   pingsUsed: number;
   maxPings: number;
   minContextTokens: number;
-  lastPing: "hit" | "miss" | "failed" | null;
+  lastPing: 'hit' | 'miss' | 'failed' | null;
   skipReason: SkipReason | null;
   contextTokens: number | null;
   lastCache: CacheReadout | null;
@@ -63,7 +75,10 @@ export class KeepaliveEngine {
   constructor(private readonly deps: EngineDeps) {}
 
   /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
-  requestSent(sessionID: string, info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }): void {
+  requestSent(
+    sessionID: string,
+    info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }
+  ): void {
     if (this.disposed) return;
     const s = this.state(sessionID);
 
@@ -77,12 +92,17 @@ export class KeepaliveEngine {
     s.inflight = null;
     s.lastRequestAt = this.deps.now();
     s.requestSentAt = s.lastRequestAt;
-    const kind = info.kind ?? "primary";
-    if (kind === "primary" || kind === "compaction") {
+    const kind = info.kind ?? 'primary';
+    if (kind === 'primary' || kind === 'compaction') {
       s.requestedTtl = info.requestedTtl;
       // A TTL usage cannot report means the session switched to a model whose cache the detected TTL does not describe.
       const requested = info.requestedTtl;
-      if (s.ttlSource === "detected" && requested !== null && requested !== s.ttl && !DETECTABLE_TTLS.has(requested)) {
+      if (
+        s.ttlSource === 'detected' &&
+        requested !== null &&
+        requested !== s.ttl &&
+        !DETECTABLE_TTLS.has(requested)
+      ) {
         s.ttl = null;
         s.ttlSource = null;
       }
@@ -93,7 +113,7 @@ export class KeepaliveEngine {
     s.busy = false;
     s.retryAt = null;
     s.nextPingAt = null;
-    if (s.skipReason === "missed" || s.skipReason === "exhausted") s.skipReason = null;
+    if (s.skipReason === 'missed' || s.skipReason === 'exhausted') s.skipReason = null;
     this.commit(sessionID, s);
     void this.schedule(sessionID);
   }
@@ -108,11 +128,11 @@ export class KeepaliveEngine {
       kind: RequestKind;
       stopReason?: string;
       unmanaged?: boolean;
-    },
+    }
   ): Promise<void> {
     if (this.disposed) return;
     const s = this.state(sessionID);
-    if (info.unmanaged && !info.isPing && (info.kind === "primary" || info.kind === "compaction")) {
+    if (info.unmanaged && !info.isPing && (info.kind === 'primary' || info.kind === 'compaction')) {
       s.requestedTtl = null;
     }
 
@@ -132,7 +152,7 @@ export class KeepaliveEngine {
         s.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
         s.confirmedAt = s.lastRequestAt;
       }
-      s.lastPing = hit ? "hit" : "miss";
+      s.lastPing = hit ? 'hit' : 'miss';
       s.missed = !hit;
       s.retryAt = null;
       this.commit(sessionID, s);
@@ -151,23 +171,28 @@ export class KeepaliveEngine {
       s.confirmedAt = s.requestSentAt;
       s.lastRequestAt = s.requestSentAt;
     }
-    if (info.usage && info.kind === "primary") {
+    if (info.usage && info.kind === 'primary') {
       const total = contextTokens(info.usage);
       s.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
     }
     // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
-    if (info.usage && (info.kind === "primary" || info.kind === "compaction")) {
+    if (info.usage && (info.kind === 'primary' || info.kind === 'compaction')) {
       s.contextTokens = contextTokens(info.usage);
       this.learn(s, info.usage);
     }
-    if (info.kind === "primary" && info.stopReason === "tool_use") s.busy = true;
+    if (info.kind === 'primary' && info.stopReason === 'tool_use') s.busy = true;
     this.commit(sessionID, s);
     await this.schedule(sessionID);
   }
 
   async reevaluate(sessionID?: string): Promise<void> {
     if (this.disposed) return;
-    const ids = sessionID === undefined ? [...this.sessions.keys()] : this.sessions.has(sessionID) ? [sessionID] : [];
+    const ids =
+      sessionID === undefined
+        ? [...this.sessions.keys()]
+        : this.sessions.has(sessionID)
+          ? [sessionID]
+          : [];
     await Promise.all(ids.map((id) => this.schedule(id)));
   }
 
@@ -207,7 +232,7 @@ export class KeepaliveEngine {
       maxPings: BUILTIN_DEFAULTS.maxPings,
       minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
       lastPing: null,
-      skipReason: "no-cache-seen",
+      skipReason: 'no-cache-seen',
       contextTokens: null,
       lastCache: null,
       cacheSeen: false,
@@ -220,7 +245,7 @@ export class KeepaliveEngine {
       timer: null,
       generation: 0,
       child: undefined,
-      lastEmitted: "",
+      lastEmitted: '',
     };
     s.lastEmitted = JSON.stringify(this.toSnapshot(sessionID, s));
     return s;
@@ -232,7 +257,8 @@ export class KeepaliveEngine {
       ttl: s.ttl,
       ttlSource: s.ttlSource,
       lastRequestAt: s.lastRequestAt,
-      expiresAt: s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null,
+      expiresAt:
+        s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null,
       nextPingAt: s.nextPingAt,
       pingsUsed: s.pingsUsed,
       maxPings: s.maxPings,
@@ -263,10 +289,10 @@ export class KeepaliveEngine {
     const granted = grantedTtl(usage);
     if (granted) {
       s.ttl = granted;
-      s.ttlSource = "detected";
-    } else if (active && s.requestedTtl !== null && s.ttlSource !== "detected") {
+      s.ttlSource = 'detected';
+    } else if (active && s.requestedTtl !== null && s.ttlSource !== 'detected') {
       s.ttl = s.requestedTtl;
-      s.ttlSource = "requested";
+      s.ttlSource = 'requested';
     }
   }
 
@@ -297,7 +323,10 @@ export class KeepaliveEngine {
     let settings: Settings;
     let child: boolean;
     try {
-      [settings, child] = await Promise.all([this.deps.settings(sessionID), this.isChild(sessionID, s)]);
+      [settings, child] = await Promise.all([
+        this.deps.settings(sessionID),
+        this.isChild(sessionID, s),
+      ]);
     } catch {
       if (!this.disposed && s.generation === generation && !s.inflight) {
         s.nextPingAt = null;
@@ -320,14 +349,14 @@ export class KeepaliveEngine {
   }
 
   private skipReason(s: SessionState, settings: Settings, child: boolean): SkipReason | null {
-    if (child) return "child";
-    if (s.requestedTtl === null) return "implicit";
-    if (s.busy) return "busy";
-    if (!settings.keepalive) return "disabled";
-    if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return "no-cache-seen";
-    if ((s.contextTokens ?? 0) < settings.minContextTokens) return "small-context";
-    if (s.missed) return "missed";
-    if (s.pingsUsed >= settings.maxPings) return "exhausted";
+    if (child) return 'child';
+    if (s.requestedTtl === null) return 'implicit';
+    if (s.busy) return 'busy';
+    if (!settings.keepalive) return 'disabled';
+    if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return 'no-cache-seen';
+    if ((s.contextTokens ?? 0) < settings.minContextTokens) return 'small-context';
+    if (s.missed) return 'missed';
+    if (s.pingsUsed >= settings.maxPings) return 'exhausted';
     return null;
   }
 
@@ -335,7 +364,10 @@ export class KeepaliveEngine {
   private pingTime(s: SessionState): number | null {
     if (s.ttl === null || s.lastRequestAt === null) return null;
     const cutoff = s.lastRequestAt + TTL_MS[s.ttl] - EXPIRY_MARGIN_MS;
-    const due = s.lastPing === "failed" && s.retryAt !== null ? s.retryAt : s.lastRequestAt + PING_OFFSET_MS[s.ttl];
+    const due =
+      s.lastPing === 'failed' && s.retryAt !== null
+        ? s.retryAt
+        : s.lastRequestAt + PING_OFFSET_MS[s.ttl];
     if (due > cutoff || this.deps.now() > cutoff) return null;
     return due;
   }
@@ -351,7 +383,8 @@ export class KeepaliveEngine {
     }
 
     const now = this.deps.now();
-    const expiresAt = s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null;
+    const expiresAt =
+      s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null;
     if (expiresAt === null || now > expiresAt - EXPIRY_MARGIN_MS) {
       s.nextPingAt = null;
       this.commit(sessionID, s);
@@ -383,7 +416,7 @@ export class KeepaliveEngine {
   }
 
   private async failPing(sessionID: string, s: SessionState): Promise<void> {
-    s.lastPing = "failed";
+    s.lastPing = 'failed';
     s.retryAt = this.deps.now() + RETRY_DELAY_MS;
     this.commit(sessionID, s);
     await this.schedule(sessionID);

@@ -1,10 +1,11 @@
-import { Plugin } from "@opencode/plugin/tui";
-import { CacheTtlRpc, type RawCacheTtlRpcClient } from "./rpc.ts";
-import { withLocation } from "./ui/located-rpc.ts";
-import { createCommandRunner } from "./ui/command.ts";
-import { createPicker, type Toast } from "./ui/picker.ts";
-import { createSnapshotFeed } from "./ui/snapshot-feed.ts";
-import { isInsideNodeModules } from "./utils/node-modules.ts";
+import { Plugin } from '@opencode/plugin/tui';
+
+import { CacheTtlRpc, type RawCacheTtlRpcClient } from './rpc.ts';
+import { createCommandRunner } from './ui/command.ts';
+import { withLocation } from './ui/located-rpc.ts';
+import { createPicker, type Toast } from './ui/picker.ts';
+import { createSnapshotFeed } from './ui/snapshot-feed.ts';
+import { isInsideNodeModules } from './utils/node-modules.ts';
 
 /**
  * TUI entrypoint for the prompt-cache plugin.
@@ -15,19 +16,19 @@ import { isInsideNodeModules } from "./utils/node-modules.ts";
  * the settings stay in one place (`ctx.storage`).
  */
 export default Plugin.define({
-  id: "opencode-cache-manager",
+  id: 'opencode-cache-manager',
   async setup(ctx) {
     const rpc = withLocation(
       ctx.client.rpc(CacheTtlRpc as any) as unknown as RawCacheTtlRpcClient,
       (sessionID) =>
         (sessionID === undefined ? undefined : ctx.data.session.get(sessionID)?.location) ??
         ctx.location ??
-        ctx.data.location.default(),
+        ctx.data.location.default()
     );
 
     const currentSessionID = (): string | undefined => {
       const route = ctx.ui.router.current();
-      return route.type === "session" ? route.sessionID : undefined;
+      return route.type === 'session' ? route.sessionID : undefined;
     };
     const toast: Toast = (message, variant) => ctx.ui.toast.show({ message, variant });
 
@@ -35,15 +36,15 @@ export default Plugin.define({
     const runCommand = createCommandRunner({ rpc, toast, currentSessionID, openPicker });
 
     ctx.keymap.layer(() => ({
-      mode: "base",
+      mode: 'base',
       commands: [
         {
-          id: "cache-manager.open",
-          title: "Cache Manager",
-          description: "Manage the prompt cache TTL and keepalive (Claude, GPT-5.6+)",
-          group: "Provider",
+          id: 'cache-manager.open',
+          title: 'Cache Manager',
+          description: 'Manage the prompt cache TTL and keepalive (Claude, GPT-5.6+)',
+          group: 'Provider',
           palette: true,
-          slash: { name: "cache-manager", arguments: true },
+          slash: { name: 'cache-manager', arguments: true },
           run: (input?: string) => runCommand(input),
         },
       ],
@@ -58,8 +59,8 @@ export default Plugin.define({
     let disposeSidebar: (() => void) | undefined;
     try {
       const { registerSidebar } = isInsideNodeModules(import.meta.url)
-        ? await import("./ui/sidebar.compiled.js")
-        : await import("./ui/sidebar.tsx");
+        ? await import('./ui/sidebar.compiled.js')
+        : await import('./ui/sidebar.tsx');
       disposeSidebar = registerSidebar(ctx, feed.snapshots, feed.load, feed.refresh);
     } catch {
       // Sidebar unavailable; the rest of the plugin keeps working.

@@ -1,9 +1,9 @@
-import type { CacheProfile } from "../../models/profile.ts";
+import type { CacheProfile } from '../../models/profile.ts';
 
 /** Provider-managed caching: nothing to rewrite, nothing to keep warm. */
 export const implicitProfile: CacheProfile = {
-  id: "implicit",
-  wires: ["anthropic-messages", "openai-chat", "openai-responses"],
+  id: 'implicit',
+  wires: ['anthropic-messages', 'openai-chat', 'openai-responses'],
   ttlForMode: () => null,
   rewrite: () => false,
   pings: false,

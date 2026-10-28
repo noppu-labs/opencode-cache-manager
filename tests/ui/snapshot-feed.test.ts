@@ -1,12 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import type { KeepaliveSnapshot } from "../../src/models/keepalive.ts";
-import type { CacheTtlRpcClient } from "../../src/rpc.ts";
-import { createSnapshotFeed } from "../../src/ui/snapshot-feed.ts";
+import { describe, expect, test } from 'bun:test';
 
-const snapshot = (sessionID: string, overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot => ({
+import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
+import type { CacheTtlRpcClient } from '../../src/rpc.ts';
+import { createSnapshotFeed } from '../../src/ui/snapshot-feed.ts';
+
+const snapshot = (
+  sessionID: string,
+  overrides: Partial<KeepaliveSnapshot> = {}
+): KeepaliveSnapshot => ({
   sessionID,
-  ttl: "5m",
-  ttlSource: "detected",
+  ttl: '5m',
+  ttlSource: 'detected',
   lastRequestAt: 1,
   expiresAt: 2,
   nextPingAt: null,
@@ -38,7 +42,7 @@ function setup(options: Options = {}) {
       getKeepaliveCalls.push(input);
       if (failures > 0) {
         failures--;
-        throw new Error("rpc down");
+        throw new Error('rpc down');
       }
       return options.keepalive?.[input.sessionID] as KeepaliveSnapshot;
     },
@@ -53,7 +57,7 @@ function setup(options: Options = {}) {
             wake?.();
           };
           listeners.add(push);
-          opts?.signal?.addEventListener("abort", () => wake?.());
+          opts?.signal?.addEventListener('abort', () => wake?.());
           try {
             while (!opts?.signal?.aborted) {
               if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
@@ -87,110 +91,110 @@ function setup(options: Options = {}) {
   };
 }
 
-describe("createSnapshotFeed", () => {
-  test("starts with an empty snapshot map", () => {
+describe('createSnapshotFeed', () => {
+  test('starts with an empty snapshot map', () => {
     const t = setup();
 
     expect(t.feed.snapshots().size).toBe(0);
   });
 
-  test("keepalive.updated events populate the snapshot map", async () => {
+  test('keepalive.updated events populate the snapshot map', async () => {
     const t = setup();
 
-    await t.emit(snapshot("ses_a"));
-    await t.emit(snapshot("ses_b", { pingsUsed: 2 }));
-    await t.emit(snapshot("ses_a", { pingsUsed: 1 }));
+    await t.emit(snapshot('ses_a'));
+    await t.emit(snapshot('ses_b', { pingsUsed: 2 }));
+    await t.emit(snapshot('ses_a', { pingsUsed: 1 }));
 
-    expect(t.subscriptions.map((s) => s.name)).toEqual(["keepalive.updated"]);
+    expect(t.subscriptions.map((s) => s.name)).toEqual(['keepalive.updated']);
     const map = t.feed.snapshots();
-    expect([...map.keys()].sort()).toEqual(["ses_a", "ses_b"]);
-    expect(map.get("ses_a")!.pingsUsed).toBe(1);
-    expect(map.get("ses_b")!.pingsUsed).toBe(2);
+    expect([...map.keys()].sort()).toEqual(['ses_a', 'ses_b']);
+    expect(map.get('ses_a')!.pingsUsed).toBe(1);
+    expect(map.get('ses_b')!.pingsUsed).toBe(2);
   });
 
-  test("load fetches getKeepalive once per session", async () => {
-    const t = setup({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 3 }) } });
+  test('load fetches getKeepalive once per session', async () => {
+    const t = setup({ keepalive: { ses_a: snapshot('ses_a', { pingsUsed: 3 }) } });
 
-    t.feed.load("ses_a");
-    t.feed.load("ses_a");
+    t.feed.load('ses_a');
+    t.feed.load('ses_a');
     await tick();
 
-    expect(t.getKeepaliveCalls).toEqual([{ sessionID: "ses_a" }]);
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(3);
+    expect(t.getKeepaliveCalls).toEqual([{ sessionID: 'ses_a' }]);
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(3);
   });
 
-  test("a fetched snapshot does not overwrite one already received by event", async () => {
-    const t = setup({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 0 }) } });
+  test('a fetched snapshot does not overwrite one already received by event', async () => {
+    const t = setup({ keepalive: { ses_a: snapshot('ses_a', { pingsUsed: 0 }) } });
 
-    await t.emit(snapshot("ses_a", { pingsUsed: 4 }));
-    t.feed.load("ses_a");
+    await t.emit(snapshot('ses_a', { pingsUsed: 4 }));
+    t.feed.load('ses_a');
     await tick();
 
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(4);
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(4);
   });
 
-  test("a failed fetch allows a retry", async () => {
-    const t = setup({ failures: 1, keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 3 }) } });
+  test('a failed fetch allows a retry', async () => {
+    const t = setup({ failures: 1, keepalive: { ses_a: snapshot('ses_a', { pingsUsed: 3 }) } });
 
-    t.feed.load("ses_a");
+    t.feed.load('ses_a');
     await tick();
     expect(t.feed.snapshots().size).toBe(0);
 
-    t.feed.load("ses_a");
+    t.feed.load('ses_a');
     await tick();
 
     expect(t.getKeepaliveCalls).toHaveLength(2);
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(3);
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(3);
   });
 
-  test("refresh fetches again and replaces the stored snapshot", async () => {
-    const keepalive = { ses_a: snapshot("ses_a", { pingsUsed: 1 }) };
+  test('refresh fetches again and replaces the stored snapshot', async () => {
+    const keepalive = { ses_a: snapshot('ses_a', { pingsUsed: 1 }) };
     const t = setup({ keepalive });
-    t.feed.load("ses_a");
+    t.feed.load('ses_a');
     await tick();
 
-    keepalive.ses_a = snapshot("ses_a", { pingsUsed: 2 });
-    t.feed.refresh("ses_a");
-    await tick();
-
-    expect(t.getKeepaliveCalls).toHaveLength(2);
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(2);
-  });
-
-  test("refresh skips while a fetch for the session is in flight", async () => {
-    const t = setup({ keepalive: { ses_a: snapshot("ses_a") } });
-
-    t.feed.refresh("ses_a");
-    t.feed.refresh("ses_a");
-    await tick();
-    t.feed.refresh("ses_a");
+    keepalive.ses_a = snapshot('ses_a', { pingsUsed: 2 });
+    t.feed.refresh('ses_a');
     await tick();
 
     expect(t.getKeepaliveCalls).toHaveLength(2);
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(2);
   });
 
-  test("an event received during a refresh is not overwritten by its result", async () => {
-    const t = setup({ keepalive: { ses_a: snapshot("ses_a", { pingsUsed: 0 }) } });
+  test('refresh skips while a fetch for the session is in flight', async () => {
+    const t = setup({ keepalive: { ses_a: snapshot('ses_a') } });
 
-    t.feed.refresh("ses_a");
-    await t.emit(snapshot("ses_a", { pingsUsed: 4 }));
+    t.feed.refresh('ses_a');
+    t.feed.refresh('ses_a');
+    await tick();
+    t.feed.refresh('ses_a');
     await tick();
 
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(4);
+    expect(t.getKeepaliveCalls).toHaveLength(2);
   });
 
-  test("a failed refresh keeps the last snapshot", async () => {
+  test('an event received during a refresh is not overwritten by its result', async () => {
+    const t = setup({ keepalive: { ses_a: snapshot('ses_a', { pingsUsed: 0 }) } });
+
+    t.feed.refresh('ses_a');
+    await t.emit(snapshot('ses_a', { pingsUsed: 4 }));
+    await tick();
+
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(4);
+  });
+
+  test('a failed refresh keeps the last snapshot', async () => {
     const t = setup({ failures: 1 });
-    await t.emit(snapshot("ses_a", { pingsUsed: 3 }));
+    await t.emit(snapshot('ses_a', { pingsUsed: 3 }));
 
-    t.feed.refresh("ses_a");
+    t.feed.refresh('ses_a');
     await tick();
 
     expect(t.getKeepaliveCalls).toHaveLength(1);
-    expect(t.feed.snapshots().get("ses_a")!.pingsUsed).toBe(3);
+    expect(t.feed.snapshots().get('ses_a')!.pingsUsed).toBe(3);
   });
 
-  test("dispose aborts the subscription", () => {
+  test('dispose aborts the subscription', () => {
     const t = setup();
     const sub = t.subscriptions[0]!;
     expect(sub.signal?.aborted).toBe(false);
@@ -200,14 +204,14 @@ describe("createSnapshotFeed", () => {
     expect(sub.signal?.aborted).toBe(true);
   });
 
-  test("events after dispose no longer update the snapshots", async () => {
+  test('events after dispose no longer update the snapshots', async () => {
     const t = setup();
-    await t.emit(snapshot("ses_a"));
+    await t.emit(snapshot('ses_a'));
 
     t.feed.dispose();
     await tick();
-    await t.emit(snapshot("ses_b"));
+    await t.emit(snapshot('ses_b'));
 
-    expect([...t.feed.snapshots().keys()]).toEqual(["ses_a"]);
+    expect([...t.feed.snapshots().keys()]).toEqual(['ses_a']);
   });
 });

@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { PingTracker } from "../../src/services/ping-tracker.ts";
+import { describe, expect, test } from 'bun:test';
+
+import { PingTracker } from '../../src/services/ping-tracker.ts';
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -9,94 +10,94 @@ function gate() {
   return { promise, open };
 }
 
-describe("PingTracker.isPing", () => {
-  test("is false when no send is pending", () => {
+describe('PingTracker.isPing', () => {
+  test('is false when no send is pending', () => {
     const pings = new PingTracker();
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("is true only for the generate kind while a send is pending", async () => {
+  test('is true only for the generate kind while a send is pending', async () => {
     const pings = new PingTracker();
     const g = gate();
-    const sending = pings.send("ses_a", () => g.promise);
+    const sending = pings.send('ses_a', () => g.promise);
 
-    expect(pings.isPing("generate", "ses_a")).toBe(true);
-    for (const kind of ["primary", "compaction", "title"]) {
-      expect(pings.isPing(kind, "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(true);
+    for (const kind of ['primary', 'compaction', 'title']) {
+      expect(pings.isPing(kind, 'ses_a')).toBe(false);
     }
 
     g.open();
     await sending;
   });
 
-  test("is per session", async () => {
+  test('is per session', async () => {
     const pings = new PingTracker();
     const g = gate();
-    const sending = pings.send("ses_a", () => g.promise);
+    const sending = pings.send('ses_a', () => g.promise);
 
-    expect(pings.isPing("generate", "ses_b")).toBe(false);
+    expect(pings.isPing('generate', 'ses_b')).toBe(false);
 
     g.open();
     await sending;
   });
 
-  test("stays true until the last of several overlapping sends settles", async () => {
+  test('stays true until the last of several overlapping sends settles', async () => {
     const pings = new PingTracker();
     const first = gate();
     const second = gate();
-    const sendingFirst = pings.send("ses_a", () => first.promise);
-    const sendingSecond = pings.send("ses_a", () => second.promise);
+    const sendingFirst = pings.send('ses_a', () => first.promise);
+    const sendingSecond = pings.send('ses_a', () => second.promise);
 
     first.open();
     await sendingFirst;
-    expect(pings.isPing("generate", "ses_a")).toBe(true);
+    expect(pings.isPing('generate', 'ses_a')).toBe(true);
 
     second.open();
     await sendingSecond;
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("overlapping sends on different sessions settle independently", async () => {
+  test('overlapping sends on different sessions settle independently', async () => {
     const pings = new PingTracker();
     const a = gate();
     const b = gate();
-    const sendingA = pings.send("ses_a", () => a.promise);
-    const sendingB = pings.send("ses_b", () => b.promise);
+    const sendingA = pings.send('ses_a', () => a.promise);
+    const sendingB = pings.send('ses_b', () => b.promise);
 
     a.open();
     await sendingA;
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
-    expect(pings.isPing("generate", "ses_b")).toBe(true);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
+    expect(pings.isPing('generate', 'ses_b')).toBe(true);
 
     b.open();
     await sendingB;
   });
 });
 
-describe("PingTracker.send", () => {
-  test("runs generate once", async () => {
+describe('PingTracker.send', () => {
+  test('runs generate once', async () => {
     const pings = new PingTracker();
     let calls = 0;
-    await pings.send("ses_a", async () => {
+    await pings.send('ses_a', async () => {
       calls++;
     });
     expect(calls).toBe(1);
   });
 
-  test("clears the state once generate resolves without a response", async () => {
+  test('clears the state once generate resolves without a response', async () => {
     const pings = new PingTracker();
-    await pings.send("ses_a", async () => ({}));
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    await pings.send('ses_a', async () => ({}));
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("waits for the promise passed to responded", async () => {
+  test('waits for the promise passed to responded', async () => {
     const pings = new PingTracker();
     const reported = gate();
     let settled = false;
 
     const sending = pings
-      .send("ses_a", async () => {
-        pings.responded("ses_a", reported.promise);
+      .send('ses_a', async () => {
+        pings.responded('ses_a', reported.promise);
       })
       .then(() => {
         settled = true;
@@ -104,62 +105,62 @@ describe("PingTracker.send", () => {
 
     await tick();
     expect(settled).toBe(false);
-    expect(pings.isPing("generate", "ses_a")).toBe(true);
+    expect(pings.isPing('generate', 'ses_a')).toBe(true);
 
     reported.open();
     await sending;
     expect(settled).toBe(true);
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("does not wait for a response recorded for another session", async () => {
+  test('does not wait for a response recorded for another session', async () => {
     const pings = new PingTracker();
     const other = gate();
-    pings.responded("ses_b", other.promise);
+    pings.responded('ses_b', other.promise);
 
-    await pings.send("ses_a", async () => ({}));
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    await pings.send('ses_a', async () => ({}));
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("propagates a generate error and clears the state", async () => {
+  test('propagates a generate error and clears the state', async () => {
     const pings = new PingTracker();
-    const error = new Error("boom");
+    const error = new Error('boom');
 
     await expect(
-      pings.send("ses_a", async () => {
+      pings.send('ses_a', async () => {
         throw error;
-      }),
+      })
     ).rejects.toBe(error);
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("a failing send leaves an overlapping send in flight", async () => {
+  test('a failing send leaves an overlapping send in flight', async () => {
     const pings = new PingTracker();
     const g = gate();
-    const sending = pings.send("ses_a", () => g.promise);
+    const sending = pings.send('ses_a', () => g.promise);
 
     await expect(
-      pings.send("ses_a", async () => {
-        throw new Error("boom");
-      }),
-    ).rejects.toThrow("boom");
-    expect(pings.isPing("generate", "ses_a")).toBe(true);
+      pings.send('ses_a', async () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
+    expect(pings.isPing('generate', 'ses_a')).toBe(true);
 
     g.open();
     await sending;
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 
-  test("can send again after a previous send settled", async () => {
+  test('can send again after a previous send settled', async () => {
     const pings = new PingTracker();
-    await pings.send("ses_a", async () => ({}));
+    await pings.send('ses_a', async () => ({}));
 
     const g = gate();
-    const sending = pings.send("ses_a", () => g.promise);
-    expect(pings.isPing("generate", "ses_a")).toBe(true);
+    const sending = pings.send('ses_a', () => g.promise);
+    expect(pings.isPing('generate', 'ses_a')).toBe(true);
 
     g.open();
     await sending;
-    expect(pings.isPing("generate", "ses_a")).toBe(false);
+    expect(pings.isPing('generate', 'ses_a')).toBe(false);
   });
 });

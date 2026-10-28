@@ -1,21 +1,21 @@
-import { SENTINEL_HEADER } from "../constants/anthropic.ts";
-import type { PluginOptions } from "../config/settings.ts";
-import type { CacheTtlMode, ModelRef } from "../models/cache.ts";
-import type { RequestKind } from "../models/keepalive.ts";
+import type { PluginOptions } from '../config/settings.ts';
+import { SENTINEL_HEADER } from '../constants/anthropic.ts';
+import type { CacheTtlMode, ModelRef } from '../models/cache.ts';
+import type { RequestKind } from '../models/keepalive.ts';
+import { resolveActiveMode, transformHttpRequest } from '../services/cache-ttl.ts';
 import {
   classifyRequestWithBody,
   isAnthropicProvider,
   profileForRoute,
   routeRequest,
   shouldInject,
-} from "../services/classify.ts";
-import { resolveActiveMode, transformHttpRequest } from "../services/cache-ttl.ts";
-import { profileFor } from "../services/profiles/index.ts";
-import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import { alignPingRequest, readMessages } from "../services/ping-alignment.ts";
-import type { PingTracker } from "../services/ping-tracker.ts";
-import type { SettingsStore } from "../services/settings-store.ts";
-import type { ProfileStore } from "../services/profile-store.ts";
+} from '../services/classify.ts';
+import type { KeepaliveEngine } from '../services/keepalive-engine.ts';
+import { alignPingRequest, readMessages } from '../services/ping-alignment.ts';
+import type { PingTracker } from '../services/ping-tracker.ts';
+import type { ProfileStore } from '../services/profile-store.ts';
+import { profileFor } from '../services/profiles/index.ts';
+import type { SettingsStore } from '../services/settings-store.ts';
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 export interface HttpRequestEvent {
@@ -30,20 +30,34 @@ export interface RequestHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
-  profiles: Pick<ProfileStore, "get">;
+  profiles: Pick<ProfileStore, 'get'>;
   /** Latest primary request messages per session, in memory only, kept while a ping may still use them. */
   primaryMessages: Map<string, unknown[]>;
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
-export function createRequestHook({ store, engine, pings, options, profiles, primaryMessages }: RequestHookDeps) {
+export function createRequestHook({
+  store,
+  engine,
+  pings,
+  options,
+  profiles,
+  primaryMessages,
+}: RequestHookDeps) {
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
     const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
-    const cls = await classifyRequestWithBody(evt.request, ref, deps, { openaiWires: options.openaiCompatible });
+    const cls = await classifyRequestWithBody(evt.request, ref, deps, {
+      openaiWires: options.openaiCompatible,
+    });
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
-    const route = routeRequest({ cls, anthropicProvider, hasSentinel, openaiCompatible: options.openaiCompatible });
+    const route = routeRequest({
+      cls,
+      anthropicProvider,
+      hasSentinel,
+      openaiCompatible: options.openaiCompatible,
+    });
     const profileId = profileForRoute(route, options.openaiCompatible);
     if (profileId === undefined) return;
     const profile = profileFor(profileId);
@@ -74,7 +88,7 @@ export function createRequestHook({ store, engine, pings, options, profiles, pri
     if (rewrites) {
       try {
         request = await transformHttpRequest(request, mode, {
-          wire: route.transformWire ?? "anthropic-messages",
+          wire: route.transformWire ?? 'anthropic-messages',
           profile,
           kind: evt.kind,
           isPing,
@@ -88,8 +102,8 @@ export function createRequestHook({ store, engine, pings, options, profiles, pri
     if (!observed) return;
 
     try {
-      if (evt.kind === "compaction") primaryMessages.delete(sessionID);
-      if (keptWarm && evt.kind === "primary" && engine.snapshot(sessionID).skipReason !== "child") {
+      if (evt.kind === 'compaction') primaryMessages.delete(sessionID);
+      if (keptWarm && evt.kind === 'primary' && engine.snapshot(sessionID).skipReason !== 'child') {
         const parsed = await readMessages(request);
         if (parsed) primaryMessages.set(sessionID, parsed.messages);
       }
