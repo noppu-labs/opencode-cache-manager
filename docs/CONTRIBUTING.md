@@ -26,6 +26,8 @@ A checkout loads `src/ui/sidebar.tsx` directly, so no build is needed. Don't kee
 Run the same checks CI runs (`.github/workflows/ci.yml`):
 
 ```sh
+bun run fmt:check   # oxfmt --check (bun run fmt rewrites in place)
+bun run lint        # oxlint, type-aware correctness rules (bun run lint:fix applies fixes)
 bun run typecheck   # tsc -p . (strict, noEmit) over src/, tests/ and scripts/
 bun test            # all suites in tests/
 ```

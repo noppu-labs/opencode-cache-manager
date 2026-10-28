@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "categories": { "correctness": "error" },
+  "env": { "builtin": true },
+  "options": { "typeAware": true },
+  "ignorePatterns": ["src/ui/sidebar.compiled.js", ".gitnexus/**", ".codegraph/**"]
+}

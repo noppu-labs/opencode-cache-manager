@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "arrowParens": "always",
+  "bracketSpacing": true,
+  "printWidth": 100,
+  "quoteProps": "consistent",
+  "semi": true,
+  "singleQuote": true,
+  "sortImports": true,
+  "sortPackageJson": true,
+  "trailingComma": "es5",
+  "useTabs": false,
+  "ignorePatterns": [
+    "src/ui/sidebar.compiled.js",
+    "bun.lock",
+    "docs/images/**",
+    ".gitnexus/**",
+    ".codegraph/**"
+  ]
+}
