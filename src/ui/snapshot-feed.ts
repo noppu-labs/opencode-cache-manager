@@ -77,6 +77,8 @@ export function createSnapshotFeed(
     snapshots: () => new Map(Object.entries(sidebar.snapshots)),
     load,
     refresh,
-    dispose: () => abort.abort(),
+    dispose: () => {
+      abort.abort();
+    },
   };
 }

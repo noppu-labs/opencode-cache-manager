@@ -25,8 +25,12 @@ export function CacheLines(props: {
   snapshot: () => KeepaliveSnapshot | undefined;
 }) {
   const [now, setNow] = createSignal(Date.now());
-  const timer = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(timer));
+  const timer = setInterval(() => {
+    setNow(Date.now());
+  }, 1000);
+  onCleanup(() => {
+    clearInterval(timer);
+  });
 
   const lines = () => sidebarLines(props.snapshot(), now());
 
@@ -80,7 +84,9 @@ function CacheSection(props: {
     const timer = setInterval(() => {
       if (!child()) props.refresh(sessionID);
     }, SIDEBAR_REFRESH_MS);
-    onCleanup(() => clearInterval(timer));
+    onCleanup(() => {
+      clearInterval(timer);
+    });
   });
   // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
   const visible = () => !child() && sidebarLines(snapshot(), 0).length > 0;

@@ -36,18 +36,18 @@ describe('frameToAnsi', () => {
         line(span(' ')),
       ])
     );
-    expect(rows.map(stripAnsi)).toEqual(['Cache', '', 'ttl']);
+    expect(rows.map((row) => stripAnsi(row))).toEqual(['Cache', '', 'ttl']);
   });
 
   test('emits bold before the colour so the run keeps its colour', () => {
     const [row] = frameToAnsi(frame([line(span('Cache', '#eeeeee', TextAttributes.BOLD))]));
-    expect(row).toBe('\u001b[0m\u001b[1m\u001b[38;2;238;238;238mCache\u001b[0m');
+    expect(row).toBe('\u001B[0m\u001B[1m\u001B[38;2;238;238;238mCache\u001B[0m');
   });
 
   test('a row with only a background is painted', () => {
     const rows = frameToAnsi(frame([line(span('  ', '#eeeeee', 0, RGBA.fromHex('#101010')))]));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toContain('\u001b[48;2;16;16;16m');
+    expect(rows[0]).toContain('\u001B[48;2;16;16;16m');
   });
 
   test('returns nothing for an empty frame', () => {
@@ -61,7 +61,7 @@ test('textRow colours each part and resets at the end', () => {
       { text: '# ', fg: '#606060' },
       { text: 'cap', fg: '#ffffff' },
     ])
-  ).toBe('\u001b[38;2;96;96;96m# \u001b[38;2;255;255;255mcap\u001b[0m');
+  ).toBe('\u001B[38;2;96;96;96m# \u001B[38;2;255;255;255mcap\u001B[0m');
 });
 
 describe('renderScreen', () => {
@@ -78,7 +78,7 @@ describe('renderScreen', () => {
   });
 
   test('the hero shows a warm 1h cache with a ping scheduled', async () => {
-    const rows = (await screens.renderScreen('sidebar')).map(stripAnsi);
+    const rows = (await screens.renderScreen('sidebar')).map((row) => stripAnsi(row));
     expect(rows).toEqual([
       'Cache',
       '• status      warm',
@@ -91,7 +91,7 @@ describe('renderScreen', () => {
   });
 
   test('the states screen captions every other state once', async () => {
-    const rows = (await screens.renderScreen('sidebar-states')).map(stripAnsi);
+    const rows = (await screens.renderScreen('sidebar-states')).map((row) => stripAnsi(row));
     const captions = rows.filter((row) => row.startsWith('# '));
     expect(captions).toHaveLength(screens.SCREENS['sidebar-states'].length);
     expect(new Set(captions).size).toBe(captions.length);
@@ -119,7 +119,7 @@ describe('renderScreen', () => {
 
   test('the header is the only bold text, so the SVG post-processing can find it', async () => {
     const rows = await screens.renderScreen('sidebar');
-    const bold = rows.filter((row) => row.includes('\u001b[1m'));
+    const bold = rows.filter((row) => row.includes('\u001B[1m'));
     expect(bold).toHaveLength(1);
     expect(stripAnsi(bold[0])).toBe(screens.SECTION_HEADER);
   });

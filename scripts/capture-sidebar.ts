@@ -9,6 +9,8 @@ import { join } from 'node:path';
 
 import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
+import { isNonEmptyString } from '../src/utils/is-non-empty-string.ts';
+
 // Clock times in the section come from toLocaleTimeString, so pin the zone
 // before any Date is formatted.
 process.env.TZ = 'UTC';
@@ -77,7 +79,7 @@ function renderSvg(screen: string, dir: string): boolean {
 
 /** Renders every screen into a staging directory, then copies them over docs/images/ only if all succeeded. */
 function regenerate(): number {
-  if (!Bun.which('freeze')) {
+  if (!isNonEmptyString(Bun.which('freeze'))) {
     console.error('freeze is not installed: brew install charmbracelet/tap/freeze');
     return 1;
   }

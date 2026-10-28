@@ -122,7 +122,7 @@ describe('openai profile', () => {
             expect(openaiProfile.rewrite(body, ctx(wire, mode, kind))).toBe(true);
             expect(body).toEqual(expectedWithBreakpoint(wire, mode));
             expect(body).not.toHaveProperty('prompt_cache_options');
-            expect(JSON.stringify(body).match(/prompt_cache_breakpoint/g)).toHaveLength(1);
+            expect(JSON.stringify(body).match(/prompt_cache_breakpoint/gu)).toHaveLength(1);
           });
 
           test(`${kind} ${mode} is idempotent`, () => {

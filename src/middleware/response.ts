@@ -15,6 +15,7 @@ import { observeResponseUsage } from '../services/response-observer.ts';
 import { OPENAI_PARSERS } from '../services/usage-openai.ts';
 import { RESPONSES_PARSERS } from '../services/usage-responses.ts';
 import { ANTHROPIC_PARSERS } from '../services/usage.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
 export interface HttpResponseEvent {
@@ -44,7 +45,7 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
  * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
  */
 export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
-  return async (evt: HttpResponseEvent): Promise<void> => {
+  return (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
       const wire = observedWireFor(
@@ -52,7 +53,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
         isAnthropicProvider(ref.providerID),
         options.openaiCompatible
       );
-      if (!wire) return;
+      if (!wire) return Promise.resolve();
 
       const sessionID = evt.sessionID;
       const kind = evt.kind;
@@ -78,7 +79,11 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
                 wire === 'anthropic-messages' &&
                 !isPing &&
                 (kind === 'primary' || kind === 'compaction');
-              if (!sessionTurn || !(identity?.model || identity?.provider)) return false;
+              if (
+                !sessionTurn ||
+                !(isNonEmptyString(identity?.model) || isNonEmptyString(identity?.provider))
+              )
+                return false;
               return !(await keepsWarm(evt.request, ref, {
                 patterns: options.cacheProfiles,
                 learned: (r) => profiles.get(r),
@@ -96,5 +101,6 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
     } catch {
       // Observation must never fail the host's response; it passes through unchanged.
     }
+    return Promise.resolve();
   };
 }

@@ -33,9 +33,7 @@ function readResponsesUsage(raw: unknown): CacheUsage | undefined {
 
 /** `completed` reads as `stop`, a trailing tool call as `tool_use`; any other status passes through. */
 function readStopReason(response: Record<string, unknown>): string | undefined {
-  const last: unknown = Array.isArray(response.output)
-    ? response.output[response.output.length - 1]
-    : undefined;
+  const last: unknown = Array.isArray(response.output) ? response.output.at(-1) : undefined;
   if (isRecord(last) && typeof last.type === 'string' && TOOL_CALL_ITEMS.has(last.type))
     return 'tool_use';
   if (typeof response.status !== 'string') return undefined;

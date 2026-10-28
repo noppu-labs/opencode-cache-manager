@@ -14,13 +14,13 @@ export function withLocation(
   rpc: RawCacheTtlRpcClient,
   locate: (sessionID: string | undefined) => RpcLocation | undefined
 ): CacheTtlRpcClient {
-  const options = (sessionID: string | undefined): RpcCallOptions | undefined => {
+  const options = (sessionID?: string): RpcCallOptions | undefined => {
     const location = locate(sessionID);
     return location === undefined ? undefined : { location };
   };
   return {
     getSettings: (input) => rpc.getSettings(input, options(input.sessionID)),
-    setGlobal: (input) => rpc.setGlobal(input, options(undefined)),
+    setGlobal: (input) => rpc.setGlobal(input, options()),
     setSession: (input) => rpc.setSession(input, options(input.sessionID)),
     resetSession: (input) => rpc.resetSession(input, options(input.sessionID)),
     getKeepalive: (input) => rpc.getKeepalive(input, options(input.sessionID)),

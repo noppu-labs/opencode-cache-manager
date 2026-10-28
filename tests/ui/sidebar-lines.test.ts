@@ -196,7 +196,7 @@ describe('sidebarLines', () => {
 
   test('default clock renders local 24h HH:MM', () => {
     const out = sidebarLines(snap(), NOW);
-    expect(out[2].right).toMatch(/^\d{2}:\d{2} \(4m\)$/);
+    expect(out[2].right).toMatch(/^\d{2}:\d{2} \(4m\)$/u);
   });
 });
 

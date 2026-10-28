@@ -27,7 +27,7 @@ function packOnce(): string {
   // CI packs the real artifact once in the release workflow and points the
   // suite at it, so the suite verifies the exact tarball that ships.
   const override = process.env.CACHE_MANAGER_TEST_TARBALL;
-  if (override) {
+  if (override !== undefined && override !== '') {
     if (!existsSync(override)) throw new Error(`CACHE_MANAGER_TEST_TARBALL missing: ${override}`);
     tgzPath = override;
     return tgzPath;
@@ -56,7 +56,7 @@ function packOnce(): string {
 }
 
 function extract(): string {
-  if (!tmpDir) tmpDir = mkdtempSync(join(tmpdir(), 'cache-manager-pkg-x-'));
+  tmpDir ??= mkdtempSync(join(tmpdir(), 'cache-manager-pkg-x-'));
   const tar = Bun.spawnSync({
     cmd: ['tar', '-xzf', packOnce(), '-C', tmpDir],
     stdout: 'pipe',
@@ -87,7 +87,7 @@ const SHIP_FILES = [
 ].toSorted();
 
 afterAll(() => {
-  if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  if (tmpDir !== undefined) rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('npm package manifest', () => {
@@ -96,7 +96,7 @@ describe('npm package manifest', () => {
     // Release-time consistency (tag == vX.Y.Z of package.json) is enforced by
     // the release workflow's gate; here the version only needs to be
     // well-formed.
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/);
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/u);
     expect(manifest.license).toBe('MIT');
     expect(manifest.publishConfig?.access).toBe('public');
   });
@@ -143,7 +143,7 @@ describe('npm package tarball', () => {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l) => l.replace(/^package\//, ''))
+      .map((l) => l.replace(/^package\//u, ''))
       .toSorted();
     expect(listed).toEqual(SHIP_FILES);
   });
@@ -218,7 +218,7 @@ describe('Host.resolve against the extracted package', () => {
     expect(code).toContain('createComponent');
     expect(code).not.toContain('jsx-dev-runtime');
     const allowed = new Set(['@opentui/solid', 'solid-js', 'solid-js/store']);
-    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
+    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/gu)) {
       expect(allowed.has(match[1])).toBe(true);
     }
   });

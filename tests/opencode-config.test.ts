@@ -45,7 +45,7 @@ function stripJsonc(raw: string): string {
     }
     out += ch;
   }
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return out.replaceAll(/,(\s*[}\]])/gu, '$1');
 }
 
 function parseExample(file: string): any {
@@ -234,9 +234,9 @@ describe('docs/examples', () => {
 
     test('holds no secrets or personal hostnames', () => {
       const raw = readFileSync(`${EXAMPLES_DIR}${file}`, 'utf8');
-      expect(raw).not.toMatch(/linksy/i);
-      for (const match of raw.matchAll(/"(?:apiKey|authToken)":\s*"([^"]*)"/g)) {
-        expect(match[1]).toMatch(/^\{env:[A-Z_]+\}$/);
+      expect(raw).not.toMatch(/linksy/iu);
+      for (const match of raw.matchAll(/"(?:apiKey|authToken)":\s*"([^"]*)"/gu)) {
+        expect(match[1]).toMatch(/^\{env:[A-Z_]+\}$/u);
       }
     });
   });

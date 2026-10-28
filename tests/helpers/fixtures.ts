@@ -45,14 +45,14 @@ export function collectCacheControls(
   node: unknown,
   out: Record<string, unknown>[] = []
 ): Record<string, unknown>[] {
-  if (!node || typeof node !== 'object') return out;
+  if (typeof node !== 'object' || node === null) return out;
   if (Array.isArray(node)) {
     for (const item of node) collectCacheControls(item, out);
     return out;
   }
   const rec = node as Record<string, unknown>;
   const cc = rec.cache_control;
-  if (cc && typeof cc === 'object') out.push(cc as Record<string, unknown>);
+  if (typeof cc === 'object' && cc !== null) out.push(cc as Record<string, unknown>);
   for (const value of Object.values(rec)) collectCacheControls(value, out);
   return out;
 }

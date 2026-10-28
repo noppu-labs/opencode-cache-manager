@@ -23,7 +23,10 @@ export function stripBreakpoints(body: Rec, keep?: Rec): boolean {
   };
   for (const key of ['tools', 'messages', 'input']) {
     const list = body[key];
-    if (Array.isArray(list)) list.forEach(visit);
+    if (Array.isArray(list))
+      list.forEach((node) => {
+        visit(node);
+      });
   }
   return changed;
 }

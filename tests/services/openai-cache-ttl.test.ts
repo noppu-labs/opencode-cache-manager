@@ -64,9 +64,9 @@ function plainBody(overrides: Rec = {}): Rec {
 function breakpointsInOrder(body: Rec): Rec[] {
   const out: Rec[] = [];
   const push = (node: unknown) => {
-    if (node && typeof node === 'object') {
+    if (typeof node === 'object' && node !== null) {
       const cc = (node as Rec).cache_control;
-      if (cc && typeof cc === 'object') out.push(cc as Rec);
+      if (typeof cc === 'object' && cc !== null) out.push(cc as Rec);
     }
   };
   for (const t of (body.tools as unknown[] | undefined) ?? []) push(t);

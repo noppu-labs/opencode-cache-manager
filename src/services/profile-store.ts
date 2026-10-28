@@ -6,6 +6,7 @@ import {
   type ResponseIdentity,
 } from '../models/cache.ts';
 import type { KV } from '../models/storage.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 import { isRecord } from '../utils/is-record.ts';
 
 const STORAGE_KEY = 'learned-models';
@@ -44,7 +45,7 @@ export class ProfileStore {
   async learnFromResponse(ref: ModelRef, identity: ResponseIdentity | undefined): Promise<void> {
     try {
       const { model, provider } = identity ?? {};
-      if (!model && !provider) return;
+      if (!isNonEmptyString(model) && !isNonEmptyString(provider)) return;
       const profile: CacheProfileId =
         (model !== undefined && CLAUDE_MODEL.test(model)) ||
         (provider !== undefined && ANTHROPIC_UPSTREAM.test(provider))

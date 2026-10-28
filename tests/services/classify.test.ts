@@ -561,49 +561,53 @@ describe('routeRequest', () => {
     const wires = [undefined, 'anthropic-messages', 'openai-chat'] as const;
     const profiles = ['anthropic', 'openai', 'implicit'] as const;
     const bools = [false, true];
-    for (const wire of wires)
-      for (const profile of profiles)
-        for (const anthropicProvider of bools)
-          for (const hasSentinel of bools)
-            for (const openaiCompatible of bools) {
-              const cls = wire ? { wire, profile } : undefined;
-              const isChat = cls?.wire === 'openai-chat';
-              const managedChat = isChat && openaiCompatible && cls.profile !== 'implicit';
-              const explicitChat = managedChat && cls.profile === 'anthropic';
-              const claudeMessages =
-                cls?.wire === 'anthropic-messages' && cls.profile === 'anthropic';
-              const observed =
-                anthropicProvider ||
-                cls?.wire === 'anthropic-messages' ||
-                (isChat && openaiCompatible);
-              const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
-              expect(got.profile).toBe(cls?.profile);
-              expect(got.wire).toBe(cls?.wire);
-              expect(got.managed).toBe(managedChat || claudeMessages);
-              for (const kind of ['primary', 'compaction', 'title', 'generate'] as const) {
-                expect(shouldInject(got, kind, false)).toBe(
-                  explicitChat && (kind === 'primary' || kind === 'compaction')
-                );
-                expect(shouldInject(got, kind, true)).toBe(false);
-              }
-              expect(got.rewrites).toBe(
-                anthropicProvider || hasSentinel || managedChat || claudeMessages
-              );
-              expect(got.observedWire !== undefined).toBe(observed);
-              expect(got.transformWire).toBe(
-                isChat && (openaiCompatible || hasSentinel) ? 'openai-chat' : undefined
-              );
-              const responseWire =
-                cls?.wire === 'openai-chat' && openaiCompatible
-                  ? 'openai-chat'
-                  : anthropicProvider || cls?.wire === 'anthropic-messages'
-                    ? 'anthropic-messages'
-                    : undefined;
-              expect(got.observedWire).toBe(responseWire);
-              expect(observedWireFor(cls?.wire, anthropicProvider, openaiCompatible)).toBe(
-                responseWire
-              );
-            }
+    const cases = wires.flatMap((wire) =>
+      profiles.flatMap((profile) =>
+        bools.flatMap((anthropicProvider) =>
+          bools.flatMap((hasSentinel) =>
+            bools.map((openaiCompatible) => ({
+              wire,
+              profile,
+              anthropicProvider,
+              hasSentinel,
+              openaiCompatible,
+            }))
+          )
+        )
+      )
+    );
+    for (const { wire, profile, anthropicProvider, hasSentinel, openaiCompatible } of cases) {
+      const cls = wire ? { wire, profile } : undefined;
+      const isChat = cls?.wire === 'openai-chat';
+      const managedChat = isChat && openaiCompatible && cls.profile !== 'implicit';
+      const explicitChat = managedChat && cls.profile === 'anthropic';
+      const claudeMessages = cls?.wire === 'anthropic-messages' && cls.profile === 'anthropic';
+      const observed =
+        anthropicProvider || cls?.wire === 'anthropic-messages' || (isChat && openaiCompatible);
+      const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
+      expect(got.profile).toBe(cls?.profile);
+      expect(got.wire).toBe(cls?.wire);
+      expect(got.managed).toBe(managedChat || claudeMessages);
+      for (const kind of ['primary', 'compaction', 'title', 'generate'] as const) {
+        expect(shouldInject(got, kind, false)).toBe(
+          explicitChat && (kind === 'primary' || kind === 'compaction')
+        );
+        expect(shouldInject(got, kind, true)).toBe(false);
+      }
+      expect(got.rewrites).toBe(anthropicProvider || hasSentinel || managedChat || claudeMessages);
+      expect(got.observedWire !== undefined).toBe(observed);
+      expect(got.transformWire).toBe(
+        isChat && (openaiCompatible || hasSentinel) ? 'openai-chat' : undefined
+      );
+      const responseWire =
+        cls?.wire === 'openai-chat' && openaiCompatible
+          ? 'openai-chat'
+          : anthropicProvider || cls?.wire === 'anthropic-messages'
+            ? 'anthropic-messages'
+            : undefined;
+      expect(got.observedWire).toBe(responseWire);
+      expect(observedWireFor(cls?.wire, anthropicProvider, openaiCompatible)).toBe(responseWire);
+    }
   });
 
   test('observedWireFor needs only the wire, the provider and the option', () => {

@@ -3,7 +3,8 @@
   "plugins": ["typescript", "unicorn", "oxc", "import"],
   "categories": {
     "correctness": "error",
-    "suspicious": "error"
+    "suspicious": "error",
+    "pedantic": "error"
   },
   "env": {
     "builtin": true
@@ -11,13 +12,30 @@
   "options": {
     "typeAware": true
   },
+  "rules": {
+    "typescript/prefer-readonly-parameter-types": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-lines": "off",
+    "import/max-dependencies": "off"
+  },
   "overrides": [
     {
       "files": ["tests/**"],
       "rules": {
         "typescript/await-thenable": "off",
         "typescript/no-unsafe-type-assertion": "off",
-        "unicorn/consistent-function-scoping": "off"
+        "unicorn/consistent-function-scoping": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-argument": "off",
+        "eslint/require-await": "off",
+        "typescript/require-await": "off",
+        "unicorn/no-useless-undefined": "off",
+        "typescript/no-confusing-void-expression": "off",
+        "typescript/strict-void-return": "off",
+        "eslint/no-promise-executor-return": "off"
       }
     }
   ],

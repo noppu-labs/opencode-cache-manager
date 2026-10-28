@@ -13,7 +13,8 @@ export function leadingPrefixEnd(messages: unknown[]): number {
   return index === -1 ? messages.length : index;
 }
 
-const marked = (node: unknown) => isRecord(node) && node.cache_control != null;
+const marked = (node: unknown) =>
+  isRecord(node) && node.cache_control !== undefined && node.cache_control !== null;
 
 /** Returns true when `cache_control` appears on any tool, message or content part. */
 export function hasCacheControl(body: Rec): boolean {
@@ -70,7 +71,7 @@ export function lastTextPart(message: Rec): Rec | undefined {
     message.content = [part];
     return part;
   }
-  return Array.isArray(content) ? content.findLast(isText) : undefined;
+  return Array.isArray(content) ? content.findLast((part): part is Rec => isText(part)) : undefined;
 }
 
 /**
@@ -88,12 +89,11 @@ export function injectOpenAiBreakpoints(body: Rec): boolean {
     injected = true;
   };
 
-  if (Array.isArray(body.tools) && body.tools.length > 0) {
-    const last = body.tools[body.tools.length - 1];
-    if (isRecord(last)) mark(last);
-  }
+  const tools: unknown[] = Array.isArray(body.tools) ? body.tools : [];
+  const lastTool = tools.at(-1);
+  if (isRecord(lastTool)) mark(lastTool);
 
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const messages: unknown[] = Array.isArray(body.messages) ? body.messages : [];
   const prefixEnd = leadingPrefixEnd(messages);
 
   for (let index = prefixEnd - 1; index >= 0; index--) {

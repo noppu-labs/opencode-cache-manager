@@ -120,9 +120,12 @@ function pagedStorage(pages: string[][]) {
   const storage: ScannableKV = {
     scan: async (input) => {
       calls.push(input);
-      const index = input.after ? Number(input.after) : 0;
+      const index = input.after === undefined ? 0 : Number(input.after);
       const next = index + 1 < pages.length ? String(index + 1) : undefined;
-      return { entries: pages[index].map((key) => ({ key })), ...(next ? { next } : {}) };
+      return {
+        entries: pages[index].map((key) => ({ key })),
+        ...(next === undefined ? {} : { next }),
+      };
     },
     remove: async (key) => {
       removed.push(key);
@@ -177,6 +180,7 @@ describe('sweepDeletedSessions', () => {
     const { kv, data } = memoryKv();
     data.set('session/ses_a', { mode: '1h' });
     await sweepDeletedSessions(kv, async () => {
+      // oxlint-disable-next-line eslint/no-throw-literal, typescript/only-throw-error -- the case under test is a thrown non-object value
       throw 'SessionNotFound';
     });
     expect(data.has('session/ses_a')).toBe(true);

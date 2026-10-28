@@ -22,6 +22,11 @@ type SidebarCall = {
   disposed: boolean;
 };
 const sidebarCalls: SidebarCall[] = [];
+const lastSidebar = (): SidebarCall => {
+  const call = sidebarCalls.at(-1);
+  if (call === undefined) throw new Error('no sidebar registered');
+  return call;
+};
 let sidebarThrows = false;
 await mock.module('../src/ui/sidebar.tsx', () => ({
   CacheLines,
@@ -139,11 +144,15 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
                 queue.push(event);
                 wake?.();
               };
+              const nextPush = () =>
+                new Promise<void>((resolve) => {
+                  wake = resolve;
+                });
               listeners.add(push);
               opts?.signal?.addEventListener('abort', () => wake?.());
               try {
-                while (!opts?.signal?.aborted) {
-                  if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
+                while (opts?.signal?.aborted !== true) {
+                  if (queue.length === 0) await nextPush();
                   while (queue.length > 0) yield queue.shift();
                 }
               } finally {
@@ -288,7 +297,7 @@ describe('cache-manager TUI plugin', () => {
 
     test("sidebar load and refresh fetch from the session's directory", async () => {
       const host = await setupTui({ sessions, keepalive: { ses_tui: { sessionID: 'ses_tui' } } });
-      const sidebar = sidebarCalls[sidebarCalls.length - 1];
+      const sidebar = lastSidebar();
 
       sidebar.load('ses_tui');
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -303,8 +312,6 @@ describe('cache-manager TUI plugin', () => {
   });
 
   describe('sidebar', () => {
-    const lastSidebar = () => sidebarCalls[sidebarCalls.length - 1];
-
     test('registers the sidebar slot with an initially empty snapshot map', async () => {
       sidebarCalls.length = 0;
       await setupTui();

@@ -56,11 +56,15 @@ function setup(options: Options = {}) {
             queue.push(event);
             wake?.();
           };
+          const nextPush = () =>
+            new Promise<void>((resolve) => {
+              wake = resolve;
+            });
           listeners.add(push);
           opts?.signal?.addEventListener('abort', () => wake?.());
           try {
-            while (!opts?.signal?.aborted) {
-              if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
+            while (opts?.signal?.aborted !== true) {
+              if (queue.length === 0) await nextPush();
               while (queue.length > 0) yield queue.shift()!;
             }
           } finally {

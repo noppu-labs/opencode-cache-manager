@@ -19,7 +19,7 @@ export type SkipReason =
 /** OpenCode's request kind for a model call. */
 export type RequestKind = 'primary' | 'compaction' | 'title' | 'generate';
 
-export interface KeepaliveSnapshot {
+export type KeepaliveSnapshot = {
   sessionID: string;
   ttl: Ttl | null;
   ttlSource: 'detected' | 'requested' | null;
@@ -34,4 +34,4 @@ export interface KeepaliveSnapshot {
   contextTokens: number | null;
   /** Cache reads and total prompt tokens of the latest non-ping response; null before one arrives. */
   lastCache: CacheReadout | null;
-}
+};
