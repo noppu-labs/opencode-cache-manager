@@ -238,7 +238,7 @@ describe('cache-manager TUI plugin', () => {
       },
     });
 
-    await expect(mock.run('')).resolves.toBeUndefined();
+    expect(mock.run('')).resolves.toBeUndefined();
 
     expect(mock.setSessionCalls).toHaveLength(1);
     expect(mock.toasts).toHaveLength(1);

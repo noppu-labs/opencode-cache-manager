@@ -120,15 +120,15 @@ describe('createRpcHandlers', () => {
     test('rejected patches change no state and notify nobody', async () => {
       const { handlers, data, settingsChanged } = await setup();
 
-      await expect(
+      expect(
         handlers.setSession({ sessionID: 'ses_x', patch: { mode: 'bogus' } })
       ).rejects.toThrow();
-      await expect(
+      expect(
         handlers.setSession({ sessionID: 'ses_x', patch: { maxPings: 101 } })
       ).rejects.toThrow();
-      await expect(handlers.setGlobal({ patch: { minContextTokens: -1 } })).rejects.toThrow();
-      await expect(handlers.setGlobal({ patch: { unknown: 1 } })).rejects.toThrow();
-      await expect(handlers.setGlobal({ patch: '1h' })).rejects.toThrow();
+      expect(handlers.setGlobal({ patch: { minContextTokens: -1 } })).rejects.toThrow();
+      expect(handlers.setGlobal({ patch: { unknown: 1 } })).rejects.toThrow();
+      expect(handlers.setGlobal({ patch: '1h' })).rejects.toThrow();
 
       expect(data.size).toBe(0);
       expect(settingsChanged).not.toHaveBeenCalled();
@@ -142,10 +142,10 @@ describe('createRpcHandlers', () => {
       ['a number', 5],
     ])('rejects %s as a non-object patch', async (_label, patch) => {
       const { handlers, data } = await setup();
-      await expect(handlers.setSession({ sessionID: 'ses_x', patch })).rejects.toThrow(
+      expect(handlers.setSession({ sessionID: 'ses_x', patch })).rejects.toThrow(
         'Invalid settings patch: expected an object'
       );
-      await expect(handlers.setGlobal({ patch })).rejects.toThrow(
+      expect(handlers.setGlobal({ patch })).rejects.toThrow(
         'Invalid settings patch: expected an object'
       );
       expect(data.size).toBe(0);
@@ -153,14 +153,14 @@ describe('createRpcHandlers', () => {
 
     test('names every invalid field in the error', async () => {
       const { handlers } = await setup();
-      await expect(
+      expect(
         handlers.setGlobal({ patch: { mode: 'bogus', maxPings: 1, extra: true } })
       ).rejects.toThrow('Invalid settings patch fields: mode, extra');
     });
 
     test('one invalid field rejects the whole patch', async () => {
       const { handlers, data } = await setup();
-      await expect(
+      expect(
         handlers.setSession({ sessionID: 'ses_x', patch: { mode: '1h', maxPings: 101 } })
       ).rejects.toThrow();
       expect(data.size).toBe(0);

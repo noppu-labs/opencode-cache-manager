@@ -126,7 +126,7 @@ describe('PingTracker.send', () => {
     const pings = new PingTracker();
     const error = new Error('boom');
 
-    await expect(
+    expect(
       pings.send('ses_a', async () => {
         throw error;
       })
@@ -139,7 +139,7 @@ describe('PingTracker.send', () => {
     const g = gate();
     const sending = pings.send('ses_a', () => g.promise);
 
-    await expect(
+    expect(
       pings.send('ses_a', async () => {
         throw new Error('boom');
       })
