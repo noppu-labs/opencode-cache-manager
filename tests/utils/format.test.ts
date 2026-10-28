@@ -26,7 +26,7 @@ describe('formatCompactTokens', () => {
   });
 
   test('one decimal in k below 100,000, dropping a trailing .0', () => {
-    expect(formatCompactTokens(1_000)).toBe('1k');
+    expect(formatCompactTokens(1000)).toBe('1k');
     expect(formatCompactTokens(14_800)).toBe('14.8k');
     expect(formatCompactTokens(16_100)).toBe('16.1k');
     expect(formatCompactTokens(16_000)).toBe('16k');

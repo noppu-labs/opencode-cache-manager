@@ -18,14 +18,14 @@ import { profileFor } from '../services/profiles/index.ts';
 import type { SettingsStore } from '../services/settings-store.ts';
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
-export interface HttpRequestEvent {
+interface HttpRequestEvent {
   readonly sessionID: string;
   readonly model: ModelRef;
   readonly kind: RequestKind;
   request: Request;
 }
 
-export interface RequestHookDeps {
+interface RequestHookDeps {
   store: SettingsStore;
   engine: KeepaliveEngine;
   pings: PingTracker;
@@ -36,7 +36,7 @@ export interface RequestHookDeps {
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
-export function createRequestHook({
+function createRequestHook({
   store,
   engine,
   pings,
@@ -45,38 +45,43 @@ export function createRequestHook({
   primaryMessages,
 }: RequestHookDeps) {
   return async (evt: HttpRequestEvent): Promise<void> => {
-    const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
+    const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
+    const deps = {
+      learned: (model: ModelRef) => profiles.get(model),
+      patterns: options.cacheProfiles,
+    };
     const cls = await classifyRequestWithBody(evt.request, ref, deps, {
       openaiWires: options.openaiCompatible,
     });
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({
-      cls,
       anthropicProvider,
+      cls,
       hasSentinel,
       openaiCompatible: options.openaiCompatible,
     });
     const profileId = profileForRoute(route, options.openaiCompatible);
     if (profileId === undefined) return;
     const profile = profileFor(profileId);
-    const rewrites = route.rewrites;
+    const { rewrites } = route;
     const observed = route.observedWire !== undefined;
 
-    const sessionID = evt.sessionID;
+    const { sessionID } = evt;
     let mode: CacheTtlMode;
     try {
-      mode = (await store.effective(sessionID)).mode;
+      ({ mode } = await store.effective(sessionID));
     } catch {
-      mode = store.global().mode;
+      ({ mode } = store.global());
     }
     const original = evt.request;
     const isPing = observed && pings.isPing(evt.kind, sessionID);
     const keptWarm = observed && profile.pings;
 
-    // Alignment runs before the TTL rewrite so the copied primary messages
-    // take the ping's own mode and beta header, keeping 1h ahead of 5m.
+    /*
+     * Alignment runs before the TTL rewrite so the copied primary messages
+     * take the ping's own mode and beta header, keeping 1h ahead of 5m.
+     */
     let request = original;
     if (isPing && keptWarm) {
       try {
@@ -88,11 +93,11 @@ export function createRequestHook({
     if (rewrites) {
       try {
         request = await transformHttpRequest(request, mode, {
-          wire: route.transformWire ?? 'anthropic-messages',
-          profile,
-          kind: evt.kind,
-          isPing,
           inject: shouldInject(route, evt.kind, isPing),
+          isPing,
+          kind: evt.kind,
+          profile,
+          wire: route.transformWire ?? 'anthropic-messages',
         });
       } catch {
         // A rewrite failure sends the request as it was rather than failing it.
@@ -108,12 +113,15 @@ export function createRequestHook({
         if (parsed) primaryMessages.set(sessionID, parsed.messages);
       }
       engine.requestSent(sessionID, {
-        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
         isPing,
         kind: evt.kind,
+        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
       });
     } catch {
       // Keepalive bookkeeping must never fail the host's request.
     }
   };
 }
+
+export type { HttpRequestEvent, RequestHookDeps };
+export { createRequestHook };

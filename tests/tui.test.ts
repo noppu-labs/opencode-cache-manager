@@ -2,25 +2,29 @@ import { describe, expect, mock, test } from 'bun:test';
 
 import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
-// `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
-// `solid-js` peer that is only present in the live TUI host. `define` is an
-// identity helper, so stub it here (before importing the TUI entrypoint) to keep
-// the test harness dependency-free.
+/*
+ * `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
+ * `solid-js` peer that is only present in the live TUI host. `define` is an
+ * identity helper, so stub it here (before importing the TUI entrypoint) to keep
+ * the test harness dependency-free.
+ */
 await mock.module('@opencode/plugin/tui', () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
-// Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
-// node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
-// Bun shares module mocks across test files, so the rest of the module stays
-// real for tests/scripts/capture-sidebar.test.ts, which renders the component.
+/*
+ * Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
+ * node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
+ * Bun shares module mocks across test files, so the rest of the module stays
+ * real for tests/scripts/capture-sidebar.test.ts, which renders the component.
+ */
 ensureSolidTransformPlugin();
 const { CacheLines, paletteFromTheme } = await import('../src/ui/sidebar.tsx');
-type SidebarCall = {
+interface SidebarCall {
   snapshots: () => ReadonlyMap<string, any>;
   load: (sessionID: string) => void;
   refresh: (sessionID: string) => void;
   disposed: boolean;
-};
+}
 const sidebarCalls: SidebarCall[] = [];
 const lastSidebar = (): SidebarCall => {
   const call = sidebarCalls.at(-1);
@@ -51,7 +55,7 @@ const { default: tuiPlugin } = await import('../src/tui.ts');
 // TUI plugin (keymap layer + dialog modal + toasts)
 // ---------------------------------------------------------------------------
 
-type TuiMockOptions = {
+interface TuiMockOptions {
   route?: { type: 'home' } | { type: 'session'; sessionID: string };
   global?: Record<string, unknown>;
   session?: Record<string, unknown> | null;
@@ -63,9 +67,9 @@ type TuiMockOptions = {
   sessions?: Record<string, { location: { directory: string } }>;
   /** `ctx.location`; unset means the TUI falls back to `data.location.default()`. */
   location?: { directory: string };
-};
+}
 
-type TuiMock = {
+interface TuiMock {
   ctx: any;
   toasts: any[];
   dialogCalls: any[];
@@ -81,7 +85,7 @@ type TuiMock = {
   cleanup?: () => void;
   layer: () => any;
   run: (input?: string) => Promise<void>;
-};
+}
 
 function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
   let layer: any;
@@ -137,7 +141,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
         events: {
           subscribe: (name: string, opts?: { signal?: AbortSignal }) => {
             subscriptions.push({ name, signal: opts?.signal });
-            return (async function* () {
+            return (async function* subscribe() {
               const queue: any[] = [];
               let wake: (() => void) | undefined;
               const push = (event: any) => {
@@ -213,8 +217,9 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
     rpcOptions,
     subscriptions,
     emitKeepalive: async (snapshot: any) => {
-      for (const listener of listeners)
+      for (const listener of listeners) {
         listener({ type: 'rpc.opencode-cache-manager.keepalive.updated', data: snapshot });
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
     },
     layer: () => layer,

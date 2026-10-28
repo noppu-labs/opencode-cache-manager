@@ -14,7 +14,7 @@ const SESSION_KEY_PREFIX = 'session/';
 const sessionKey = (sessionID: string) => `${SESSION_KEY_PREFIX}${sessionID}`;
 
 /** Layered settings: built-in defaults < plugin options < stored global < stored per-session. */
-export class SettingsStore {
+class SettingsStore {
   private storedGlobal: SettingsPatch = {};
   private readonly sessions = new Map<string, SettingsPatch>();
 
@@ -72,7 +72,7 @@ function isSessionNotFound(error: unknown): boolean {
 }
 
 /** Drops stored settings for sessions that were deleted while the plugin was not running. */
-export async function sweepDeletedSessions(
+async function sweepDeletedSessions(
   storage: ScannableKV,
   getSession: (sessionID: string) => Promise<unknown>
 ): Promise<void> {
@@ -95,3 +95,5 @@ export async function sweepDeletedSessions(
     after = page.next;
   } while (isNonEmptyString(after));
 }
+
+export { SettingsStore, sweepDeletedSessions };

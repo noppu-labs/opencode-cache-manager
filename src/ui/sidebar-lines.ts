@@ -1,8 +1,9 @@
+import { PERCENT, THOUSAND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { formatCompactTokens, formatRemaining } from '../utils/format.ts';
 
-export type Tone = 'base' | 'muted' | 'success' | 'warning' | 'error';
-export interface SidebarLine {
+type Tone = 'base' | 'muted' | 'success' | 'warning' | 'error';
+interface SidebarLine {
   text: string;
   tone: Tone;
   bold?: boolean;
@@ -14,121 +15,130 @@ export interface SidebarLine {
 }
 
 /** Width of the label column (bullet/indent plus label), so values line up across rows. */
-export const LABEL_WIDTH = 14;
+const LABEL_WIDTH = 14;
 
-export const SECTION_HEADER = 'Cache';
-const HEADER: SidebarLine = { text: SECTION_HEADER, tone: 'base', bold: true };
+const SECTION_HEADER = 'Cache';
+const HEADER: SidebarLine = { bold: true, text: SECTION_HEADER, tone: 'base' };
+
+/** Suffix of the pings row for the last ping's outcome. */
+const PING_OUTCOMES: Record<NonNullable<KeepaliveSnapshot['lastPing']>, string> = {
+  failed: ' ✗ failed',
+  hit: ' ✓ hit',
+  miss: ' ✗ miss',
+};
 
 const defaultClock = (ms: number): string =>
-  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  new Date(ms).toLocaleTimeString([], { hour: '2-digit', hour12: false, minute: '2-digit' });
 
-const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
+const thousands = (tokens: number): string => `${Math.round(tokens / THOUSAND)}k`;
 
 function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): SidebarLine {
-  const ratio = (cache.read / cache.total) * 100;
+  const ratio = (cache.read / cache.total) * PERCENT;
   const percent = cache.read < cache.total ? Math.floor(ratio) : Math.round(ratio);
   return {
+    right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
     text: 'cached',
     tone: 'base',
-    right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
   };
 }
 
 /** Lines for the sidebar cache section; an empty array means render nothing. */
-export function sidebarLines(
-  s: KeepaliveSnapshot | undefined,
+function sidebarLines(
+  snapshot: KeepaliveSnapshot | undefined,
   now: number,
   formatClock: (ms: number) => string = defaultClock
 ): SidebarLine[] {
   const waiting: SidebarLine[] = [HEADER, { text: 'waiting for first response', tone: 'muted' }];
   // No snapshot yet (e.g. after a restart) still shows the section, so the user can see the plugin is there.
-  if (s === undefined || s.lastRequestAt === null) return waiting;
-  if (s.skipReason === 'child') return [];
-  if (s.skipReason === 'implicit') {
+  if (snapshot === undefined || snapshot.lastRequestAt === null) return waiting;
+  if (snapshot.skipReason === 'child') return [];
+  if (snapshot.skipReason === 'implicit') {
     const keepalive: SidebarLine = {
+      right: 'n/a · implicit cache',
       text: 'keepalive',
       tone: 'base',
-      right: 'n/a · implicit cache',
     };
-    return s.lastCache === null
+    return snapshot.lastCache === null
       ? [HEADER, keepalive]
-      : [HEADER, cachedLine(s.lastCache), keepalive];
+      : [HEADER, cachedLine(snapshot.lastCache), keepalive];
   }
-  if (s.skipReason === 'no-cache-seen' && s.contextTokens !== null) return [];
-  if (s.ttl === null) return waiting;
+  if (snapshot.skipReason === 'no-cache-seen' && snapshot.contextTokens !== null) return [];
+  if (snapshot.ttl === null) return waiting;
 
-  const ttl: SidebarLine = { text: 'ttl', tone: 'base', right: `${s.ttl} (${s.ttlSource})` };
-  const cached: SidebarLine[] = s.lastCache === null ? [] : [cachedLine(s.lastCache)];
-  if (s.expiresAt === null) return [HEADER, ttl, ...cached];
+  const ttl: SidebarLine = {
+    right: `${snapshot.ttl} (${snapshot.ttlSource})`,
+    text: 'ttl',
+    tone: 'base',
+  };
+  const cached: SidebarLine[] = snapshot.lastCache === null ? [] : [cachedLine(snapshot.lastCache)];
+  if (snapshot.expiresAt === null) return [HEADER, ttl, ...cached];
 
-  if (now >= s.expiresAt) {
+  if (now >= snapshot.expiresAt) {
     return [
       HEADER,
-      { text: 'status', tone: 'base', bullet: 'error', right: 'expired' },
+      { bullet: 'error', right: 'expired', text: 'status', tone: 'base' },
       ...cached,
-      { text: 'expired', tone: 'base', right: `${formatRemaining(now - s.expiresAt)} ago` },
+      { right: `${formatRemaining(now - snapshot.expiresAt)} ago`, text: 'expired', tone: 'base' },
       ttl,
     ];
   }
   const lines: SidebarLine[] = [
     HEADER,
     {
+      bullet: snapshot.skipReason === 'exhausted' ? 'warning' : 'success',
+      right: 'warm',
       text: 'status',
       tone: 'base',
-      bullet: s.skipReason === 'exhausted' ? 'warning' : 'success',
-      right: 'warm',
     },
     ...cached,
     {
+      right: `${formatClock(snapshot.expiresAt)} (${formatRemaining(snapshot.expiresAt - now)})`,
       text: 'expires',
       tone: 'base',
-      right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
     },
     ttl,
   ];
 
-  if (s.skipReason === 'missed') {
+  if (snapshot.skipReason === 'missed') {
     lines.push({
-      text: 'keepalive',
-      tone: 'base',
       right: 'stopped · last ping missed',
       rightTone: 'error',
-    });
-  } else if (s.skipReason === 'busy') {
-    lines.push({ text: 'keepalive', tone: 'base', right: 'waiting · session busy' });
-  } else if (s.skipReason === 'small-context') {
-    lines.push({
       text: 'keepalive',
       tone: 'base',
-      right: `off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
     });
-  } else if (s.skipReason === 'disabled') {
-    lines.push({ text: 'keepalive', tone: 'base', right: 'off · disabled' });
+  } else if (snapshot.skipReason === 'busy') {
+    lines.push({ right: 'waiting · session busy', text: 'keepalive', tone: 'base' });
+  } else if (snapshot.skipReason === 'small-context') {
+    lines.push({
+      right: `off · ${thousands(snapshot.contextTokens ?? 0)} < ${thousands(snapshot.minContextTokens)}`,
+      text: 'keepalive',
+      tone: 'base',
+    });
+  } else if (snapshot.skipReason === 'disabled') {
+    lines.push({ right: 'off · disabled', text: 'keepalive', tone: 'base' });
   } else {
-    if (s.nextPingAt !== null) {
+    if (snapshot.nextPingAt !== null) {
       lines.push({
+        right: `${formatClock(snapshot.nextPingAt)} (${formatRemaining(snapshot.nextPingAt - now)})`,
         text: 'next ping',
         tone: 'base',
-        right: `${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
       });
-    } else if (s.skipReason === 'exhausted') {
-      lines.push({ text: 'next ping', tone: 'base', right: 'none' });
+    } else if (snapshot.skipReason === 'exhausted') {
+      lines.push({ right: 'none', text: 'next ping', tone: 'base' });
     }
-    const outcome =
-      s.lastPing === 'hit'
-        ? ' ✓ hit'
-        : s.lastPing === 'miss'
-          ? ' ✗ miss'
-          : s.lastPing === 'failed'
-            ? ' ✗ failed'
-            : '';
+    const outcome = snapshot.lastPing === null ? '' : PING_OUTCOMES[snapshot.lastPing];
     const pings: SidebarLine = {
+      right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}`,
       text: 'pings',
       tone: 'base',
-      right: `${s.pingsUsed}/${s.maxPings}${outcome}`,
     };
-    if (s.lastPing !== null) pings.rightTone = s.lastPing === 'hit' ? 'success' : 'error';
+    if (snapshot.lastPing !== null) {
+      pings.rightTone = snapshot.lastPing === 'hit' ? 'success' : 'error';
+    }
     lines.push(pings);
   }
   return lines;
 }
+
+export type { Tone, SidebarLine };
+export { LABEL_WIDTH, SECTION_HEADER, sidebarLines };

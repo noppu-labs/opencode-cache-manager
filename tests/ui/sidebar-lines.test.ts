@@ -60,7 +60,7 @@ describe('sidebarLines', () => {
   });
 
   test('renders nothing when a response arrived without cache activity', () => {
-    expect(lines(snap({ ...noResponse, contextTokens: 1_200 }))).toEqual([]);
+    expect(lines(snap({ ...noResponse, contextTokens: 1200 }))).toEqual([]);
   });
 
   test('shows a waiting line while the first response is outstanding', () => {
@@ -220,7 +220,7 @@ describe('sidebarLines: cached line', () => {
   });
 
   test('a near-total read never rounds up to 100%', () => {
-    const out = lines(snap({ lastCache: { read: 9_960, total: 10_000 } }));
+    const out = lines(snap({ lastCache: { read: 9960, total: 10_000 } }));
     expect(out[2]?.right).toBe('99% · 10k / 10k');
   });
 

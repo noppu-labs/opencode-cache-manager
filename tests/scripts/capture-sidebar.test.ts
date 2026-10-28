@@ -7,8 +7,7 @@ import { frameToAnsi, stripAnsi, textRow } from '../../scripts/capture/ansi.ts';
 
 // The screens render sidebar.tsx, so the Solid transform must be registered before they load.
 ensureSolidTransformPlugin();
-const screens: typeof import('../../scripts/capture/screens.tsx') =
-  await import('../../scripts/capture/screens.tsx');
+const screens = await import('../../scripts/capture/screens.tsx');
 
 const span = (text: string, fg = '#eeeeee', attributes = 0, bg = RGBA.fromValues(0, 0, 0, 0)) => ({
   text,

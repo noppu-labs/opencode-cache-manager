@@ -17,18 +17,18 @@ describe('parseOpenAiUsageFromJson', () => {
     expect(usage).toEqual({
       inputTokens: 1698,
       cacheReadTokens: 0,
-      cacheWriteTokens: 14845,
+      cacheWriteTokens: 14_845,
       write5mTokens: undefined,
       write1hTokens: undefined,
     });
-    expect(contextTokens(usage)).toBe(16543);
+    expect(contextTokens(usage)).toBe(16_543);
     expect(grantedTtl(usage)).toBeUndefined();
   });
 
   test('OmniRoute auto/ read', () => {
     expect(parseOpenAiUsageFromJson({ usage: openaiUsage.omnirouteAutoRead })).toMatchObject({
       inputTokens: 1698,
-      cacheReadTokens: 14845,
+      cacheReadTokens: 14_845,
       cacheWriteTokens: 0,
     });
   });
@@ -52,7 +52,7 @@ describe('parseOpenAiUsageFromJson', () => {
   test('DeepSeek read has no write', () => {
     expect(parseOpenAiUsageFromJson({ usage: openaiUsage.deepseekRead })).toMatchObject({
       inputTokens: 83,
-      cacheReadTokens: 10112,
+      cacheReadTokens: 10_112,
       cacheWriteTokens: 0,
     });
   });
@@ -118,7 +118,7 @@ describe('parseOpenAiUsageFromSse', () => {
       `data: [DONE]\n\n`;
     expect(parseOpenAiUsageFromSse(text)).toMatchObject({
       inputTokens: 83,
-      cacheReadTokens: 10112,
+      cacheReadTokens: 10_112,
     });
   });
 

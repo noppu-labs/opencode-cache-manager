@@ -26,12 +26,18 @@ export interface RpcHandlerDeps {
 /** Handlers for the `CacheTtlRpc` contract. */
 export function createRpcHandlers({ store, engine, settingsChanged }: RpcHandlerDeps) {
   return {
+    getKeepalive: (input: { sessionID: string }) =>
+      Promise.try(() => engine.snapshot(input.sessionID)),
     getSettings: async (input: { sessionID?: string }) => ({
       global: store.global(),
       session: isNonEmptyString(input?.sessionID)
         ? await store.sessionPatch(input.sessionID)
         : null,
     }),
+    resetSession: async (input: { sessionID: string }) => {
+      await store.resetSession(input.sessionID);
+      return settingsChanged(input.sessionID);
+    },
     setGlobal: async (input: { patch: unknown }) => {
       await store.setGlobal(validatePatch(input.patch));
       return settingsChanged(null);
@@ -40,11 +46,5 @@ export function createRpcHandlers({ store, engine, settingsChanged }: RpcHandler
       await store.setSession(input.sessionID, validatePatch(input.patch));
       return settingsChanged(input.sessionID);
     },
-    resetSession: async (input: { sessionID: string }) => {
-      await store.resetSession(input.sessionID);
-      return settingsChanged(input.sessionID);
-    },
-    getKeepalive: (input: { sessionID: string }) =>
-      Promise.try(() => engine.snapshot(input.sessionID)),
   };
 }

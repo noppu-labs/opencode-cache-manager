@@ -1,4 +1,5 @@
-import type { SettingsPatch } from '../config/settings.ts';
+import { MAX_PINGS_LIMIT, type SettingsPatch } from '../config/settings.ts';
+import { THOUSAND } from '../constants/units.ts';
 import { isCacheTtlMode } from '../models/cache.ts';
 
 /** Extracts a plain string from the various shapes a slash-command argument may take. */
@@ -31,7 +32,7 @@ function textField(value: unknown): string | undefined {
 }
 
 /** What a `/cache-manager` argument asks for. */
-export type CommandAction =
+type CommandAction =
   | { type: 'toggle' }
   | { type: 'status' }
   | { type: 'reset' }
@@ -40,37 +41,40 @@ export type CommandAction =
 
 /** Parses `50000` or `50k` into a token count; `undefined` when malformed. */
 function parseTokenCount(text: string | undefined): number | undefined {
-  const match = /^(\d+)(k?)$/u.exec(text ?? '');
-  if (!match) return undefined;
-  return Number(match[1]) * (match[2] ? 1000 : 1);
+  const groups = /^(?<count>\d+)(?<unit>k?)$/u.exec(text ?? '')?.groups;
+  if (!groups) return undefined;
+  return Number(groups.count) * (groups.unit ? THOUSAND : 1);
 }
 
 /**
  * Parses a slash-command argument into an action. Accepts a raw string, a
  * `PromptInput.Prompt`-shaped object, or an array of `{ text }` parts.
  */
-export function parseCommandArg(raw: unknown): CommandAction {
+function parseCommandArg(raw: unknown): CommandAction {
   const text = extractRawText(raw).trim().toLowerCase();
   if (text === '' || text === 'toggle') return { type: 'toggle' };
   if (text === 'status') return { type: 'status' };
   if (text === 'reset') return { type: 'reset' };
-  if (isCacheTtlMode(text)) return { type: 'set', patch: { mode: text } };
+  if (isCacheTtlMode(text)) return { patch: { mode: text }, type: 'set' };
 
   const [command, value, ...rest] = text.split(/\s+/u);
   if (rest.length > 0) return { type: 'invalid' };
 
   if (command === 'keepalive' && (value === 'on' || value === 'off')) {
-    return { type: 'set', patch: { keepalive: value === 'on' } };
+    return { patch: { keepalive: value === 'on' }, type: 'set' };
   }
   if (command === 'pings' && /^\d+$/u.test(value ?? '')) {
     const maxPings = Number(value);
-    if (maxPings <= 100) return { type: 'set', patch: { maxPings } };
+    if (maxPings <= MAX_PINGS_LIMIT) return { patch: { maxPings }, type: 'set' };
   }
   if (command === 'min') {
     const minContextTokens = parseTokenCount(value);
     if (minContextTokens !== undefined) {
-      return { type: 'set', patch: { minContextTokens } };
+      return { patch: { minContextTokens }, type: 'set' };
     }
   }
   return { type: 'invalid' };
 }
+
+export type { CommandAction };
+export { parseCommandArg };

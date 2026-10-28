@@ -1,14 +1,15 @@
+import { SSE_DATA_PREFIX } from '../constants/sse.ts';
 import type { CacheUsage, ResponseParsers, Ttl } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { num } from '../utils/num.ts';
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
-export function contextTokens(u: CacheUsage): number {
-  return u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+function contextTokens(usage: CacheUsage): number {
+  return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
 }
 
-export function hasCacheActivity(u: CacheUsage): boolean {
-  return u.cacheReadTokens + u.cacheWriteTokens > 0;
+function hasCacheActivity(usage: CacheUsage): boolean {
+  return usage.cacheReadTokens + usage.cacheWriteTokens > 0;
 }
 
 /**
@@ -16,9 +17,9 @@ export function hasCacheActivity(u: CacheUsage): boolean {
  * request with a 5m breakpoint expires its tail at 5m; `undefined` when there
  * was no write or no breakdown.
  */
-export function grantedTtl(u: CacheUsage): Ttl | undefined {
-  if ((u.write5mTokens ?? 0) > 0) return '5m';
-  if ((u.write1hTokens ?? 0) > 0) return '1h';
+function grantedTtl(usage: CacheUsage): Ttl | undefined {
+  if ((usage.write5mTokens ?? 0) > 0) return '5m';
+  if ((usage.write1hTokens ?? 0) > 0) return '1h';
   return undefined;
 }
 
@@ -28,9 +29,9 @@ type PartialUsage = Partial<CacheUsage>;
 function readUsage(raw: unknown): PartialUsage | undefined {
   if (!isRecord(raw)) return undefined;
   const out: PartialUsage = {
-    inputTokens: num(raw.input_tokens),
     cacheReadTokens: num(raw.cache_read_input_tokens),
     cacheWriteTokens: num(raw.cache_creation_input_tokens),
+    inputTokens: num(raw.input_tokens),
   };
   if (isRecord(raw.cache_creation)) {
     out.write5mTokens = num(raw.cache_creation.ephemeral_5m_input_tokens) ?? 0;
@@ -41,45 +42,46 @@ function readUsage(raw: unknown): PartialUsage | undefined {
 
 function finalize(partial: PartialUsage): CacheUsage {
   return {
-    inputTokens: partial.inputTokens ?? 0,
     cacheReadTokens: partial.cacheReadTokens ?? 0,
     cacheWriteTokens: partial.cacheWriteTokens ?? 0,
-    write5mTokens: partial.write5mTokens,
+    inputTokens: partial.inputTokens ?? 0,
     write1hTokens: partial.write1hTokens,
+    write5mTokens: partial.write5mTokens,
   };
 }
 
 /** Parses the `usage` block of a non-streaming Messages response body. */
-export function parseUsageFromJson(body: unknown): CacheUsage | undefined {
+function parseUsageFromJson(body: unknown): CacheUsage | undefined {
   if (!isRecord(body)) return undefined;
   const partial = readUsage(body.usage);
   return partial && finalize(partial);
+}
+
+/** The usage a `message_start` or `message_delta` event carries. */
+function eventUsage(event: Record<string, unknown>): unknown {
+  if (event.type === 'message_start' && isRecord(event.message)) return event.message.usage;
+  if (event.type === 'message_delta') return event.usage;
+  return undefined;
 }
 
 /**
  * Parses a streamed Messages response: `message_start` carries the prompt
  * usage and `message_delta` updates the fields it reports.
  */
-export function parseUsageFromSse(text: string): CacheUsage | undefined {
+function parseUsageFromSse(text: string): CacheUsage | undefined {
   let merged: PartialUsage | undefined;
 
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     let event: unknown;
     try {
-      event = JSON.parse(line.slice(5).trim());
+      event = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
     } catch {
       continue;
     }
     if (!isRecord(event)) continue;
 
-    const raw =
-      event.type === 'message_start' && isRecord(event.message)
-        ? event.message.usage
-        : event.type === 'message_delta'
-          ? event.usage
-          : undefined;
-    const partial = readUsage(raw);
+    const partial = readUsage(eventUsage(event));
     if (!partial) continue;
 
     merged ??= {};
@@ -93,17 +95,17 @@ export function parseUsageFromSse(text: string): CacheUsage | undefined {
 }
 
 /** The top-level `stop_reason` of a non-streaming Messages response. */
-export function parseStopReasonFromJson(body: unknown): string | undefined {
+function parseStopReasonFromJson(body: unknown): string | undefined {
   return isRecord(body) && typeof body.stop_reason === 'string' ? body.stop_reason : undefined;
 }
 
 /** The last `message_delta.delta.stop_reason` of a streamed Messages response. */
-export function parseStopReasonFromSse(text: string): string | undefined {
+function parseStopReasonFromSse(text: string): string | undefined {
   let stopReason: string | undefined;
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      const event: unknown = JSON.parse(line.slice(5).trim());
+      const event: unknown = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
       if (isRecord(event) && event.type === 'message_delta' && isRecord(event.delta)) {
         const reason = event.delta.stop_reason;
         if (typeof reason === 'string') stopReason = reason;
@@ -116,20 +118,20 @@ export function parseStopReasonFromSse(text: string): string | undefined {
 }
 
 /** The top-level `model` of a non-streaming Messages response. */
-export function parseModelFromJson(body: unknown): string | undefined {
+function parseModelFromJson(body: unknown): string | undefined {
   return isRecord(body) && typeof body.model === 'string' && body.model !== ''
     ? body.model
     : undefined;
 }
 
 /** The `message.model` of the first `message_start` event of a streamed Messages response. */
-export function parseModelFromSse(text: string): string | undefined {
+function parseModelFromSse(text: string): string | undefined {
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      const event: unknown = JSON.parse(line.slice(5).trim());
+      const event: unknown = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
       if (isRecord(event) && event.type === 'message_start' && isRecord(event.message)) {
-        const model = event.message.model;
+        const { model } = event.message;
         if (typeof model === 'string' && model !== '') return model;
       }
     } catch {
@@ -140,21 +142,34 @@ export function parseModelFromSse(text: string): string | undefined {
 }
 
 /** The Anthropic Messages parsers; the wire reports the resolved model but no provider. */
-export const ANTHROPIC_PARSERS: ResponseParsers = {
+const ANTHROPIC_PARSERS: ResponseParsers = {
   fromJson: (body) => {
     const model = parseModelFromJson(body);
     return {
-      usage: parseUsageFromJson(body),
-      stopReason: parseStopReasonFromJson(body),
       identity: model === undefined ? undefined : { model },
+      stopReason: parseStopReasonFromJson(body),
+      usage: parseUsageFromJson(body),
     };
   },
   fromSse: (text) => {
     const model = parseModelFromSse(text);
     return {
-      usage: parseUsageFromSse(text),
-      stopReason: parseStopReasonFromSse(text),
       identity: model === undefined ? undefined : { model },
+      stopReason: parseStopReasonFromSse(text),
+      usage: parseUsageFromSse(text),
     };
   },
+};
+
+export {
+  contextTokens,
+  hasCacheActivity,
+  grantedTtl,
+  parseUsageFromJson,
+  parseUsageFromSse,
+  parseStopReasonFromJson,
+  parseStopReasonFromSse,
+  parseModelFromJson,
+  parseModelFromSse,
+  ANTHROPIC_PARSERS,
 };

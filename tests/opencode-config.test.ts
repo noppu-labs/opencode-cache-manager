@@ -13,9 +13,11 @@ import {
   transformOpts,
 } from './helpers/fixtures.ts';
 
-// ---------------------------------------------------------------------------
-// docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
+ * ---------------------------------------------------------------------------
+ */
 
 const EXAMPLES_DIR = fileURLToPath(new URL('../docs/examples/', import.meta.url));
 
@@ -45,7 +47,7 @@ function stripJsonc(raw: string): string {
     }
     out += ch;
   }
-  return out.replaceAll(/,(\s*[}\]])/gu, '$1');
+  return out.replaceAll(/,(?<close>\s*[}\]])/gu, '$<close>');
 }
 
 function parseExample(file: string): any {
@@ -211,8 +213,9 @@ describe('docs/examples', () => {
       expect(config.$schema).toBe('https://opencode.ai/config.json');
       const providers = Object.values<any>(config.providers);
       expect(providers.length).toBeGreaterThan(0);
-      for (const provider of providers)
+      for (const provider of providers) {
         expect(Object.keys(provider.models).length).toBeGreaterThan(0);
+      }
     });
 
     test('has -1h variants', () => {
@@ -235,8 +238,8 @@ describe('docs/examples', () => {
     test('holds no secrets or personal hostnames', () => {
       const raw = readFileSync(`${EXAMPLES_DIR}${file}`, 'utf8');
       expect(raw).not.toMatch(/linksy/iu);
-      for (const match of raw.matchAll(/"(?:apiKey|authToken)":\s*"([^"]*)"/gu)) {
-        expect(match[1]).toMatch(/^\{env:[A-Z_]+\}$/u);
+      for (const match of raw.matchAll(/"(?:apiKey|authToken)":\s*"(?<value>[^"]*)"/gu)) {
+        expect(match.groups?.value).toMatch(/^\{env:[A-Z_]+\}$/u);
       }
     });
   });
@@ -248,7 +251,7 @@ describe('docs/examples', () => {
       'auto/claude-opus-5-5': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
       'auto/claude-fable-5-1': ['low', 'medium', 'high', 'xhigh', 'max'],
     };
-    const models = parseExample('opencode.anthropic.jsonc').providers['omniroute-anthropic'].models;
+    const { models } = parseExample('opencode.anthropic.jsonc').providers['omniroute-anthropic'];
     for (const [modelID, baseIds] of Object.entries(EXPECTED)) {
       const ids = ((models[modelID]?.variants ?? []) as ExampleVariant[]).map((v) => v.id);
       for (const base of baseIds) {
@@ -259,7 +262,7 @@ describe('docs/examples', () => {
   });
 
   test('the OpenAI-wire examples use the expected provider packages', () => {
-    const openrouter = parseExample('opencode.openrouter.jsonc').providers.openrouter;
+    const { openrouter } = parseExample('opencode.openrouter.jsonc').providers;
     expect(openrouter.package).toBe('@opencode/ai/providers/openrouter');
     const generic = Object.values<any>(
       parseExample('opencode.openai-compatible.jsonc').providers

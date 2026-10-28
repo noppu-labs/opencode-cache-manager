@@ -6,18 +6,18 @@ import { isRecord } from '../utils/is-record.ts';
 import { applyTtlToBlock, hasOneHourCacheControl } from './cache-control.ts';
 
 /** Anthropic TTL for a mode: the TTL a keepalive ping should refresh; hybrid's message tail is 5m. */
-export function ttlForMode(mode: CacheTtlMode): Ttl {
+function ttlForMode(mode: CacheTtlMode): Ttl {
   return mode === '1h' ? '1h' : '5m';
 }
 
 /** The mode a request runs at: a valid `x-cache-ttl` header, else `fallback`. */
-export function resolveActiveMode(request: Request, fallback: CacheTtlMode): CacheTtlMode {
+function resolveActiveMode(request: Request, fallback: CacheTtlMode): CacheTtlMode {
   const normalized = (request.headers.get(SENTINEL_HEADER) ?? '').trim().toLowerCase();
   return isCacheTtlMode(normalized) ? normalized : fallback;
 }
 
 /** The non-empty, trimmed tokens of a comma-separated `anthropic-beta` header value. */
-export function betaTokens(value: string | null): string[] {
+function betaTokens(value: string | null): string[] {
   return (value ?? '')
     .split(',')
     .map((token) => token.trim())
@@ -28,7 +28,7 @@ export function betaTokens(value: string | null): string[] {
  * Merges the extended-cache beta flag into an `anthropic-beta` header value,
  * preserving the existing order and never introducing duplicates.
  */
-export function mergeBetaHeader(
+function mergeBetaHeader(
   existing: string | null,
   includeExtendedCacheBeta: boolean
 ): string | null {
@@ -59,10 +59,7 @@ function applyTtlToTool(tool: unknown, ttl: '1h' | undefined): boolean {
  * body to match `mode`. Returns true when anything changed or a 1h breakpoint
  * is present.
  */
-export function rewriteAnthropicCacheTtl(
-  body: Record<string, unknown>,
-  mode: CacheTtlMode
-): boolean {
+function rewriteAnthropicCacheTtl(body: Record<string, unknown>, mode: CacheTtlMode): boolean {
   let changed = false;
 
   const prefixTtl: '1h' | undefined = mode === '1h' || mode === 'hybrid' ? '1h' : undefined;
@@ -79,8 +76,10 @@ export function rewriteAnthropicCacheTtl(
     }
   }
 
-  // In hybrid mode the message tail stays at the 5m default so that the 1h
-  // prefix breakpoints remain ahead of any 5m breakpoint.
+  /*
+   * In hybrid mode the message tail stays at the 5m default so that the 1h
+   * prefix breakpoints remain ahead of any 5m breakpoint.
+   */
   const messageTtl: '1h' | undefined = mode === '1h' ? '1h' : undefined;
 
   if (Array.isArray(body.messages)) {
@@ -105,15 +104,15 @@ function finalizeRequest(
   headers: Headers
 ): Request {
   return new Request(request.url, {
-    method: request.method,
-    headers,
     body: JSON.stringify(body),
+    headers,
+    method: request.method,
     signal: request.signal,
   });
 }
 
 /** How `transformHttpRequest` rewrites a request: the wire it is on and the cache profile it goes through. */
-export interface TransformOptions {
+interface TransformOptions {
   wire: Wire;
   profile: CacheProfile;
   kind: RequestKind;
@@ -144,7 +143,7 @@ function applyProfileHeaders(headers: Headers, extra: Record<string, string>): v
  * its original bytes, and on the OpenAI wires the original request is returned when
  * there was no sentinel.
  */
-export async function transformHttpRequest(
+async function transformHttpRequest(
   request: Request,
   fallbackMode: CacheTtlMode,
   opts: TransformOptions
@@ -159,7 +158,7 @@ export async function transformHttpRequest(
 
   if (!request.body) {
     return hadSentinel
-      ? new Request(request.url, { method: request.method, headers, signal: request.signal })
+      ? new Request(request.url, { headers, method: request.method, signal: request.signal })
       : request;
   }
 
@@ -175,25 +174,35 @@ export async function transformHttpRequest(
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
     return new Request(request.url, {
-      method: request.method,
-      headers,
       body: buffer,
+      headers,
+      method: request.method,
       signal: request.signal,
     });
   }
 
   const { wire, profile, kind, isPing, inject } = opts;
-  const changed = profile.rewrite(parsed, { wire, mode: activeMode, kind, isPing, inject });
-  applyProfileHeaders(headers, profile.headers?.(parsed, { wire, mode: activeMode }) ?? {});
+  const changed = profile.rewrite(parsed, { inject, isPing, kind, mode: activeMode, wire });
+  applyProfileHeaders(headers, profile.headers?.(parsed, { mode: activeMode, wire }) ?? {});
   if (changed || (wire === 'anthropic-messages' && profile.id === 'anthropic')) {
     return finalizeRequest(request, parsed, headers);
   }
   if (wire !== 'anthropic-messages' && !hadSentinel) return request;
   const original = await request.clone().arrayBuffer();
   return new Request(request.url, {
-    method: request.method,
-    headers,
     body: original,
+    headers,
+    method: request.method,
     signal: request.signal,
   });
 }
+
+export type { TransformOptions };
+export {
+  ttlForMode,
+  resolveActiveMode,
+  betaTokens,
+  mergeBetaHeader,
+  rewriteAnthropicCacheTtl,
+  transformHttpRequest,
+};

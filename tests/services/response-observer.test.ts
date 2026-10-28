@@ -19,7 +19,7 @@ describe('observeResponseUsage', () => {
     expect(response.headers.get('content-type')).toBe('text/event-stream');
     expect(response.headers.get('x-test')).toBe('1');
     expect(await response.text()).toBe(text);
-    expect((await usage)?.cacheReadTokens).toBe(61000);
+    expect((await usage)?.cacheReadTokens).toBe(61_000);
   });
 
   test('passes JSON through unchanged and resolves usage', async () => {
@@ -63,9 +63,9 @@ describe('observeResponseUsage', () => {
   });
 
   test('resolves the stop reason of SSE and JSON responses', async () => {
-    const streamed =
-      sse(fullUsage) +
-      `data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n`;
+    const streamed = `${sse(
+      fullUsage
+    )}data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{}}\n\n`;
     const fromSse = observeResponseUsage(
       new Response(streamed, { headers: { 'content-type': 'text/event-stream' } }),
       ANTHROPIC_PARSERS
@@ -74,9 +74,12 @@ describe('observeResponseUsage', () => {
     expect(await fromSse.stopReason).toBe('tool_use');
 
     const fromJson = observeResponseUsage(
-      new Response(JSON.stringify({ stop_reason: 'end_turn', usage: fullUsage }), {
-        headers: { 'content-type': 'application/json' },
-      }),
+      Response.json(
+        { stop_reason: 'end_turn', usage: fullUsage },
+        {
+          headers: { 'content-type': 'application/json' },
+        }
+      ),
       ANTHROPIC_PARSERS
     );
     await fromJson.response.text();
@@ -108,17 +111,17 @@ describe('observeResponseUsage', () => {
 
   test('openai-chat wire parses a JSON body', async () => {
     const observed = observeResponseUsage(
-      new Response(
-        JSON.stringify({
+      Response.json(
+        {
           model: 'claude-haiku-5-5',
           choices: [{ finish_reason: 'stop' }],
           usage: openaiUsage.deepseekRead,
-        }),
+        },
         { headers: { 'content-type': 'application/json' } }
       ),
       OPENAI_PARSERS
     );
-    expect(await observed.usage).toMatchObject({ inputTokens: 83, cacheReadTokens: 10112 });
+    expect(await observed.usage).toMatchObject({ inputTokens: 83, cacheReadTokens: 10_112 });
     expect(await observed.stopReason).toBe('stop');
     expect(await observed.identity).toEqual({ model: 'claude-haiku-5-5' });
   });

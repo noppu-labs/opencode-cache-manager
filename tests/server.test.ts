@@ -17,19 +17,19 @@ import {
 // Plugin.setup(ctx) integration
 // ---------------------------------------------------------------------------
 
-type MockCtx = {
+interface MockCtx {
   ctx: any;
   store: Map<string, unknown>;
-  synthetic: Array<{ sessionID: string; text: string; resume?: boolean | null }>;
+  synthetic: { sessionID: string; text: string; resume?: boolean | null }[];
   command: () => any;
   hook: () => any;
   responseHook: () => any;
   rpc: () => any;
-  emits: Array<{ name: string; data: unknown }>;
+  emits: { name: string; data: unknown }[];
   generate: ReturnType<typeof mock>;
   sessionGet: ReturnType<typeof mock>;
   cleanup?: () => unknown;
-};
+}
 
 function createMockCtx(options: Record<string, unknown> = {}): MockCtx {
   const store = new Map<string, unknown>();
@@ -152,19 +152,21 @@ describe('plugin.setup', () => {
 
   test('reads keepalive options from ctx.options', async () => {
     const host = await setup({
-      keepalive: { enabled: false, maxPings: 2, minContextTokens: 20000 },
+      keepalive: { enabled: false, maxPings: 2, minContextTokens: 20_000 },
     });
     await host.command().execute(invocation('status'));
-    const text = host.synthetic[0].text;
+    const { text } = host.synthetic[0];
     expect(text).toContain('off');
     expect(text).toContain('2');
     expect(text).toContain('20000');
   });
 });
 
-// ---------------------------------------------------------------------------
-// keepalive wiring
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * keepalive wiring
+ * ---------------------------------------------------------------------------
+ */
 
 describe('keepalive wiring', () => {
   const T0 = 1_700_000_000_000;
@@ -395,7 +397,7 @@ describe('keepalive wiring', () => {
 
     test('a Claude model is injected, pinged with an aligned request and the ping is a hit', async () => {
       const host = await start({ defaultMode: '1h' });
-      const pings: Array<Record<string, any>> = [];
+      const pings: Record<string, any>[] = [];
       host.generate.mockImplementation(async (input: any) => {
         const ping = await roundTrip(host, {
           ...chatTurn('claude-opus-5-5', {
@@ -436,7 +438,7 @@ describe('keepalive wiring', () => {
       const model = 'gpt-6-luna';
       const drifted = chatBody(model, PING_PROMPT);
       drifted.messages[1] = { role: 'user', content: 'rewritten by another plugin' };
-      const pings: Array<Record<string, any>> = [];
+      const pings: Record<string, any>[] = [];
       host.generate.mockImplementation(async (input: any) => {
         const ping = await roundTrip(host, {
           ...chatTurn(model, { sse: [READ_CHAT] }),
@@ -615,7 +617,7 @@ describe('keepalive wiring', () => {
       const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/fast';
       const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
-      const pings: Array<Record<string, any>> = [];
+      const pings: Record<string, any>[] = [];
       host.generate.mockImplementation(async (input: any) => {
         const body = {
           ...sampleBody(),
@@ -893,8 +895,8 @@ describe('keepalive wiring', () => {
     await host.responseHook()({
       ...evt,
       request: evt.request,
-      response: new Response(
-        JSON.stringify({ usage: { input_tokens: 10, cache_read_input_tokens: 60_000 } }),
+      response: Response.json(
+        { usage: { input_tokens: 10, cache_read_input_tokens: 60_000 } },
         {
           headers: { 'content-type': 'application/json' },
         }
@@ -1019,8 +1021,9 @@ describe('keepalive wiring', () => {
       host.store.set('session/ses_live', { mode: '1h' });
       host.store.set('global', { mode: '5m' });
       host.sessionGet.mockImplementation(async (input: any) => {
-        if (input.sessionID === 'ses_gone')
+        if (input.sessionID === 'ses_gone') {
           throw Object.assign(new Error('Session not found'), { _tag: 'SessionNotFoundError' });
+        }
         return { id: input.sessionID };
       });
       host.cleanup = await (plugin as any).setup(host.ctx);

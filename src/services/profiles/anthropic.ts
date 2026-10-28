@@ -10,16 +10,6 @@ import { injectOpenAiBreakpoints, rewriteOpenAiCacheTtl } from '../openai-cache-
  * sentinel header strip and the beta header (see `headers`) apply whether or not the body changed.
  */
 export const anthropicProfile: CacheProfile = {
-  id: 'anthropic',
-  wires: ['anthropic-messages', 'openai-chat'],
-  ttlForMode,
-  rewrite(body, ctx) {
-    if (ctx.wire === 'anthropic-messages') return rewriteAnthropicCacheTtl(body, ctx.mode);
-    if (ctx.wire !== 'openai-chat') return false;
-    const injected = ctx.inject && injectOpenAiBreakpoints(body);
-    const rewritten = rewriteOpenAiCacheTtl(body, ctx.mode);
-    return injected || rewritten;
-  },
   headers(body, { wire, mode }) {
     const extended =
       wire === 'anthropic-messages'
@@ -29,5 +19,15 @@ export const anthropicProfile: CacheProfile = {
     if (extended) headers[BETA_HEADER] = EXTENDED_CACHE_BETA;
     return headers;
   },
+  id: 'anthropic',
   pings: true,
+  rewrite(body, ctx) {
+    if (ctx.wire === 'anthropic-messages') return rewriteAnthropicCacheTtl(body, ctx.mode);
+    if (ctx.wire !== 'openai-chat') return false;
+    const injected = ctx.inject && injectOpenAiBreakpoints(body);
+    const rewritten = rewriteOpenAiCacheTtl(body, ctx.mode);
+    return injected || rewritten;
+  },
+  ttlForMode,
+  wires: ['anthropic-messages', 'openai-chat'],
 };

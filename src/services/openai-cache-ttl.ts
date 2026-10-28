@@ -8,7 +8,7 @@ const isPrefixRole = (message: unknown): boolean =>
   isRecord(message) && (message.role === 'system' || message.role === 'developer');
 
 /** Index of the first message that is not `system`/`developer`. */
-export function leadingPrefixEnd(messages: unknown[]): number {
+function leadingPrefixEnd(messages: unknown[]): number {
   const index = messages.findIndex((message) => !isPrefixRole(message));
   return index === -1 ? messages.length : index;
 }
@@ -17,7 +17,7 @@ const marked = (node: unknown) =>
   isRecord(node) && node.cache_control !== undefined && node.cache_control !== null;
 
 /** Returns true when `cache_control` appears on any tool, message or content part. */
-export function hasCacheControl(body: Rec): boolean {
+function hasCacheControl(body: Rec): boolean {
   if (Array.isArray(body.tools) && body.tools.some(marked)) return true;
   if (!Array.isArray(body.messages)) return false;
   return body.messages.some(
@@ -33,7 +33,7 @@ export function hasCacheControl(body: Rec): boolean {
  * and the leading `system`/`developer` messages and leaves the rest at 5m.
  * Returns true when anything changed or a 1h breakpoint is present.
  */
-export function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
+function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
   let changed = false;
   const prefixTtl = mode === '5m' ? undefined : '1h';
   const tailTtl = mode === '1h' ? '1h' : undefined;
@@ -63,11 +63,11 @@ const isText = (part: unknown): part is Rec =>
   isRecord(part) && part.type === 'text' && typeof part.text === 'string' && part.text !== '';
 
 /** The last text part of `message`, turning string content into parts first. */
-export function lastTextPart(message: Rec): Rec | undefined {
+function lastTextPart(message: Rec): Rec | undefined {
   const { content } = message;
   if (typeof content === 'string') {
     if (content === '') return undefined;
-    const part: Rec = { type: 'text', text: content };
+    const part: Rec = { text: content, type: 'text' };
     message.content = [part];
     return part;
   }
@@ -80,7 +80,7 @@ export function lastTextPart(message: Rec): Rec | undefined {
  * part of the final message that has one (at most 3, under Anthropic's limit of
  * 4). Returns true when any were added.
  */
-export function injectOpenAiBreakpoints(body: Rec): boolean {
+function injectOpenAiBreakpoints(body: Rec): boolean {
   if (hasCacheControl(body)) return false;
 
   let injected = false;
@@ -116,3 +116,11 @@ export function injectOpenAiBreakpoints(body: Rec): boolean {
 
   return injected;
 }
+
+export {
+  leadingPrefixEnd,
+  hasCacheControl,
+  rewriteOpenAiCacheTtl,
+  lastTextPart,
+  injectOpenAiBreakpoints,
+};

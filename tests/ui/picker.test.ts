@@ -4,16 +4,19 @@ import type { Settings, SettingsPatch } from '../../src/config/settings.ts';
 import type { CacheTtlRpcClient } from '../../src/rpc.ts';
 import { createPicker, formatValue } from '../../src/ui/picker.ts';
 
-type Toast = { message: string; variant: string };
+interface Toast {
+  message: string;
+  variant: string;
+}
 
-type Options = {
+interface Options {
   sessionID?: string | undefined;
   global?: Partial<Settings>;
   session?: SettingsPatch | null;
   selects?: unknown[];
   prompts?: unknown[];
   setSessionImpl?: (input: unknown) => Promise<unknown>;
-};
+}
 
 function setup(options: Options = {}) {
   const toasts: Toast[] = [];
@@ -138,7 +141,7 @@ describe('createPicker', () => {
     await t.picker();
 
     expect(t.getSettingsCalls).toEqual([{}]);
-    const options = t.selectCalls[0].options;
+    const { options } = t.selectCalls[0];
     expect(options.map((o: any) => o.value)).toEqual([
       'global:mode',
       'global:keepalive',

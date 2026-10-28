@@ -67,9 +67,9 @@ describe('settingsFromOptions', () => {
     expect(
       settingsFromOptions({
         defaultMode: '1h',
-        keepalive: { enabled: false, maxPings: 2, minContextTokens: 20000 },
+        keepalive: { enabled: false, maxPings: 2, minContextTokens: 20_000 },
       })
-    ).toEqual({ mode: '1h', keepalive: false, maxPings: 2, minContextTokens: 20000 });
+    ).toEqual({ mode: '1h', keepalive: false, maxPings: 2, minContextTokens: 20_000 });
   });
 
   test('drops invalid values', () => {

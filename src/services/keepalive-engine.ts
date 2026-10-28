@@ -16,15 +16,15 @@ import type {
 } from '../models/keepalive.ts';
 import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
 
-export interface EngineDeps {
-  now(): number;
-  setTimer(fn: () => void, ms: number): unknown;
-  clearTimer(handle: unknown): void;
+interface EngineDeps {
+  now: () => number;
+  setTimer: (fn: () => void, ms: number) => unknown;
+  clearTimer: (handle: unknown) => void;
   /** Sends one ping; rejects on failure. */
-  ping(sessionID: string): Promise<void>;
-  settings(sessionID: string): Promise<Settings>;
-  isChild(sessionID: string): Promise<boolean>;
-  onChange(snapshot: KeepaliveSnapshot): void;
+  ping: (sessionID: string) => Promise<void>;
+  settings: (sessionID: string) => Promise<Settings>;
+  isChild: (sessionID: string) => Promise<boolean>;
+  onChange: (snapshot: KeepaliveSnapshot) => void;
 }
 
 interface PingInFlight {
@@ -68,7 +68,7 @@ interface SessionState {
   lastEmitted: string;
 }
 
-export class KeepaliveEngine {
+class KeepaliveEngine {
   private readonly sessions = new Map<string, SessionState>();
   private disposed = false;
 
@@ -80,41 +80,41 @@ export class KeepaliveEngine {
     info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }
   ): void {
     if (this.disposed) return;
-    const s = this.state(sessionID);
+    const state = this.state(sessionID);
 
     if (info.isPing) {
-      if (s.inflight) s.inflight.sentAt = this.deps.now();
+      if (state.inflight) state.inflight.sentAt = this.deps.now();
       return;
     }
 
-    this.cancelTimer(s);
-    s.generation++;
-    s.inflight = null;
-    s.lastRequestAt = this.deps.now();
-    s.requestSentAt = s.lastRequestAt;
+    this.cancelTimer(state);
+    state.generation++;
+    state.inflight = null;
+    state.lastRequestAt = this.deps.now();
+    state.requestSentAt = state.lastRequestAt;
     const kind = info.kind ?? 'primary';
     if (kind === 'primary' || kind === 'compaction') {
-      s.requestedTtl = info.requestedTtl;
+      state.requestedTtl = info.requestedTtl;
       // A TTL usage cannot report means the session switched to a model whose cache the detected TTL does not describe.
       const requested = info.requestedTtl;
       if (
-        s.ttlSource === 'detected' &&
+        state.ttlSource === 'detected' &&
         requested !== null &&
-        requested !== s.ttl &&
+        requested !== state.ttl &&
         !DETECTABLE_TTLS.has(requested)
       ) {
-        s.ttl = null;
-        s.ttlSource = null;
+        state.ttl = null;
+        state.ttlSource = null;
       }
     }
-    s.pingsUsed = 0;
-    s.lastPing = null;
-    s.missed = false;
-    s.busy = false;
-    s.retryAt = null;
-    s.nextPingAt = null;
-    if (s.skipReason === 'missed' || s.skipReason === 'exhausted') s.skipReason = null;
-    this.commit(sessionID, s);
+    state.pingsUsed = 0;
+    state.lastPing = null;
+    state.missed = false;
+    state.busy = false;
+    state.retryAt = null;
+    state.nextPingAt = null;
+    if (state.skipReason === 'missed' || state.skipReason === 'exhausted') state.skipReason = null;
+    this.commit(sessionID, state);
     void this.schedule(sessionID);
   }
 
@@ -131,61 +131,61 @@ export class KeepaliveEngine {
     }
   ): Promise<void> {
     if (this.disposed) return;
-    const s = this.state(sessionID);
+    const state = this.state(sessionID);
     if (
       info.unmanaged === true &&
       !info.isPing &&
       (info.kind === 'primary' || info.kind === 'compaction')
     ) {
-      s.requestedTtl = null;
+      state.requestedTtl = null;
     }
 
     if (info.isPing) {
-      const inflight = s.inflight;
+      const { inflight } = state;
       if (!inflight) return;
-      s.inflight = null;
+      state.inflight = null;
       if (!info.ok || !info.usage) {
-        await this.failPing(sessionID, s);
+        await this.failPing(sessionID, state);
         return;
       }
-      const usage = info.usage;
+      const { usage } = info;
       const before = inflight.contextBefore ?? contextTokens(usage);
       const hit = usage.cacheReadTokens >= HIT_RATIO * before;
       // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
       if (hit) {
-        s.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
-        s.confirmedAt = s.lastRequestAt;
+        state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
+        state.confirmedAt = state.lastRequestAt;
       }
-      s.lastPing = hit ? 'hit' : 'miss';
-      s.missed = !hit;
-      s.retryAt = null;
-      this.commit(sessionID, s);
+      state.lastPing = hit ? 'hit' : 'miss';
+      state.missed = !hit;
+      state.retryAt = null;
+      this.commit(sessionID, state);
       await this.schedule(sessionID);
       return;
     }
 
     if (!info.ok) {
       // The request did not reach the cache, so the expiry goes back to the last confirmed request.
-      s.lastRequestAt = s.confirmedAt;
-      this.commit(sessionID, s);
+      state.lastRequestAt = state.confirmedAt;
+      this.commit(sessionID, state);
       await this.schedule(sessionID);
       return;
     }
-    if (s.requestSentAt !== null) {
-      s.confirmedAt = s.requestSentAt;
-      s.lastRequestAt = s.requestSentAt;
+    if (state.requestSentAt !== null) {
+      state.confirmedAt = state.requestSentAt;
+      state.lastRequestAt = state.requestSentAt;
     }
     if (info.usage && info.kind === 'primary') {
       const total = contextTokens(info.usage);
-      s.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
+      state.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
     }
     // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
     if (info.usage && (info.kind === 'primary' || info.kind === 'compaction')) {
-      s.contextTokens = contextTokens(info.usage);
-      this.learn(s, info.usage);
+      state.contextTokens = contextTokens(info.usage);
+      this.learn(state, info.usage);
     }
-    if (info.kind === 'primary' && info.stopReason === 'tool_use') s.busy = true;
-    this.commit(sessionID, s);
+    if (info.kind === 'primary' && info.stopReason === 'tool_use') state.busy = true;
+    this.commit(sessionID, state);
     await this.schedule(sessionID);
   }
 
@@ -194,91 +194,93 @@ export class KeepaliveEngine {
     const ids =
       sessionID === undefined
         ? [...this.sessions.keys()]
-        : this.sessions.has(sessionID)
-          ? [sessionID]
-          : [];
+        : [sessionID].filter((id) => this.sessions.has(id));
     await Promise.all(ids.map((id) => this.schedule(id)));
   }
 
   snapshot(sessionID: string): KeepaliveSnapshot {
-    const s = this.sessions.get(sessionID);
-    return s ? this.toSnapshot(sessionID, s) : this.toSnapshot(sessionID, this.newState(sessionID));
+    const state = this.sessions.get(sessionID);
+    return state
+      ? this.toSnapshot(sessionID, state)
+      : this.toSnapshot(sessionID, this.newState(sessionID));
   }
 
   dispose(): void {
     this.disposed = true;
-    for (const s of this.sessions.values()) {
-      this.cancelTimer(s);
-      s.generation++;
-      s.inflight = null;
+    for (const state of this.sessions.values()) {
+      this.cancelTimer(state);
+      state.generation++;
+      state.inflight = null;
     }
   }
 
   private state(sessionID: string): SessionState {
-    let s = this.sessions.get(sessionID);
-    if (!s) {
-      s = this.newState(sessionID);
-      this.sessions.set(sessionID, s);
+    let state = this.sessions.get(sessionID);
+    if (!state) {
+      state = this.newState(sessionID);
+      this.sessions.set(sessionID, state);
     }
-    return s;
+    return state;
   }
 
   private newState(sessionID: string): SessionState {
-    const s: SessionState = {
-      ttl: null,
-      ttlSource: null,
-      requestedTtl: null,
-      lastRequestAt: null,
-      requestSentAt: null,
+    const state: SessionState = {
+      busy: false,
+      cacheSeen: false,
+      child: undefined,
       confirmedAt: null,
-      nextPingAt: null,
-      pingsUsed: 0,
+      contextTokens: null,
+      deferred: false,
+      generation: 0,
+      inflight: null,
+      lastCache: null,
+      lastEmitted: '',
+      lastPing: null,
+      lastRequestAt: null,
       maxPings: BUILTIN_DEFAULTS.maxPings,
       minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
-      lastPing: null,
-      skipReason: 'no-cache-seen',
-      contextTokens: null,
-      lastCache: null,
-      cacheSeen: false,
       missed: false,
-      busy: false,
-      retryAt: null,
-      inflight: null,
+      nextPingAt: null,
       pingPending: false,
-      deferred: false,
+      pingsUsed: 0,
+      requestSentAt: null,
+      requestedTtl: null,
+      retryAt: null,
+      skipReason: 'no-cache-seen',
       timer: null,
-      generation: 0,
-      child: undefined,
-      lastEmitted: '',
+      ttl: null,
+      ttlSource: null,
     };
-    s.lastEmitted = JSON.stringify(this.toSnapshot(sessionID, s));
-    return s;
+    state.lastEmitted = JSON.stringify(this.toSnapshot(sessionID, state));
+    return state;
   }
 
-  private toSnapshot(sessionID: string, s: SessionState): KeepaliveSnapshot {
+  private toSnapshot(sessionID: string, state: SessionState): KeepaliveSnapshot {
     return {
-      sessionID,
-      ttl: s.ttl,
-      ttlSource: s.ttlSource,
-      lastRequestAt: s.lastRequestAt,
+      contextTokens: state.contextTokens,
       expiresAt:
-        s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null,
-      nextPingAt: s.nextPingAt,
-      pingsUsed: s.pingsUsed,
-      maxPings: s.maxPings,
-      minContextTokens: s.minContextTokens,
-      lastPing: s.lastPing,
-      skipReason: s.skipReason,
-      contextTokens: s.contextTokens,
-      lastCache: s.lastCache,
+        state.lastRequestAt !== null && state.ttl !== null
+          ? state.lastRequestAt + TTL_MS[state.ttl]
+          : null,
+      lastCache: state.lastCache,
+      lastPing: state.lastPing,
+      lastRequestAt: state.lastRequestAt,
+      maxPings: state.maxPings,
+      minContextTokens: state.minContextTokens,
+      nextPingAt: state.nextPingAt,
+      pingsUsed: state.pingsUsed,
+      sessionID,
+      skipReason: state.skipReason,
+      ttl: state.ttl,
+      ttlSource: state.ttlSource,
     };
   }
 
-  private commit(sessionID: string, s: SessionState): void {
-    const snapshot = this.toSnapshot(sessionID, s);
+  private commit(sessionID: string, state: SessionState): void {
+    const snapshot = this.toSnapshot(sessionID, state);
     const serialized = JSON.stringify(snapshot);
-    if (serialized === s.lastEmitted) return;
-    s.lastEmitted = serialized;
+    if (serialized === state.lastEmitted) return;
+    state.lastEmitted = serialized;
     try {
       this.deps.onChange(snapshot);
     } catch {
@@ -287,146 +289,159 @@ export class KeepaliveEngine {
   }
 
   /** Updates cacheSeen and the TTL from a response that carries usage. */
-  private learn(s: SessionState, usage: CacheUsage): void {
+  private learn(state: SessionState, usage: CacheUsage): void {
     const active = hasCacheActivity(usage);
-    if (active) s.cacheSeen = true;
+    if (active) state.cacheSeen = true;
     const granted = grantedTtl(usage);
     if (granted) {
-      s.ttl = granted;
-      s.ttlSource = 'detected';
-    } else if (active && s.requestedTtl !== null && s.ttlSource !== 'detected') {
-      s.ttl = s.requestedTtl;
-      s.ttlSource = 'requested';
+      state.ttl = granted;
+      state.ttlSource = 'detected';
+    } else if (active && state.requestedTtl !== null && state.ttlSource !== 'detected') {
+      state.ttl = state.requestedTtl;
+      state.ttlSource = 'requested';
     }
   }
 
-  private cancelTimer(s: SessionState): void {
-    if (!s.timer) return;
-    this.deps.clearTimer(s.timer.handle);
-    s.timer = null;
+  private cancelTimer(state: SessionState): void {
+    if (!state.timer) return;
+    this.deps.clearTimer(state.timer.handle);
+    state.timer = null;
   }
 
   /** Cached once resolved; a failed lookup counts as a child for this computation only and is retried next time. */
-  private isChild(sessionID: string, s: SessionState): Promise<boolean> {
-    if (!s.child) {
+  private isChild(sessionID: string, state: SessionState): Promise<boolean> {
+    if (!state.child) {
       const lookup = Promise.resolve().then(() => this.deps.isChild(sessionID));
-      s.child = lookup;
+      state.child = lookup;
       lookup.catch(() => {
-        if (s.child === lookup) s.child = undefined;
+        if (state.child === lookup) state.child = undefined;
       });
     }
-    return s.child.catch(() => true);
+    return state.child.catch(() => true);
   }
 
   private async schedule(sessionID: string): Promise<void> {
-    const s = this.state(sessionID);
-    if (this.disposed || s.inflight) return;
-    this.cancelTimer(s);
-    const generation = ++s.generation;
+    const state = this.state(sessionID);
+    if (this.disposed || state.inflight) return;
+    this.cancelTimer(state);
+    const generation = ++state.generation;
 
     let settings: Settings;
     let child: boolean;
     try {
       [settings, child] = await Promise.all([
         this.deps.settings(sessionID),
-        this.isChild(sessionID, s),
+        this.isChild(sessionID, state),
       ]);
     } catch {
-      if (!this.disposed && s.generation === generation && s.inflight === null) {
-        s.nextPingAt = null;
-        this.commit(sessionID, s);
+      if (!this.disposed && state.generation === generation && state.inflight === null) {
+        state.nextPingAt = null;
+        this.commit(sessionID, state);
       }
       return;
     }
-    if (this.disposed || s.generation !== generation || s.inflight !== null) return;
+    if (this.disposed || state.generation !== generation || state.inflight !== null) return;
 
-    s.maxPings = settings.maxPings;
-    s.minContextTokens = settings.minContextTokens;
-    s.skipReason = this.skipReason(s, settings, child);
-    s.nextPingAt = s.skipReason === null ? this.pingTime(s) : null;
+    state.maxPings = settings.maxPings;
+    state.minContextTokens = settings.minContextTokens;
+    state.skipReason = this.skipReason(state, settings, child);
+    state.nextPingAt = state.skipReason === null ? this.pingTime(state) : null;
 
-    if (s.nextPingAt !== null) {
-      const delay = Math.max(0, s.nextPingAt - this.deps.now());
-      s.timer = {
+    if (state.nextPingAt !== null) {
+      const delay = Math.max(0, state.nextPingAt - this.deps.now());
+      state.timer = {
         handle: this.deps.setTimer(() => {
           this.fire(sessionID, generation);
         }, delay),
       };
     }
-    this.commit(sessionID, s);
+    this.commit(sessionID, state);
   }
 
-  private skipReason(s: SessionState, settings: Settings, child: boolean): SkipReason | null {
+  private skipReason(state: SessionState, settings: Settings, child: boolean): SkipReason | null {
     if (child) return 'child';
-    if (s.requestedTtl === null) return 'implicit';
-    if (s.busy) return 'busy';
+    if (state.requestedTtl === null) return 'implicit';
+    if (state.busy) return 'busy';
     if (!settings.keepalive) return 'disabled';
-    if (!s.cacheSeen || s.ttl === null || s.lastRequestAt === null) return 'no-cache-seen';
-    if ((s.contextTokens ?? 0) < settings.minContextTokens) return 'small-context';
-    if (s.missed) return 'missed';
-    if (s.pingsUsed >= settings.maxPings) return 'exhausted';
+    if (!state.cacheSeen || state.ttl === null || state.lastRequestAt === null) {
+      return 'no-cache-seen';
+    }
+    if ((state.contextTokens ?? 0) < settings.minContextTokens) return 'small-context';
+    if (state.missed) return 'missed';
+    if (state.pingsUsed >= settings.maxPings) return 'exhausted';
     return null;
   }
 
   /** When the next ping is due, or null when it could not land before the cache expires. */
-  private pingTime(s: SessionState): number | null {
-    if (s.ttl === null || s.lastRequestAt === null) return null;
-    const cutoff = s.lastRequestAt + TTL_MS[s.ttl] - EXPIRY_MARGIN_MS;
+  private pingTime(state: SessionState): number | null {
+    if (state.ttl === null || state.lastRequestAt === null) return null;
+    const cutoff = state.lastRequestAt + TTL_MS[state.ttl] - EXPIRY_MARGIN_MS;
     const due =
-      s.lastPing === 'failed' && s.retryAt !== null
-        ? s.retryAt
-        : s.lastRequestAt + PING_OFFSET_MS[s.ttl];
+      state.lastPing === 'failed' && state.retryAt !== null
+        ? state.retryAt
+        : state.lastRequestAt + PING_OFFSET_MS[state.ttl];
     if (due > cutoff || this.deps.now() > cutoff) return null;
     return due;
   }
 
   private fire(sessionID: string, generation: number): void {
-    const s = this.sessions.get(sessionID);
-    if (this.disposed || !s || s.generation !== generation) return;
-    s.timer = null;
+    const state = this.sessions.get(sessionID);
+    if (this.disposed || !state || state.generation !== generation) return;
+    state.timer = null;
 
-    if (s.pingPending) {
-      s.deferred = true;
+    if (state.pingPending) {
+      state.deferred = true;
       return;
     }
 
     const now = this.deps.now();
     const expiresAt =
-      s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null;
+      state.lastRequestAt !== null && state.ttl !== null
+        ? state.lastRequestAt + TTL_MS[state.ttl]
+        : null;
     if (expiresAt === null || now > expiresAt - EXPIRY_MARGIN_MS) {
-      s.nextPingAt = null;
-      this.commit(sessionID, s);
+      state.nextPingAt = null;
+      this.commit(sessionID, state);
       return;
     }
 
-    s.pingsUsed++;
-    s.nextPingAt = null;
-    const inflight: PingInFlight = { firedAt: now, sentAt: null, contextBefore: s.contextTokens };
-    s.inflight = inflight;
-    s.pingPending = true;
-    this.commit(sessionID, s);
+    state.pingsUsed++;
+    state.nextPingAt = null;
+    const inflight: PingInFlight = {
+      contextBefore: state.contextTokens,
+      firedAt: now,
+      sentAt: null,
+    };
+    state.inflight = inflight;
+    state.pingPending = true;
+    this.commit(sessionID, state);
 
     const settled = () => {
-      s.pingPending = false;
+      state.pingPending = false;
       if (this.disposed) return;
-      // Resolved without a response seen, or rejected: unless a response (or a
-      // newer real request) already settled this ping, it failed.
-      if (s.inflight === inflight) {
-        s.inflight = null;
-        s.deferred = false;
-        void this.failPing(sessionID, s);
-      } else if (s.deferred) {
-        s.deferred = false;
+      /*
+       * Resolved without a response seen, or rejected: unless a response (or a
+       * newer real request) already settled this ping, it failed.
+       */
+      if (state.inflight === inflight) {
+        state.inflight = null;
+        state.deferred = false;
+        void this.failPing(sessionID, state);
+      } else if (state.deferred) {
+        state.deferred = false;
         void this.schedule(sessionID);
       }
     };
     this.deps.ping(sessionID).then(settled, settled);
   }
 
-  private async failPing(sessionID: string, s: SessionState): Promise<void> {
-    s.lastPing = 'failed';
-    s.retryAt = this.deps.now() + RETRY_DELAY_MS;
-    this.commit(sessionID, s);
+  private async failPing(sessionID: string, state: SessionState): Promise<void> {
+    state.lastPing = 'failed';
+    state.retryAt = this.deps.now() + RETRY_DELAY_MS;
+    this.commit(sessionID, state);
     await this.schedule(sessionID);
   }
 }
+
+export type { EngineDeps };
+export { KeepaliveEngine };

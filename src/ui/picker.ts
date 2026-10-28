@@ -10,47 +10,55 @@ import { formatTokens } from '../utils/format.ts';
  * Interactive metadata for each cache TTL mode, shown in the picker modal.
  */
 const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> = {
-  '5m': {
-    title: '5 minutes (default)',
-    description: 'Claude: 5m on every breakpoint, 1.25x write cost. GPT-5.6+: automatic 30m cache.',
-  },
   '1h': {
-    title: '1 hour (extended)',
     description: 'Claude: 1h on every breakpoint, 2x write cost. GPT-5.6+: a 12h breakpoint.',
+    title: '1 hour (extended)',
+  },
+  '5m': {
+    description: 'Claude: 5m on every breakpoint, 1.25x write cost. GPT-5.6+: automatic 30m cache.',
+    title: '5 minutes (default)',
   },
   'hybrid': {
-    title: 'Hybrid',
     description:
       'Claude: 1h on tools + system, 5m on messages. GPT-5.6+: 12h on the system prompt, 30m tail.',
+    title: 'Hybrid',
   },
 };
 
 const CUSTOM = 'custom';
 
+const onOff = (value: boolean): string => (value ? 'on' : 'off');
+
 type Field = keyof Settings;
 type Scope = 'session' | 'global';
-type Choice<V> = { title: string; value: V; description?: string };
+interface Choice<Value> {
+  title: string;
+  value: Value;
+  description?: string;
+}
 
 const isScope = (value: string | undefined): value is Scope =>
   value === 'session' || value === 'global';
 const isField = (value: string | undefined): value is Field =>
   FIELDS.some((field) => field === value);
 
-export const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
+const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
 
-export const FIELD_INFO: Record<Field, { row: string; label: string }> = {
-  mode: { row: 'TTL mode', label: 'cache TTL' },
-  keepalive: { row: 'Keepalive', label: 'keepalive' },
-  maxPings: { row: 'Pings per idle', label: 'pings per idle' },
-  minContextTokens: { row: 'Min context', label: 'min context' },
+const FIELD_INFO: Record<Field, { row: string; label: string }> = {
+  keepalive: { label: 'keepalive', row: 'Keepalive' },
+  maxPings: { label: 'pings per idle', row: 'Pings per idle' },
+  minContextTokens: { label: 'min context', row: 'Min context' },
+  mode: { label: 'cache TTL', row: 'TTL mode' },
 };
 
+/* oxlint-disable eslint/no-magic-numbers -- the preset values offered in the picker are the data itself */
 const PING_CHOICES = [0, 1, 3, 5, 10];
 const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
+/* oxlint-enable eslint/no-magic-numbers */
 
-export type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
+type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 
-export function formatValue(field: Field, value: Settings[Field]): string {
+function formatValue(field: Field, value: Settings[Field]): string {
   if (field === 'keepalive') return value === true ? 'on' : 'off';
   if (field === 'minContextTokens' && typeof value === 'number') return formatTokens(value);
   return String(value);
@@ -66,9 +74,9 @@ function settingsOptions(
   return FIELDS.map((field) => {
     const inherited = scope === 'session' && override?.[field] === undefined;
     return {
+      category,
       title: `${FIELD_INFO[field].row}  ${formatValue(field, values[field])}${inherited ? ' · global' : ''}`,
       value: `${scope}:${field}`,
-      category,
     };
   });
 }
@@ -76,29 +84,34 @@ function settingsOptions(
 /** The sub-dialog choices for a setting; `custom` is present for numeric ones. */
 function fieldChoices(field: Field): Choice<string | number>[] {
   switch (field) {
-    case 'mode':
+    case 'mode': {
       return (['5m', '1h', 'hybrid'] as const).map((value) => ({ value, ...OPTION_INFO[value] }));
-    case 'keepalive':
+    }
+    case 'keepalive': {
       return [
         { title: 'on', value: 'on' },
         { title: 'off', value: 'off' },
       ];
-    case 'maxPings':
+    }
+    case 'maxPings': {
       return [
         ...PING_CHOICES.map((value) => ({ title: String(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
-    case 'minContextTokens':
+    }
+    case 'minContextTokens': {
       return [
         ...MIN_CONTEXT_CHOICES.map((value) => ({ title: formatTokens(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
-    default:
+    }
+    default: {
       throw new Error(`unknown setting: ${String(field satisfies never)}`);
+    }
   }
 }
 
-export interface PickerDeps {
+interface PickerDeps {
   dialog: Plugin.Context['ui']['dialog'];
   rpc: CacheTtlRpcClient;
   toast: Toast;
@@ -106,18 +119,11 @@ export interface PickerDeps {
 }
 
 /** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */
-export function createPicker({
-  dialog,
-  rpc,
-  toast,
-  currentSessionID,
-}: PickerDeps): () => Promise<void> {
+function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
   const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
-    if (scope === 'session' && sessionID !== undefined) {
-      await rpc.setSession({ sessionID, patch });
-    } else {
-      await rpc.setGlobal({ patch });
-    }
+    await (scope === 'session' && sessionID !== undefined
+      ? rpc.setSession({ patch, sessionID })
+      : rpc.setGlobal({ patch }));
   };
 
   /** Asks for a number via the prompt dialog; `undefined` on cancel or invalid input. */
@@ -125,9 +131,9 @@ export function createPicker({
     field: 'maxPings' | 'minContextTokens'
   ): Promise<number | undefined> => {
     const input = await dialog.prompt({
-      title: FIELD_INFO[field].row,
       description: field === 'maxPings' ? 'Number of pings, 0-100.' : 'Tokens, e.g. 50000 or 50k.',
       placeholder: field === 'maxPings' ? '5' : '50k',
+      title: FIELD_INFO[field].row,
     });
     if (input === undefined) return undefined;
     const action = parseCommandArg(`${field === 'maxPings' ? 'pings' : 'min'} ${input}`);
@@ -146,11 +152,11 @@ export function createPicker({
     effective: Settings
   ): Promise<void> => {
     const current = effective[field];
-    const currentChoice = typeof current === 'boolean' ? (current ? 'on' : 'off') : current;
+    const currentChoice = typeof current === 'boolean' ? onOff(current) : current;
     const selected = await dialog.select<string | number>({
-      title: `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label}`,
       current: currentChoice,
       options: fieldChoices(field),
+      title: `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label}`,
     });
     if (selected === undefined) return;
 
@@ -185,14 +191,14 @@ export function createPicker({
         ? []
         : [
             ...settingsOptions('session', effective, session),
-            { title: 'Reset session to global', value: 'session:reset', category: 'Session' },
+            { category: 'Session', title: 'Reset session to global', value: 'session:reset' },
           ]),
       ...settingsOptions('global', global, null),
     ];
     const choice = await dialog.select<string>({
-      title: 'Cache Manager',
-      placeholder: 'Select a setting',
       options,
+      placeholder: 'Select a setting',
+      title: 'Cache Manager',
     });
     if (choice === undefined) return;
 
@@ -207,3 +213,6 @@ export function createPicker({
     await editField(scope, field, sessionID, scope === 'session' ? effective : global);
   };
 }
+
+export type { Toast, PickerDeps };
+export { FIELDS, FIELD_INFO, formatValue, createPicker };

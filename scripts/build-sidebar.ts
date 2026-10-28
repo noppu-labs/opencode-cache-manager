@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import solidPlugin from '@opentui/solid/bun-plugin';
 
 const ROOT = join(import.meta.dir, '..');
-export const SIDEBAR_SOURCE = join(ROOT, 'src/ui/sidebar.tsx');
-export const SIDEBAR_COMPILED = join(ROOT, 'src/ui/sidebar.compiled.js');
+const SIDEBAR_SOURCE = join(ROOT, 'src/ui/sidebar.tsx');
+const SIDEBAR_COMPILED = join(ROOT, 'src/ui/sidebar.compiled.js');
 
 /**
  * Compiles the sidebar with OpenTUI's Solid transform. The host skips that
@@ -12,13 +12,13 @@ export const SIDEBAR_COMPILED = join(ROOT, 'src/ui/sidebar.compiled.js');
  * output; package imports stay external so the host binds them to its own
  * Solid and OpenTUI instances.
  */
-export async function buildSidebar(outFile: string = SIDEBAR_COMPILED): Promise<void> {
+async function buildSidebar(outFile: string = SIDEBAR_COMPILED): Promise<void> {
   const result = await Bun.build({
     entrypoints: [SIDEBAR_SOURCE],
-    target: 'bun',
     format: 'esm',
     packages: 'external',
     plugins: [solidPlugin],
+    target: 'bun',
   });
   if (!result.success || result.outputs.length !== 1) {
     throw new AggregateError(
@@ -30,3 +30,5 @@ export async function buildSidebar(outFile: string = SIDEBAR_COMPILED): Promise<
 }
 
 if (import.meta.main) await buildSidebar();
+
+export { SIDEBAR_SOURCE, SIDEBAR_COMPILED, buildSidebar };

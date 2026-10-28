@@ -4,14 +4,17 @@ import type { Settings, SettingsPatch } from '../../src/config/settings.ts';
 import type { CacheTtlRpcClient } from '../../src/rpc.ts';
 import { createCommandRunner } from '../../src/ui/command.ts';
 
-type Toast = { message: string; variant: string };
+interface Toast {
+  message: string;
+  variant: string;
+}
 
-type Options = {
+interface Options {
   sessionID?: string | undefined;
   global?: Partial<Settings>;
   session?: SettingsPatch | null;
   setSessionImpl?: (input: unknown) => Promise<unknown>;
-};
+}
 
 function setup(options: Options = {}) {
   const toasts: Toast[] = [];

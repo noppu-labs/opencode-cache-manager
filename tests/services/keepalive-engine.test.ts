@@ -41,7 +41,7 @@ const noCache: CacheUsage = {
   write1hTokens: 0,
 };
 const smallWrite: CacheUsage = {
-  inputTokens: 1_000,
+  inputTokens: 1000,
   cacheReadTokens: 0,
   cacheWriteTokens: 30_000,
   write5mTokens: 0,
@@ -50,7 +50,7 @@ const smallWrite: CacheUsage = {
 const hit: CacheUsage = { ...pureRead, cacheReadTokens: 80_100 };
 const miss: CacheUsage = {
   inputTokens: 100,
-  cacheReadTokens: 1_000,
+  cacheReadTokens: 1000,
   cacheWriteTokens: 79_000,
   write5mTokens: 0,
   write1hTokens: 79_000,
@@ -81,7 +81,6 @@ function harness(
   let settingsGate: (() => Promise<void>) | undefined;
   let settingsFails = false;
   const requested = options.requestedTtl ?? '1h';
-  let engine!: KeepaliveEngine;
 
   const flush = async () => {
     for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -92,11 +91,13 @@ function harness(
     const behavior: Behavior = queue.shift() ?? { kind: 'respond' };
     engine.requestSent(sessionID, { requestedTtl: requested, isPing: true });
     switch (behavior.kind) {
-      case 'reject':
+      case 'reject': {
         throw new Error('network');
-      case 'silent':
+      }
+      case 'silent': {
         return;
-      case 'hold':
+      }
+      case 'hold': {
         await new Promise<void>((resolve) => held.push(resolve));
         await engine.responseObserved(sessionID, {
           usage: hit,
@@ -105,7 +106,8 @@ function harness(
           kind: 'generate',
         });
         return;
-      case 'respond-then-hold':
+      }
+      case 'respond-then-hold': {
         await engine.responseObserved(sessionID, {
           usage: hit,
           ok: true,
@@ -114,7 +116,8 @@ function harness(
         });
         await new Promise<void>((resolve) => held.push(resolve));
         return;
-      case 'notok-then-reject':
+      }
+      case 'notok-then-reject': {
         await engine.responseObserved(sessionID, {
           usage: undefined,
           ok: false,
@@ -122,17 +125,19 @@ function harness(
           kind: 'generate',
         });
         throw new Error('http 500');
-      case 'respond':
+      }
+      case 'respond': {
         await engine.responseObserved(sessionID, {
           usage: behavior.usage ?? hit,
           ok: behavior.ok ?? true,
           isPing: true,
           kind: 'generate',
         });
+      }
     }
   };
 
-  engine = new KeepaliveEngine({
+  const engine = new KeepaliveEngine({
     now: () => clock,
     setTimer: (fn, ms) => {
       const handle = nextHandle++;
@@ -527,7 +532,7 @@ describe('keepalive engine: ping outcomes', () => {
     await h.advance(50 * MIN);
     expect(h.engine.snapshot('s1')).toMatchObject({ lastPing: 'hit', pingsUsed: 2 });
 
-    // third ping misses: read 1 000 of an 80 100-token context
+    // Third ping misses: read 1 000 of an 80 100-token context
     h.queue.push({ kind: 'respond', usage: miss });
     await h.advance(50 * MIN);
     expect(h.pings).toHaveLength(3);
@@ -608,7 +613,7 @@ describe('keepalive engine: ping outcomes', () => {
     expect(h.pings.map((p) => p.at)).toEqual([4 * MIN, 4 * MIN + RETRY_DELAY_MS]);
     expect(h.engine.snapshot('s1')).toMatchObject({ lastPing: 'hit', pingsUsed: 2 });
 
-    // fresh run: 240s ping fails, 270s retry fails, next retry (300s) is past 285s
+    // Fresh run: 240s ping fails, 270s retry fails, next retry (300s) is past 285s
     const g = harness();
     await g.request('s1', write5m, '5m');
     g.queue.push({ kind: 'reject' }, { kind: 'reject' }, { kind: 'reject' });
@@ -796,8 +801,10 @@ describe('keepalive engine: races and lifecycle', () => {
 
 describe('keepalive engine: review fixes', () => {
   test('a failed real request does not extend expiry', async () => {
-    // maxPings 1: the single allowed ping may fire at 4m (scheduled from the
-    // confirmed t=0 request); nothing may be sent later than expiry - margin.
+    /*
+     * With maxPings 1, the single allowed ping may fire at 4m (scheduled from the
+     * confirmed t=0 request); nothing may be sent later than expiry - margin.
+     */
     const h = harness({ settings: { maxPings: 1 } });
     await h.request('s1', write5m, '5m');
     expect(h.engine.snapshot('s1')).toMatchObject({ lastRequestAt: 0, expiresAt: 5 * MIN });
@@ -821,8 +828,9 @@ describe('keepalive engine: review fixes', () => {
 
     await h.advance(20 * MIN);
     expect(h.pings.length).toBeLessThanOrEqual(1);
-    for (const ping of h.pings)
+    for (const ping of h.pings) {
       expect(ping.at).toBeLessThanOrEqual(TTL_MS['5m'] - EXPIRY_MARGIN_MS);
+    }
   });
 
   test('a failed real request after expiry schedules nothing', async () => {
@@ -1034,7 +1042,7 @@ describe('keepalive engine: final review fixes', () => {
   test('title and non-ping generate responses do not overwrite the context size or the TTL', async () => {
     const h = harness();
     await h.request('s1', write1h);
-    const small: CacheUsage = { ...write5m, cacheWriteTokens: 2_000, write5mTokens: 2_000 };
+    const small: CacheUsage = { ...write5m, cacheWriteTokens: 2000, write5mTokens: 2000 };
     await h.request('s1', small, '5m', { kind: 'title' });
     await h.request('s1', small, '5m', { kind: 'generate' });
     expect(h.engine.snapshot('s1')).toMatchObject({ ttl: '1h', contextTokens: 80_100 });

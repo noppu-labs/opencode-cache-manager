@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { isCacheProfileId, isCacheTtlMode } from '../../src/models/cache.ts';
 
-// ---------------------------------------------------------------------------
-// isCacheTtlMode
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * isCacheTtlMode
+ * ---------------------------------------------------------------------------
+ */
 
 describe('isCacheTtlMode', () => {
   test('accepts the three valid modes', () => {
@@ -30,7 +32,8 @@ describe('isCacheProfileId', () => {
   });
 
   test('rejects anything else, including the 0.4 strategy name', () => {
-    for (const value of ['explicit', '', 'OpenAI', undefined, null, 1])
+    for (const value of ['explicit', '', 'OpenAI', undefined, null, 1]) {
       expect(isCacheProfileId(value)).toBe(false);
+    }
   });
 });

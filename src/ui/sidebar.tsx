@@ -4,30 +4,31 @@ import type { RGBA } from '@opentui/core';
 import { createEffect, createSignal, Index, onCleanup, Show } from 'solid-js';
 
 import { SIDEBAR_REFRESH_MS } from '../constants/keepalive.ts';
+import { MS_PER_SECOND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { LABEL_WIDTH, sidebarLines, type Tone } from './sidebar-lines.ts';
 
 /** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
-export type SidebarPalette = Readonly<Record<Tone, RGBA>>;
+type SidebarPalette = Readonly<Record<Tone, RGBA>>;
 
-export function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
+function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
   return {
     base: theme.text.base,
+    error: theme.text.feedback.error.base,
     muted: theme.text.muted,
     success: theme.text.feedback.success.base,
     warning: theme.text.feedback.warning.base,
-    error: theme.text.feedback.error.base,
   };
 }
 
-export function CacheLines(props: {
+function CacheLines(props: {
   palette: () => SidebarPalette;
   snapshot: () => KeepaliveSnapshot | undefined;
 }) {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => {
     setNow(Date.now());
-  }, 1000);
+  }, MS_PER_SECOND);
   onCleanup(() => {
     clearInterval(timer);
   });
@@ -79,7 +80,7 @@ function CacheSection(props: {
   const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
 
   createEffect(() => {
-    const sessionID = props.sessionID;
+    const { sessionID } = props;
     props.load(sessionID);
     const timer = setInterval(() => {
       if (!child()) props.refresh(sessionID);
@@ -99,7 +100,7 @@ function CacheSection(props: {
 }
 
 /** Claims the `sidebar.content` slot with the cache section; returns the disposer. */
-export function registerSidebar(
+function registerSidebar(
   ctx: Plugin.Context,
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>,
   load: (sessionID: string) => void,
@@ -119,3 +120,6 @@ export function registerSidebar(
     ),
   });
 }
+
+export type { SidebarPalette };
+export { paletteFromTheme, CacheLines, registerSidebar };

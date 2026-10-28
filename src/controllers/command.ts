@@ -25,24 +25,25 @@ export interface CommandDeps {
 /** The `/cache-manager` command: typed arguments edit the current session's settings. */
 export function createCacheManagerCommand({ store, settingsChanged, say }: CommandDeps) {
   return {
-    name: 'cache-manager',
     description:
       "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
     async execute(input: { sessionID: string; prompt: unknown }): Promise<void> {
-      const sessionID = input.sessionID;
+      const { sessionID } = input;
       const action = parseCommandArg(input.prompt);
 
       switch (action.type) {
-        case 'status':
+        case 'status': {
           await say(
             sessionID,
             `Session cache settings: ${describeSettings(await store.effective(sessionID))}.`
           );
           return;
-        case 'invalid':
+        }
+        case 'invalid': {
           await say(sessionID, INVALID_ARGUMENT_TEXT);
           return;
-        case 'reset':
+        }
+        case 'reset': {
           await store.resetSession(sessionID);
           await settingsChanged(sessionID);
           await say(
@@ -50,14 +51,16 @@ export function createCacheManagerCommand({ store, settingsChanged, say }: Comma
             `Session cache settings reset: ${describeSettings(await store.effective(sessionID))}.`
           );
           return;
+        }
         case 'toggle': {
           const { mode } = await store.effective(sessionID);
           await store.setSession(sessionID, { mode: mode === '5m' ? '1h' : '5m' });
           break;
         }
-        case 'set':
+        case 'set': {
           await store.setSession(sessionID, action.patch);
           break;
+        }
       }
       await settingsChanged(sessionID);
       await say(
@@ -65,5 +68,6 @@ export function createCacheManagerCommand({ store, settingsChanged, say }: Comma
         `Session cache settings updated: ${describeSettings(await store.effective(sessionID))}.`
       );
     },
+    name: 'cache-manager',
   };
 }

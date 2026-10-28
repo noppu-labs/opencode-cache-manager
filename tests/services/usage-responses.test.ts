@@ -33,9 +33,7 @@ describe('RESPONSES_PARSERS.fromJson', () => {
   });
 
   test('without cache details the whole input is uncached', () => {
-    const usage = RESPONSES_PARSERS.fromJson(
-      jsonBody({ input_tokens: 100, output_tokens: 3 })
-    ).usage;
+    const { usage } = RESPONSES_PARSERS.fromJson(jsonBody({ input_tokens: 100, output_tokens: 3 }));
     expect(usage).toEqual({
       inputTokens: 100,
       cacheReadTokens: 0,
@@ -46,9 +44,9 @@ describe('RESPONSES_PARSERS.fromJson', () => {
   });
 
   test('input never goes negative', () => {
-    const usage = RESPONSES_PARSERS.fromJson(
+    const { usage } = RESPONSES_PARSERS.fromJson(
       jsonBody({ input_tokens: 10, input_tokens_details: { cached_tokens: 50 } })
-    ).usage;
+    );
     expect(usage?.inputTokens).toBe(0);
   });
 

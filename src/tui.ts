@@ -35,30 +35,32 @@ export default Plugin.define({
       ctx.ui.toast.show({ message, variant });
     };
 
-    const openPicker = createPicker({ dialog: ctx.ui.dialog, rpc, toast, currentSessionID });
-    const runCommand = createCommandRunner({ rpc, toast, currentSessionID, openPicker });
+    const openPicker = createPicker({ currentSessionID, dialog: ctx.ui.dialog, rpc, toast });
+    const runCommand = createCommandRunner({ currentSessionID, openPicker, rpc, toast });
 
     ctx.keymap.layer(() => ({
-      mode: 'base',
       commands: [
         {
-          id: 'cache-manager.open',
-          title: 'Cache Manager',
           description: 'Manage the prompt cache TTL and keepalive (Claude, GPT-5.6+)',
           group: 'Provider',
+          id: 'cache-manager.open',
           palette: true,
-          slash: { name: 'cache-manager', arguments: true },
           run: (input?: string) => runCommand(input),
+          slash: { arguments: true, name: 'cache-manager' },
+          title: 'Cache Manager',
         },
       ],
+      mode: 'base',
     }));
 
     const feed = createSnapshotFeed(ctx.storage, rpc);
 
-    // The sidebar is Solid JSX loaded lazily so a failure there cannot take the
-    // command or picker down. The host only runs the Solid transform outside
-    // node_modules, so an npm install loads the copy compiled at pack time.
-    // Both specifiers stay literal: the host finds imports to rewrite by scanning for them.
+    /*
+     * The sidebar is Solid JSX loaded lazily so a failure there cannot take the
+     * command or picker down. The host only runs the Solid transform outside
+     * node_modules, so an npm install loads the copy compiled at pack time.
+     * Both specifiers stay literal: the host finds imports to rewrite by scanning for them.
+     */
     let disposeSidebar: (() => void) | undefined;
     try {
       const { registerSidebar } = isInsideNodeModules(import.meta.url)

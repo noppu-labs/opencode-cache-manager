@@ -74,8 +74,7 @@ function disableCaching(body: Rec): boolean {
 /** OpenAI GPT-5.6+ caching: automatic 30m, or a per-breakpoint 12h `prompt_cache_breakpoint`. */
 export const openaiProfile: CacheProfile = {
   id: 'openai',
-  wires: ['openai-chat', 'openai-responses'],
-  ttlForMode: (mode) => OPENAI_TTL_FOR_MODE[mode],
+  pings: true,
   rewrite(body, ctx) {
     if (ctx.isPing || (ctx.wire !== 'openai-chat' && ctx.wire !== 'openai-responses')) return false;
     if (ctx.kind === 'title' || ctx.kind === 'generate') return disableCaching(body);
@@ -89,5 +88,6 @@ export const openaiProfile: CacheProfile = {
     target.prompt_cache_breakpoint = { ...LONG_BREAKPOINT };
     return true;
   },
-  pings: true,
+  ttlForMode: (mode) => OPENAI_TTL_FOR_MODE[mode],
+  wires: ['openai-chat', 'openai-responses'],
 };

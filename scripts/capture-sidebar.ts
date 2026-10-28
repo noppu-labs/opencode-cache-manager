@@ -11,12 +11,16 @@ import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
 import { isNonEmptyString } from '../src/utils/is-non-empty-string.ts';
 
-// Clock times in the section come from toLocaleTimeString, so pin the zone
-// before any Date is formatted.
+/*
+ * Clock times in the section come from toLocaleTimeString, so pin the zone
+ * before any Date is formatted.
+ */
 process.env.TZ = 'UTC';
 
-// The Solid transform must be registered before any module with JSX loads, so
-// the screens are imported dynamically below.
+/*
+ * The Solid transform must be registered before any module with JSX loads, so
+ * the screens are imported dynamically below.
+ */
 ensureSolidTransformPlugin();
 
 const ROOT = join(import.meta.dir, '..');
@@ -38,15 +42,10 @@ const FREEZE_FLAGS = [
   '1.2',
 ];
 
-const {
-  CAPTURE_NOW,
-  SCREEN_NAMES,
-  SECTION_HEADER,
-  isScreenName,
-  renderScreen,
-}: typeof import('./capture/screens.tsx') = await import('./capture/screens.tsx');
+const { CAPTURE_NOW, SCREEN_NAMES, SECTION_HEADER, isScreenName, renderScreen } =
+  await import('./capture/screens.tsx');
 
-/** freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
+/** Charm's freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
 function withBoldHeader(svg: string): string {
   return svg.replaceAll(
     `>${SECTION_HEADER}</tspan>`,
@@ -65,7 +64,7 @@ function renderSvg(screen: string, dir: string): boolean {
       svg,
       ...FREEZE_FLAGS,
     ],
-    { cwd: ROOT, stdout: 'inherit', stderr: 'inherit' }
+    { cwd: ROOT, stderr: 'inherit', stdout: 'inherit' }
   );
   if (freeze.exitCode !== 0) {
     console.error(
@@ -88,11 +87,12 @@ function regenerate(): number {
     for (const screen of SCREEN_NAMES) if (!renderSvg(screen, staging)) return 1;
     const images = join(ROOT, 'docs/images');
     mkdirSync(images, { recursive: true });
-    for (const screen of SCREEN_NAMES)
+    for (const screen of SCREEN_NAMES) {
       copyFileSync(join(staging, `${screen}.svg`), join(images, `${screen}.svg`));
+    }
     return 0;
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(staging, { force: true, recursive: true });
   }
 }
 

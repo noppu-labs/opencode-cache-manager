@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { parseCommandArg } from '../../src/controllers/command-args.ts';
 
-// ---------------------------------------------------------------------------
-// parseCommandArg
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * parseCommandArg
+ * ---------------------------------------------------------------------------
+ */
 
 describe('parseCommandArg', () => {
   test('parses mode arguments case-insensitively', () => {
@@ -55,10 +57,16 @@ describe('parseCommandArg', () => {
   test('parses min as an integer or a k-suffixed integer', () => {
     expect(parseCommandArg('min 20000')).toEqual({
       type: 'set',
-      patch: { minContextTokens: 20000 },
+      patch: { minContextTokens: 20_000 },
     });
-    expect(parseCommandArg('min 50k')).toEqual({ type: 'set', patch: { minContextTokens: 50000 } });
-    expect(parseCommandArg('MIN 50K')).toEqual({ type: 'set', patch: { minContextTokens: 50000 } });
+    expect(parseCommandArg('min 50k')).toEqual({
+      type: 'set',
+      patch: { minContextTokens: 50_000 },
+    });
+    expect(parseCommandArg('MIN 50K')).toEqual({
+      type: 'set',
+      patch: { minContextTokens: 50_000 },
+    });
     expect(parseCommandArg('min 0')).toEqual({ type: 'set', patch: { minContextTokens: 0 } });
     expect(parseCommandArg('min -5')).toEqual({ type: 'invalid' });
     expect(parseCommandArg('min 1.5k')).toEqual({ type: 'invalid' });

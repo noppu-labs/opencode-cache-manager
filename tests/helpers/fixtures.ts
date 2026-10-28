@@ -2,12 +2,12 @@ import type { CacheUsage } from '../../src/models/cache.ts';
 import type { TransformOptions } from '../../src/services/cache-ttl.ts';
 import { anthropicProfile } from '../../src/services/profiles/anthropic.ts';
 
-export function ephemeral(extra: Record<string, unknown> = {}) {
+function ephemeral(extra: Record<string, unknown> = {}) {
   return { type: 'ephemeral', ...extra };
 }
 
 /** A representative Anthropic payload with breakpoints on tools, system and messages. */
-export function sampleBody() {
+function sampleBody() {
   return {
     model: 'claude-sonnet-5-5',
     tools: [
@@ -41,7 +41,7 @@ export function sampleBody() {
 }
 
 /** Collects every cache_control object found anywhere in a payload. */
-export function collectCacheControls(
+function collectCacheControls(
   node: unknown,
   out: Record<string, unknown>[] = []
 ): Record<string, unknown>[] {
@@ -57,7 +57,7 @@ export function collectCacheControls(
   return out;
 }
 
-export function makeRequest(
+function makeRequest(
   body: string | undefined,
   headers: Record<string, string> = {},
   options: { method?: string } = {}
@@ -69,29 +69,29 @@ export function makeRequest(
   });
 }
 
-export function parsedBodyOf(request: Request) {
+function parsedBodyOf(request: Request) {
   return request.clone().json() as Promise<Record<string, unknown>>;
 }
 
 /** Usage objects captured from OpenAI-compatible endpoints (see the plan's "Usage shapes seen on the wire"). */
-export const openaiUsage = {
+const openaiUsage = {
   omnirouteAutoWrite: {
     prompt_tokens: 1698,
     completion_tokens: 4,
     total_tokens: 1702,
     reasoning_tokens: 0,
     completion_tokens_details: { reasoning_tokens: 0 },
-    cache_creation_input_tokens: 14845,
+    cache_creation_input_tokens: 14_845,
     prompt_tokens_details: { cache_creation_in_prompt: false },
   },
   omnirouteAutoRead: {
-    prompt_tokens: 16543,
+    prompt_tokens: 16_543,
     completion_tokens: 4,
-    total_tokens: 16547,
+    total_tokens: 16_547,
     reasoning_tokens: 0,
-    prompt_tokens_details: { cached_tokens: 14845 },
+    prompt_tokens_details: { cached_tokens: 14_845 },
     completion_tokens_details: { reasoning_tokens: 0 },
-    cache_read_input_tokens: 14845,
+    cache_read_input_tokens: 14_845,
   },
   lunaWrite: {
     prompt_tokens: 8887,
@@ -114,54 +114,53 @@ export const openaiUsage = {
     cost: 0.000122015,
   },
   deepseekRead: {
-    prompt_tokens: 10195,
+    prompt_tokens: 10_195,
     completion_tokens: 3,
-    total_tokens: 10198,
-    cached_tokens: 10112,
+    total_tokens: 10_198,
+    cached_tokens: 10_112,
     reasoning_tokens: 0,
-    prompt_tokens_details: { cached_tokens: 10112 },
+    prompt_tokens_details: { cached_tokens: 10_112 },
     cache_creation_input_tokens: 0,
   },
 };
 
 /** A streamed Chat Completions response: content chunk, finish chunk, usage-only chunk, `[DONE]`. */
-export function openaiSse(
+function openaiSse(
   usage: unknown,
   options: { finishReason?: string; model?: string; provider?: string } = {}
 ): string {
   const { finishReason = 'stop', model = 'openai/gpt-6-luna', provider = 'OpenAI' } = options;
   const chunk = (value: Record<string, unknown>) => `data: ${JSON.stringify(value)}\n\n`;
-  return (
+  return `${
     chunk({
       model,
       provider,
       choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }],
     }) +
     chunk({ model, provider, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] }) +
-    chunk({ model, provider, choices: [], usage }) +
-    'data: [DONE]\n\n'
-  );
+    chunk({ model, provider, choices: [], usage })
+  }data: [DONE]\n\n`;
 }
 
 /** Anthropic usage with cache reads and a 1h write. */
-export const fullUsage = {
+const fullUsage = {
   input_tokens: 10,
-  cache_read_input_tokens: 60000,
+  cache_read_input_tokens: 60_000,
   cache_creation_input_tokens: 500,
   cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 500 },
 };
 
 /** `fullUsage` as parsed. */
-export const fullParsed: CacheUsage = {
+const fullParsed: CacheUsage = {
   inputTokens: 10,
-  cacheReadTokens: 60000,
+  cacheReadTokens: 60_000,
   cacheWriteTokens: 500,
   write5mTokens: 0,
   write1hTokens: 500,
 };
 
 /** An Anthropic SSE stream: usage in `message_start`, a cache-read update in `message_delta`. */
-export function sse(usage: unknown): string {
+function sse(usage: unknown): string {
   return (
     `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { usage } })}\n\n` +
     `event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5,"cache_read_input_tokens":61000}}\n\n`
@@ -169,7 +168,7 @@ export function sse(usage: unknown): string {
 }
 
 /** Usage objects captured from OpenRouter's `/responses` endpoint on `openai/gpt-6-luna` (probe notes, "Responses wire"). */
-export const responsesUsage = {
+const responsesUsage = {
   write: {
     input_tokens: 8888,
     input_tokens_details: { cached_tokens: 0, cache_write_tokens: 8885 },
@@ -187,7 +186,7 @@ export const responsesUsage = {
 };
 
 /** A streamed Responses reply: created, a text delta, the output item, then the closing `response.completed` (or `response.incomplete`). */
-export function responsesSse(
+function responsesSse(
   usage: unknown,
   options: { model?: string; status?: string; toolCall?: boolean; event?: string } = {}
 ): string {
@@ -210,7 +209,7 @@ export function responsesSse(
 }
 
 /** `transformHttpRequest` options for a primary request through the anthropic profile, with overrides. */
-export function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
+function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
   return {
     wire: 'anthropic-messages',
     profile: anthropicProfile,
@@ -220,3 +219,19 @@ export function transformOpts(overrides: Partial<TransformOptions> = {}): Transf
     ...overrides,
   };
 }
+
+export {
+  ephemeral,
+  sampleBody,
+  collectCacheControls,
+  makeRequest,
+  parsedBodyOf,
+  openaiUsage,
+  openaiSse,
+  fullUsage,
+  fullParsed,
+  sse,
+  responsesUsage,
+  responsesSse,
+  transformOpts,
+};

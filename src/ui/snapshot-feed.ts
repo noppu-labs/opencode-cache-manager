@@ -9,7 +9,7 @@ export interface SnapshotFeed {
   load: (sessionID: string) => void;
   /** Fetches a session's snapshot again and stores it, unless an event arrived meanwhile. */
   refresh: (sessionID: string) => void;
-  dispose(): void;
+  dispose: () => void;
 }
 
 /**
@@ -74,11 +74,11 @@ export function createSnapshotFeed(
   })();
 
   return {
-    snapshots: () => new Map(Object.entries(sidebar.snapshots)),
-    load,
-    refresh,
     dispose: () => {
       abort.abort();
     },
+    load,
+    refresh,
+    snapshots: () => new Map(Object.entries(sidebar.snapshots)),
   };
 }

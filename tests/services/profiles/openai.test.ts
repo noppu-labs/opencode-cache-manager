@@ -94,8 +94,9 @@ describe('openai profile', () => {
     expect(openaiProfile.pings).toBe(true);
     expect(openaiProfile.wires).toEqual(['openai-chat', 'openai-responses']);
     expect('headers' in openaiProfile).toBe(false);
-    for (const mode of MODES)
+    for (const mode of MODES) {
       expect(openaiProfile.ttlForMode(mode)).toBe(OPENAI_TTL_FOR_MODE[mode]);
+    }
     expect(openaiProfile.ttlForMode('5m')).toBe('30m');
     expect(openaiProfile.ttlForMode('hybrid')).toBe('30m');
   });

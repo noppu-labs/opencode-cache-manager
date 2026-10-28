@@ -12,12 +12,12 @@ const isMessageItem = (item: Rec): boolean =>
   item.type === 'message' || (item.type === undefined && typeof item.role === 'string');
 
 /** The last `input_text` part of a Responses `input` message; user string content becomes parts first. */
-export function lastInputTextPart(item: Rec): Rec | undefined {
+function lastInputTextPart(item: Rec): Rec | undefined {
   if (!isMessageItem(item)) return undefined;
   const { content } = item;
   if (typeof content === 'string') {
     if (content === '' || item.role === 'assistant') return undefined;
-    const part: Rec = { type: 'input_text', text: content };
+    const part: Rec = { text: content, type: 'input_text' };
     item.content = [part];
     return part;
   }
@@ -25,7 +25,7 @@ export function lastInputTextPart(item: Rec): Rec | undefined {
 }
 
 /** The first `input` item of a Responses body. */
-export function firstInputItem(body: Rec): Rec | undefined {
+function firstInputItem(body: Rec): Rec | undefined {
   if (!Array.isArray(body.input)) return undefined;
   const first: unknown = body.input[0];
   return isRecord(first) ? first : undefined;
@@ -35,12 +35,12 @@ export function firstInputItem(body: Rec): Rec | undefined {
  * The last `input_text` part of a `function_call_output` item; string `output` becomes parts first.
  * Probe: a breakpoint on such a part is honoured, while one on the item itself is ignored.
  */
-export function toolOutputTextPart(item: Rec): Rec | undefined {
+function toolOutputTextPart(item: Rec): Rec | undefined {
   if (item.type !== 'function_call_output') return undefined;
   const { output } = item;
   if (typeof output === 'string') {
     if (output === '') return undefined;
-    const part: Rec = { type: 'input_text', text: output };
+    const part: Rec = { text: output, type: 'input_text' };
     item.output = [part];
     return part;
   }
@@ -48,7 +48,7 @@ export function toolOutputTextPart(item: Rec): Rec | undefined {
 }
 
 /** The last `input_text` part of a message or tool output in the body, skipping items without one (tool calls, assistant output). */
-export function lastInputText(body: Rec): Rec | undefined {
+function lastInputText(body: Rec): Rec | undefined {
   if (!Array.isArray(body.input)) return undefined;
   for (let index = body.input.length - 1; index >= 0; index--) {
     const item: unknown = body.input[index];
@@ -57,3 +57,5 @@ export function lastInputText(body: Rec): Rec | undefined {
   }
   return undefined;
 }
+
+export { lastInputTextPart, firstInputItem, toolOutputTextPart, lastInputText };

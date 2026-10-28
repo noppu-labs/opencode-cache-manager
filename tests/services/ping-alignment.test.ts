@@ -319,7 +319,7 @@ describe('alignPingMessages', () => {
     }
     expect(out.map((m) => m.content[0].text)).toEqual(['a0', 'p1', 'p2', 'ping']);
     expect(out[3].content[1]).toEqual({ type: 'text', text: 'plain' });
-    // inputs untouched
+    // Inputs untouched
     expect(ping[3].cache_control).toEqual({ type: 'ephemeral' });
     expect(ping[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
   });

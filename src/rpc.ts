@@ -9,33 +9,43 @@ import type { Settings, SettingsPatch } from './config/settings.ts';
 import type { KeepaliveSnapshot } from './models/keepalive.ts';
 
 const settingsSchema = {
-  type: 'object',
-  properties: {
-    mode: { type: 'string', enum: ['5m', '1h', 'hybrid'] },
-    keepalive: { type: 'boolean' },
-    maxPings: { type: 'integer', minimum: 0, maximum: 100 },
-    minContextTokens: { type: 'integer', minimum: 0 },
-  },
   additionalProperties: false,
+  properties: {
+    keepalive: { type: 'boolean' },
+    maxPings: { maximum: 100, minimum: 0, type: 'integer' },
+    minContextTokens: { minimum: 0, type: 'integer' },
+    mode: { enum: ['5m', '1h', 'hybrid'], type: 'string' },
+  },
+  type: 'object',
 } as const;
 
 const nullableString = (values: readonly string[]) =>
-  ({ type: ['string', 'null'], enum: [...values, null] }) as const;
+  ({ enum: [...values, null], type: ['string', 'null'] }) as const;
 const nullableNumber = { type: ['number', 'null'] } as const;
 
 const keepaliveSnapshotSchema = {
-  type: 'object',
+  additionalProperties: false,
   properties: {
-    sessionID: { type: 'string' },
-    ttl: nullableString(['5m', '1h', '30m', '12h']),
-    ttlSource: nullableString(['detected', 'requested']),
-    lastRequestAt: nullableNumber,
+    contextTokens: nullableNumber,
     expiresAt: nullableNumber,
-    nextPingAt: nullableNumber,
-    pingsUsed: { type: 'integer', minimum: 0 },
-    maxPings: { type: 'integer', minimum: 0 },
-    minContextTokens: { type: 'integer', minimum: 0 },
+    lastCache: {
+      oneOf: [
+        {
+          additionalProperties: false,
+          properties: { read: { type: 'number' }, total: { type: 'number' } },
+          required: ['read', 'total'],
+          type: 'object',
+        },
+        { type: 'null' },
+      ],
+    },
     lastPing: nullableString(['hit', 'miss', 'failed']),
+    lastRequestAt: nullableNumber,
+    maxPings: { minimum: 0, type: 'integer' },
+    minContextTokens: { minimum: 0, type: 'integer' },
+    nextPingAt: nullableNumber,
+    pingsUsed: { minimum: 0, type: 'integer' },
+    sessionID: { type: 'string' },
     skipReason: nullableString([
       'disabled',
       'small-context',
@@ -46,18 +56,8 @@ const keepaliveSnapshotSchema = {
       'missed',
       'implicit',
     ]),
-    contextTokens: nullableNumber,
-    lastCache: {
-      oneOf: [
-        {
-          type: 'object',
-          properties: { read: { type: 'number' }, total: { type: 'number' } },
-          required: ['read', 'total'],
-          additionalProperties: false,
-        },
-        { type: 'null' },
-      ],
-    },
+    ttl: nullableString(['5m', '1h', '30m', '12h']),
+    ttlSource: nullableString(['detected', 'requested']),
   },
   required: [
     'sessionID',
@@ -74,22 +74,42 @@ const keepaliveSnapshotSchema = {
     'contextTokens',
     'lastCache',
   ],
-  additionalProperties: false,
+  type: 'object',
 } as const;
 
-const emptyOutput = { type: 'object', additionalProperties: false } as const;
+const emptyOutput = { additionalProperties: false, type: 'object' } as const;
 
-export const CacheTtlRpc = {
+const CacheTtlRpc = {
+  events: {
+    'keepalive.updated': { schema: keepaliveSnapshotSchema },
+    'settings.updated': {
+      schema: {
+        additionalProperties: false,
+        properties: { sessionID: { type: ['string', 'null'] } },
+        required: ['sessionID'],
+        type: 'object',
+      },
+    },
+  },
   id: 'opencode-cache-manager',
   methods: {
+    getKeepalive: {
+      input: {
+        additionalProperties: false,
+        properties: { sessionID: { type: 'string' } },
+        required: ['sessionID'],
+        type: 'object',
+      },
+      output: keepaliveSnapshotSchema,
+    },
     getSettings: {
       input: {
-        type: 'object',
-        properties: { sessionID: { type: 'string' } },
         additionalProperties: false,
+        properties: { sessionID: { type: 'string' } },
+        type: 'object',
       },
       output: {
-        type: 'object',
+        additionalProperties: false,
         properties: {
           global: {
             ...settingsSchema,
@@ -98,84 +118,71 @@ export const CacheTtlRpc = {
           session: { oneOf: [settingsSchema, { type: 'null' }] },
         },
         required: ['global', 'session'],
-        additionalProperties: false,
+        type: 'object',
       },
+    },
+    resetSession: {
+      input: {
+        additionalProperties: false,
+        properties: { sessionID: { type: 'string' } },
+        required: ['sessionID'],
+        type: 'object',
+      },
+      output: emptyOutput,
     },
     setGlobal: {
       input: {
-        type: 'object',
+        additionalProperties: false,
         properties: { patch: settingsSchema },
         required: ['patch'],
-        additionalProperties: false,
+        type: 'object',
       },
       output: emptyOutput,
     },
     setSession: {
       input: {
-        type: 'object',
-        properties: { sessionID: { type: 'string' }, patch: settingsSchema },
+        additionalProperties: false,
+        properties: { patch: settingsSchema, sessionID: { type: 'string' } },
         required: ['sessionID', 'patch'],
-        additionalProperties: false,
+        type: 'object',
       },
       output: emptyOutput,
-    },
-    getKeepalive: {
-      input: {
-        type: 'object',
-        properties: { sessionID: { type: 'string' } },
-        required: ['sessionID'],
-        additionalProperties: false,
-      },
-      output: keepaliveSnapshotSchema,
-    },
-    resetSession: {
-      input: {
-        type: 'object',
-        properties: { sessionID: { type: 'string' } },
-        required: ['sessionID'],
-        additionalProperties: false,
-      },
-      output: emptyOutput,
-    },
-  },
-  events: {
-    'keepalive.updated': { schema: keepaliveSnapshotSchema },
-    'settings.updated': {
-      schema: {
-        type: 'object',
-        properties: { sessionID: { type: ['string', 'null'] } },
-        required: ['sessionID'],
-        additionalProperties: false,
-      },
     },
   },
 } as const;
 
-export type RpcLocation = { directory: string };
-export type RpcCallOptions = { location?: RpcLocation };
+interface RpcLocation {
+  directory: string;
+}
+interface RpcCallOptions {
+  location?: RpcLocation;
+}
 
 /** Loose client shape mirroring the `@opencode/client` RPC client for this contract. */
-export type RawCacheTtlRpcClient = {
-  [M in Exclude<keyof CacheTtlRpcClient, 'events'>]: (
-    input: Parameters<CacheTtlRpcClient[M]>[0],
+type RawCacheTtlRpcClient = {
+  [Method in Exclude<keyof CacheTtlRpcClient, 'events'>]: (
+    input: Parameters<CacheTtlRpcClient[Method]>[0],
     options?: RpcCallOptions
-  ) => ReturnType<CacheTtlRpcClient[M]>;
+  ) => ReturnType<CacheTtlRpcClient[Method]>;
 } & Pick<CacheTtlRpcClient, 'events'>;
 
 /** The RPC client the TUI uses; each call already targets the right location. */
-export type CacheTtlRpcClient = {
-  getSettings(input: { sessionID?: string }): Promise<{
+interface CacheTtlRpcClient {
+  getSettings: (input: { sessionID?: string }) => Promise<{
     global: Settings;
     session: SettingsPatch | null;
   }>;
-  setGlobal(input: { patch: SettingsPatch }): Promise<unknown>;
-  setSession(input: { sessionID: string; patch: SettingsPatch }): Promise<unknown>;
-  resetSession(input: { sessionID: string }): Promise<unknown>;
-  getKeepalive(input: { sessionID: string }): Promise<KeepaliveSnapshot>;
+  setGlobal: (input: { patch: SettingsPatch }) => Promise<unknown>;
+  setSession: (input: { sessionID: string; patch: SettingsPatch }) => Promise<unknown>;
+  resetSession: (input: { sessionID: string }) => Promise<unknown>;
+  getKeepalive: (input: { sessionID: string }) => Promise<KeepaliveSnapshot>;
   events: {
-    subscribe(
+    subscribe: (
       name: 'keepalive.updated',
       options?: { signal?: AbortSignal }
-    ): AsyncIterable<{ data: KeepaliveSnapshot }>;
+    ) => AsyncIterable<{ data: KeepaliveSnapshot }>;
   };
-};
+}
+
+export type { RpcLocation, RpcCallOptions, RawCacheTtlRpcClient, CacheTtlRpcClient };
+export { CacheTtlRpc };

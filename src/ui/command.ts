@@ -8,7 +8,7 @@ const USAGE =
   'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | reset | status]';
 const NO_SESSION = 'Open a session to change session cache settings.';
 
-export interface CommandRunnerDeps {
+interface CommandRunnerDeps {
   rpc: CacheTtlRpcClient;
   toast: Toast;
   currentSessionID: () => string | undefined;
@@ -20,12 +20,7 @@ export interface CommandRunnerDeps {
  * a typed argument is applied to the current session directly. Errors become
  * an error toast.
  */
-export function createCommandRunner({
-  rpc,
-  toast,
-  currentSessionID,
-  openPicker,
-}: CommandRunnerDeps) {
+function createCommandRunner({ rpc, toast, currentSessionID, openPicker }: CommandRunnerDeps) {
   const runTyped = async (input: string): Promise<void> => {
     const action = parseCommandArg(input);
     if (action.type === 'toggle') return openPicker();
@@ -41,9 +36,9 @@ export function createCommandRunner({
 
     if (action.type === 'status') {
       const { global, session } = await rpc.getSettings({ sessionID });
-      const s = mergeSettings(global, session ?? {});
+      const settings = mergeSettings(global, session ?? {});
       toast(
-        `Session cache: TTL ${s.mode}, keepalive ${formatValue('keepalive', s.keepalive)}, pings ${s.maxPings}, min context ${formatTokens(s.minContextTokens)}.`,
+        `Session cache: TTL ${settings.mode}, keepalive ${formatValue('keepalive', settings.keepalive)}, pings ${settings.maxPings}, min context ${formatTokens(settings.minContextTokens)}.`,
         'info'
       );
       return;
@@ -54,7 +49,7 @@ export function createCommandRunner({
       return;
     }
 
-    await rpc.setSession({ sessionID, patch: action.patch });
+    await rpc.setSession({ patch: action.patch, sessionID });
     for (const field of FIELDS) {
       const message = describeChange(field, action.patch);
       if (message !== undefined) toast(message, 'success');
@@ -75,3 +70,6 @@ function describeChange(field: keyof Settings, patch: SettingsPatch): string | u
   if (value === undefined) return undefined;
   return `Session ${FIELD_INFO[field].label} set to ${formatValue(field, value)}.`;
 }
+
+export type { CommandRunnerDeps };
+export { createCommandRunner };

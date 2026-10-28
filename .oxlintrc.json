@@ -4,7 +4,8 @@
   "categories": {
     "correctness": "error",
     "suspicious": "error",
-    "pedantic": "error"
+    "pedantic": "error",
+    "style": "error"
   },
   "env": {
     "builtin": true
@@ -16,7 +17,59 @@
     "typescript/prefer-readonly-parameter-types": "off",
     "eslint/max-lines-per-function": "off",
     "eslint/max-lines": "off",
-    "import/max-dependencies": "off"
+    "import/max-dependencies": "off",
+    "eslint/sort-imports": "off",
+    "import/no-named-export": "off",
+    "import/no-default-export": "off",
+    "import/prefer-default-export": "off",
+    "eslint/no-ternary": "off",
+    "unicorn/no-nested-ternary": "off",
+    "unicorn/no-null": "off",
+    "import/no-nodejs-modules": "off",
+    "typescript/parameter-properties": "off",
+    "eslint/max-statements": "off",
+    "eslint/max-params": "off",
+    "unicorn/max-nested-calls": "off",
+    "eslint/no-continue": "off",
+    "import/consistent-type-specifier-style": "off",
+    "eslint/init-declarations": "off",
+    "eslint/curly": ["error", "multi-line"],
+    "eslint/no-magic-numbers": [
+      "error",
+      {
+        "ignore": [-1, 0, 1, 2]
+      }
+    ],
+    "eslint/id-length": [
+      "error",
+      {
+        "exceptions": ["_", "t"],
+        "properties": "never"
+      }
+    ],
+    "eslint/one-var": ["error", "never"],
+    "eslint/func-style": [
+      "error",
+      "declaration",
+      {
+        "allowArrowFunctions": true
+      }
+    ],
+    "eslint/sort-keys": [
+      "error",
+      "asc",
+      {
+        "allowLineSeparatedGroups": true,
+        "natural": true
+      }
+    ],
+    "eslint/prefer-destructuring": [
+      "error",
+      {
+        "array": false,
+        "object": true
+      }
+    ]
   },
   "overrides": [
     {
@@ -35,7 +88,11 @@
         "unicorn/no-useless-undefined": "off",
         "typescript/no-confusing-void-expression": "off",
         "typescript/strict-void-return": "off",
-        "eslint/no-promise-executor-return": "off"
+        "eslint/no-promise-executor-return": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/sort-keys": "off",
+        "eslint/id-length": "off",
+        "unicorn/no-await-expression-member": "off"
       }
     }
   ],

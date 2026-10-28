@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import { parseCacheProfiles } from '../../src/config/model-patterns.ts';
+import type { Wire } from '../../src/models/cache.ts';
 import {
   classifyRequest,
   classifyRequestWithBody,
@@ -127,7 +128,7 @@ describe('classifyRequest', () => {
         );
         const profile =
           providerID !== 'some-proxy' || claude.includes(id) ? 'anthropic' : 'implicit';
-        want.push(`${providerID}/${id} ${JSON.stringify({ wire: 'anthropic-messages', profile })}`);
+        want.push(`${providerID}/${id} ${JSON.stringify({ profile, wire: 'anthropic-messages' })}`);
       }
     }
     expect(got).toEqual(want);
@@ -599,12 +600,11 @@ describe('routeRequest', () => {
       expect(got.transformWire).toBe(
         isChat && (openaiCompatible || hasSentinel) ? 'openai-chat' : undefined
       );
-      const responseWire =
-        cls?.wire === 'openai-chat' && openaiCompatible
-          ? 'openai-chat'
-          : anthropicProvider || cls?.wire === 'anthropic-messages'
-            ? 'anthropic-messages'
-            : undefined;
+      let responseWire: Wire | undefined;
+      if (cls?.wire === 'openai-chat' && openaiCompatible) responseWire = 'openai-chat';
+      else if (anthropicProvider || cls?.wire === 'anthropic-messages') {
+        responseWire = 'anthropic-messages';
+      }
       expect(got.observedWire).toBe(responseWire);
       expect(observedWireFor(cls?.wire, anthropicProvider, openaiCompatible)).toBe(responseWire);
     }

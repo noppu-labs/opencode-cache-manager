@@ -13,11 +13,11 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 function importSpecifiers(code: string): string[] {
   const found = new Set<string>();
   for (const re of [
-    /\bfrom\s*["']([^"']+)["']/gu,
-    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu,
-    /\bimport\s+["']([^"']+)["']/gu,
+    /\bfrom\s*["'](?<specifier>[^"']+)["']/gu,
+    /\bimport\s*\(\s*["'](?<specifier>[^"']+)["']\s*\)/gu,
+    /\bimport\s+["'](?<specifier>[^"']+)["']/gu,
   ]) {
-    for (const match of code.matchAll(re)) found.add(match[1]);
+    for (const match of code.matchAll(re)) found.add(match.groups?.specifier ?? '');
   }
   return [...found].toSorted();
 }

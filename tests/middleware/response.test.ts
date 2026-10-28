@@ -42,7 +42,7 @@ function gate() {
 
 function harness(config: { options?: Partial<PluginOptions> } = {}) {
   const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
-  const learnCalls: Array<{ ref: ModelRef; identity: unknown }> = [];
+  const learnCalls: { ref: ModelRef; identity: unknown }[] = [];
   const forgetCalls: ModelRef[] = [];
   const store = new ProfileStore(memoryKv().kv);
   const profiles = {
@@ -56,7 +56,7 @@ function harness(config: { options?: Partial<PluginOptions> } = {}) {
     },
     get: (ref: ModelRef) => store.get(ref),
   };
-  const observed: Array<{ sessionID: string; info: Record<string, unknown> }> = [];
+  const observed: { sessionID: string; info: Record<string, unknown> }[] = [];
   const fake = {
     pending: undefined as Promise<void> | undefined,
     fail: false,
@@ -340,14 +340,14 @@ describe('createResponseHook ping handling', () => {
 });
 
 describe('createResponseHook on openai-chat', () => {
-  const CHAT = () =>
+  const chatRequest = () =>
     new Request('https://omni.example/v1/chat/completions', { method: 'POST', body: '{}' });
   const sse = (text: string) =>
     new Response(text, { headers: { 'content-type': 'text/event-stream' } });
   const chatEvent = (overrides: Partial<HttpResponseEvent> = {}) =>
     event({
       model: { providerID: 'omniroute', id: 'auto/opus-5' },
-      request: CHAT(),
+      request: chatRequest(),
       response: sse(
         openaiSse(openaiUsage.lunaRead, { model: 'claude-opus-5-5', provider: 'Anthropic' })
       ),
@@ -473,14 +473,14 @@ describe('createResponseHook on openai-chat', () => {
 });
 
 describe('createResponseHook on openai-responses', () => {
-  const RESPONSES = () =>
+  const responsesRequest = () =>
     new Request('https://omni.example/v1/responses', { method: 'POST', body: '{}' });
   const sse = (text: string) =>
     new Response(text, { headers: { 'content-type': 'text/event-stream' } });
   const responsesEvent = (overrides: Partial<HttpResponseEvent> = {}) =>
     event({
       model: { providerID: 'omniroute', id: 'auto/fast' },
-      request: RESPONSES(),
+      request: responsesRequest(),
       response: sse(responsesSse(responsesUsage.read)),
       ...overrides,
     });

@@ -47,7 +47,9 @@ src/
 ├── constants/
 │   ├── anthropic.ts           # beta header name and value, x-cache-ttl header name, /messages suffix, Anthropic provider IDs
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
-│   └── openai.ts              # /chat/completions and /responses suffixes, Claude-model and GPT-5.6+ regexes, OpenAI TTL per mode, finish-reason map
+│   ├── openai.ts              # /chat/completions and /responses suffixes, Claude-model and GPT-5.6+ regexes, OpenAI TTL per mode, finish-reason map
+│   ├── sse.ts                 # SSE_DATA_PREFIX
+│   └── units.ts               # time units, THOUSAND, MILLION, PERCENT
 ├── models/
 │   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheProfileId, ModelRef, ResponseIdentity, ObservedResponse, ResponseParsers, ProfilePattern
 │   ├── profile.ts             # CacheProfile interface and RewriteContext

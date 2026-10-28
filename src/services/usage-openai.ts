@@ -1,4 +1,5 @@
 import { FINISH_REASON_MAP } from '../constants/openai.ts';
+import { SSE_DATA_PREFIX } from '../constants/sse.ts';
 import type { CacheUsage, ResponseIdentity, ResponseParsers } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { num } from '../utils/num.ts';
@@ -21,11 +22,11 @@ function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
   const write = num(details.cache_write_tokens) ?? num(raw.cache_creation_input_tokens) ?? 0;
   const writeInPrompt = details.cache_creation_in_prompt === false ? 0 : write;
   return {
-    inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
     cacheReadTokens: read,
     cacheWriteTokens: write,
-    write5mTokens: undefined,
+    inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
     write1hTokens: undefined,
+    write5mTokens: undefined,
   };
 }
 
@@ -52,12 +53,12 @@ function readIdentity(body: unknown): ResponseIdentity | undefined {
 }
 
 /** Parsed JSON payload of every `data:` line; `[DONE]` and junk are skipped. */
-export function sseEvents(text: string): unknown[] {
+function sseEvents(text: string): unknown[] {
   const events: unknown[] = [];
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      events.push(JSON.parse(line.slice(5).trim()));
+      events.push(JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim()));
     } catch {
       continue;
     }
@@ -66,12 +67,12 @@ export function sseEvents(text: string): unknown[] {
 }
 
 /** Parses the `usage` block of a non-streaming Chat Completions body. */
-export function parseOpenAiUsageFromJson(body: unknown): CacheUsage | undefined {
+function parseOpenAiUsageFromJson(body: unknown): CacheUsage | undefined {
   return isRecord(body) ? readOpenAiUsage(body.usage) : undefined;
 }
 
 /** The last chunk carrying `usage` wins (it is usually the final, choice-less chunk). */
-export function parseOpenAiUsageFromSse(text: string): CacheUsage | undefined {
+function parseOpenAiUsageFromSse(text: string): CacheUsage | undefined {
   let usage: CacheUsage | undefined;
   for (const event of sseEvents(text)) {
     if (!isRecord(event)) continue;
@@ -81,24 +82,24 @@ export function parseOpenAiUsageFromSse(text: string): CacheUsage | undefined {
 }
 
 /** `choices[0].finish_reason` of a non-streaming body, with `tool_calls` normalised to `tool_use`. */
-export function parseOpenAiFinishReasonFromJson(body: unknown): string | undefined {
+function parseOpenAiFinishReasonFromJson(body: unknown): string | undefined {
   return readFinishReason(body);
 }
 
 /** The last non-null `choices[0].finish_reason` of a stream. */
-export function parseOpenAiFinishReasonFromSse(text: string): string | undefined {
+function parseOpenAiFinishReasonFromSse(text: string): string | undefined {
   let reason: string | undefined;
   for (const event of sseEvents(text)) reason = readFinishReason(event) ?? reason;
   return reason;
 }
 
 /** Top-level `model` and `provider` of a non-streaming body. */
-export function parseOpenAiIdentityFromJson(body: unknown): ResponseIdentity | undefined {
+function parseOpenAiIdentityFromJson(body: unknown): ResponseIdentity | undefined {
   return readIdentity(body);
 }
 
 /** `model` and `provider` of a stream; later chunks override earlier ones field by field. */
-export function parseOpenAiIdentityFromSse(text: string): ResponseIdentity | undefined {
+function parseOpenAiIdentityFromSse(text: string): ResponseIdentity | undefined {
   let merged: ResponseIdentity | undefined;
   for (const event of sseEvents(text)) {
     const identity = readIdentity(event);
@@ -108,15 +109,26 @@ export function parseOpenAiIdentityFromSse(text: string): ResponseIdentity | und
 }
 
 /** The Chat Completions parsers for the response tee. */
-export const OPENAI_PARSERS: ResponseParsers = {
+const OPENAI_PARSERS: ResponseParsers = {
   fromJson: (body) => ({
-    usage: parseOpenAiUsageFromJson(body),
-    stopReason: parseOpenAiFinishReasonFromJson(body),
     identity: parseOpenAiIdentityFromJson(body),
+    stopReason: parseOpenAiFinishReasonFromJson(body),
+    usage: parseOpenAiUsageFromJson(body),
   }),
   fromSse: (text) => ({
-    usage: parseOpenAiUsageFromSse(text),
-    stopReason: parseOpenAiFinishReasonFromSse(text),
     identity: parseOpenAiIdentityFromSse(text),
+    stopReason: parseOpenAiFinishReasonFromSse(text),
+    usage: parseOpenAiUsageFromSse(text),
   }),
+};
+
+export {
+  sseEvents,
+  parseOpenAiUsageFromJson,
+  parseOpenAiUsageFromSse,
+  parseOpenAiFinishReasonFromJson,
+  parseOpenAiFinishReasonFromSse,
+  parseOpenAiIdentityFromJson,
+  parseOpenAiIdentityFromSse,
+  OPENAI_PARSERS,
 };

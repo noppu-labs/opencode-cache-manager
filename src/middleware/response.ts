@@ -18,7 +18,7 @@ import { ANTHROPIC_PARSERS } from '../services/usage.ts';
 import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
-export interface HttpResponseEvent {
+interface HttpResponseEvent {
   readonly sessionID: string;
   readonly model: ModelRef;
   readonly kind: RequestKind;
@@ -26,7 +26,7 @@ export interface HttpResponseEvent {
   response: Response;
 }
 
-export interface ResponseHookDeps {
+interface ResponseHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
@@ -44,10 +44,10 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
  * profile from the model a response reports. A Messages request a non-Anthropic provider rejects (400 or 422) drops
  * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
  */
-export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
+function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return (evt: HttpResponseEvent): Promise<void> => {
     try {
-      const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
+      const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
       const wire = observedWireFor(
         requestWire(evt.request),
         isAnthropicProvider(ref.providerID),
@@ -55,10 +55,9 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
       );
       if (!wire) return Promise.resolve();
 
-      const sessionID = evt.sessionID;
-      const kind = evt.kind;
+      const { kind, sessionID } = evt;
       const isPing = pings.isPing(kind, sessionID);
-      const ok = evt.response.ok;
+      const { ok } = evt.response;
       const parsers = PARSERS_BY_WIRE[wire];
       const observed = observeResponseUsage(evt.response, parsers);
       evt.response = observed.response;
@@ -68,8 +67,9 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
         learns &&
         wire === 'anthropic-messages' &&
         REJECTED_REQUEST_STATUSES.includes(evt.response.status)
-      )
+      ) {
         void profiles.forget(ref).catch(() => {});
+      }
       // Learning settles before the engine hears of the response, so a flip to a non-pinging profile cannot leave a ping armed.
       const unmanagedCheck = learns
         ? observed.identity
@@ -82,11 +82,12 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
               if (
                 !sessionTurn ||
                 !(isNonEmptyString(identity?.model) || isNonEmptyString(identity?.provider))
-              )
+              ) {
                 return false;
+              }
               return !(await keepsWarm(evt.request, ref, {
+                learned: (model) => profiles.get(model),
                 patterns: options.cacheProfiles,
-                learned: (r) => profiles.get(r),
               }));
             })
             .catch(() => false)
@@ -94,7 +95,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
 
       const reported = Promise.all([observed.usage, observed.stopReason, unmanagedCheck])
         .then(([usage, stopReason, unmanaged]) =>
-          engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason, unmanaged })
+          engine.responseObserved(sessionID, { isPing, kind, ok, stopReason, unmanaged, usage })
         )
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);
@@ -104,3 +105,6 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
     return Promise.resolve();
   };
 }
+
+export type { HttpResponseEvent, ResponseHookDeps };
+export { createResponseHook };
