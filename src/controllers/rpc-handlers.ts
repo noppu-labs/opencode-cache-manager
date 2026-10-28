@@ -19,7 +19,7 @@ export interface RpcHandlerDeps {
   store: SettingsStore;
   engine: KeepaliveEngine;
   /** Applies a settings change to the keepalive schedule and tells the TUI; resolves to the RPC output. */
-  settingsChanged(sessionID: string | null): Promise<object>;
+  settingsChanged: (sessionID: string | null) => Promise<object>;
 }
 
 /** Handlers for the `CacheTtlRpc` contract. */

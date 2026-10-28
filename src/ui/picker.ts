@@ -95,7 +95,7 @@ export interface PickerDeps {
   dialog: Plugin.Context['ui']['dialog'];
   rpc: CacheTtlRpcClient;
   toast: Toast;
-  currentSessionID(): string | undefined;
+  currentSessionID: () => string | undefined;
 }
 
 /** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */

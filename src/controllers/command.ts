@@ -17,9 +17,9 @@ function describeSettings(settings: Settings): string {
 export interface CommandDeps {
   store: SettingsStore;
   /** Applies a settings change to the keepalive schedule and tells the TUI. */
-  settingsChanged(sessionID: string | null): Promise<unknown>;
+  settingsChanged: (sessionID: string | null) => Promise<unknown>;
   /** Shows `text` in the session without resuming it. */
-  say(sessionID: string, text: string): Promise<unknown>;
+  say: (sessionID: string, text: string) => Promise<unknown>;
 }
 
 /** The `/cache-manager` command: typed arguments edit the current session's settings. */

@@ -30,6 +30,6 @@ describe('implicit profile', () => {
       }
     }
     expect(body).toEqual(before);
-    expect(implicitProfile.headers).toBeUndefined();
+    expect('headers' in implicitProfile).toBe(false);
   });
 });

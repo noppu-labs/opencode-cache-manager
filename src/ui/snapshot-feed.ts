@@ -4,11 +4,11 @@ import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import type { CacheTtlRpcClient } from '../rpc.ts';
 
 export interface SnapshotFeed {
-  snapshots(): ReadonlyMap<string, KeepaliveSnapshot>;
+  snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>;
   /** Fetches a session's snapshot once, unless an event already delivered one. */
-  load(sessionID: string): void;
+  load: (sessionID: string) => void;
   /** Fetches a session's snapshot again and stores it, unless an event arrived meanwhile. */
-  refresh(sessionID: string): void;
+  refresh: (sessionID: string) => void;
   dispose(): void;
 }
 

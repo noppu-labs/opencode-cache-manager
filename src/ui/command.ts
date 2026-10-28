@@ -11,8 +11,8 @@ const NO_SESSION = 'Open a session to change session cache settings.';
 export interface CommandRunnerDeps {
   rpc: CacheTtlRpcClient;
   toast: Toast;
-  currentSessionID(): string | undefined;
-  openPicker(): Promise<void>;
+  currentSessionID: () => string | undefined;
+  openPicker: () => Promise<void>;
 }
 
 /**
