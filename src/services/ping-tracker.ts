@@ -9,7 +9,7 @@ export class PingTracker {
   private readonly responses = new Map<string, Promise<void>>();
 
   isPing(kind: string, sessionID: string): boolean {
-    return kind === "generate" && (this.inFlight.get(sessionID) ?? 0) > 0;
+    return kind === 'generate' && (this.inFlight.get(sessionID) ?? 0) > 0;
   }
 
   /** Runs `generate` as a ping and settles once its response has been reported. */

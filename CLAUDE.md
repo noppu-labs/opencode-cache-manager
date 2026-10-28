@@ -139,6 +139,7 @@ Where new code goes:
 - Run `bun run fmt:check`, `bun run lint`, `bun test` and `bun run typecheck` before calling work done.
 
 <!-- gitnexus:start -->
+
 # GitNexus — Code Intelligence
 
 This project is indexed by GitNexus as **opencode-cache-manager**. Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
@@ -163,11 +164,11 @@ This project is indexed by GitNexus as **opencode-cache-manager**. Use the GitNe
 
 ## Resources
 
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/opencode-cache-manager/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/opencode-cache-manager/clusters` | All functional areas |
-| `gitnexus://repo/opencode-cache-manager/processes` | All execution flows |
-| `gitnexus://repo/opencode-cache-manager/process/{name}` | Step-by-step execution trace |
+| Resource                                                | Use for                                  |
+| ------------------------------------------------------- | ---------------------------------------- |
+| `gitnexus://repo/opencode-cache-manager/context`        | Codebase overview, check index freshness |
+| `gitnexus://repo/opencode-cache-manager/clusters`       | All functional areas                     |
+| `gitnexus://repo/opencode-cache-manager/processes`      | All execution flows                      |
+| `gitnexus://repo/opencode-cache-manager/process/{name}` | Step-by-step execution trace             |
 
 <!-- gitnexus:end -->

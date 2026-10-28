@@ -1,4 +1,4 @@
-import type { KV, ScannableKV } from "../../src/models/storage.ts";
+import type { KV, ScannableKV } from '../../src/models/storage.ts';
 
 /** In-memory plugin storage covering both `KV` (settings store) and `ScannableKV` (startup sweep). */
 export function memoryKv() {

@@ -4,7 +4,7 @@ export function formatRemaining(ms: number): string {
   if (totalSeconds < 60) return `${totalSeconds}s`;
   const totalMinutes = Math.floor(totalSeconds / 60);
   if (totalMinutes < 60) return `${totalMinutes}m`;
-  return `${Math.floor(totalMinutes / 60)}h ${String(totalMinutes % 60).padStart(2, "0")}m`;
+  return `${Math.floor(totalMinutes / 60)}h ${String(totalMinutes % 60).padStart(2, '0')}m`;
 }
 
 /** "50k" for whole thousands, the plain number otherwise. */
@@ -14,11 +14,11 @@ export function formatTokens(tokens: number): string {
 
 /** "732", "14.8k", "16k", "123k", "1.2M": a short token count for narrow displays. */
 export function formatCompactTokens(tokens: number): string {
-  const trim = (value: number): string => value.toFixed(1).replace(/\.0$/, "");
+  const trim = (value: number): string => value.toFixed(1).replace(/\.0$/, '');
   if (tokens < 1_000) return String(tokens);
   if (tokens < 100_000) {
     const k = trim(tokens / 1_000);
-    if (k !== "100") return `${k}k`;
+    if (k !== '100') return `${k}k`;
   }
   const rounded = Math.round(tokens / 1_000);
   if (tokens < 1_000_000 && rounded < 1_000) return `${rounded}k`;

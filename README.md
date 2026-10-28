@@ -29,11 +29,11 @@ Published to npm under two names with identical contents: `@noppu-labs/opencode-
 
 The modes are named after Claude's cache TTLs; [Modes per provider](#modes-per-provider) maps them onto OpenAI's. On Claude:
 
-| Mode | Tools + system | Messages | Write cost |
-| --- | --- | --- | --- |
-| `5m` (default) | 5m ephemeral | 5m ephemeral | 1.25x base input |
-| `1h` | 1h ephemeral | 1h ephemeral | 2x base input |
-| `hybrid` | 1h ephemeral | 5m ephemeral | mixed |
+| Mode           | Tools + system | Messages     | Write cost       |
+| -------------- | -------------- | ------------ | ---------------- |
+| `5m` (default) | 5m ephemeral   | 5m ephemeral | 1.25x base input |
+| `1h`           | 1h ephemeral   | 1h ephemeral | 2x base input    |
+| `hybrid`       | 1h ephemeral   | 5m ephemeral | mixed            |
 
 Reads cost about 0.1x base input in every mode. `hybrid` exists because Anthropic requires 1-hour breakpoints to come before any 5-minute ones in a request: the stable prefix (tools + system) gets the long TTL, and the message tail, which changes every turn, stays on the cheaper 5m write.
 
@@ -43,11 +43,11 @@ Requests in `1h` or `hybrid` mode also get the `anthropic-beta: extended-cache-t
 
 The same three modes drive both providers. OpenAI caches automatically for 30 minutes (written at 1.25x the input price) and offers 12 hours (2.5x) through a per-breakpoint `ttl`:
 
-| Mode | Claude | OpenAI GPT-5.6+ |
-| --- | --- | --- |
-| `5m` | 5m breakpoints on tools, system and messages | Automatic 30m cache; nothing added to the request |
-| `1h` | 1h breakpoints everywhere | A 12h breakpoint on the last message or tool output |
-| `hybrid` | 1h on tools + system, 5m on messages | A 12h breakpoint at the end of the system prompt (on the Responses API, where the system prompt is the `instructions` string, on the first input item, which covers `instructions` and tools too); the message tail keeps the automatic 30m cache |
+| Mode     | Claude                                       | OpenAI GPT-5.6+                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `5m`     | 5m breakpoints on tools, system and messages | Automatic 30m cache; nothing added to the request                                                                                                                                                                                                 |
+| `1h`     | 1h breakpoints everywhere                    | A 12h breakpoint on the last message or tool output                                                                                                                                                                                               |
+| `hybrid` | 1h on tools + system, 5m on messages         | A 12h breakpoint at the end of the system prompt (on the Responses API, where the system prompt is the `instructions` string, on the first input item, which covers `instructions` and tools too); the message tail keeps the automatic 30m cache |
 
 One-off requests (titles and other one-off generate calls) also stop paying for cache writes on OpenAI models: the plugin sends them with caching turned off. Keepalive pings follow the shortest-lived part of the cache: every 25 minutes in `5m` and `hybrid` (the 30m cache and the 30m tail), every 10 hours in `1h`.
 
@@ -65,9 +65,9 @@ Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. O
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
-    "@noppu-labs/opencode-cache-manager@^0.6.1"
+    "@noppu-labs/opencode-cache-manager@^0.6.1",
     // or: "opencode-cache-manager@^0.6.1" -- same package, unscoped name
-  ]
+  ],
 }
 ```
 
@@ -159,26 +159,26 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
       "options": {
         "defaultMode": "1h",
         "keepalive": {
-          "enabled": true,           // default true
-          "maxPings": 5,             // default 5
-          "minContextTokens": 50000  // default 50000
+          "enabled": true, // default true
+          "maxPings": 5, // default 5
+          "minContextTokens": 50000, // default 50000
         },
-        "openaiCompatible": true,    // default true
-        "cacheProfiles": { "opus": "anthropic", "gpt": "implicit" }
-      }
-    }
-  ]
+        "openaiCompatible": true, // default true
+        "cacheProfiles": { "opus": "anthropic", "gpt": "implicit" },
+      },
+    },
+  ],
 }
 ```
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `defaultMode` | `"5m"` | TTL mode when nothing else is set |
-| `keepalive.enabled` | `true` | Whether keepalive runs |
-| `keepalive.maxPings` | `5` | Pings per idle stretch |
-| `keepalive.minContextTokens` | `50000` | Smallest context worth pinging |
-| `openaiCompatible` | `true` | Handle OpenAI Chat Completions and Responses requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped |
-| `cacheProfiles` | `{}` | Which cache profile manages a model, by pattern (see below) |
+| Option                       | Default | Meaning                                                                                                                                                                |
+| ---------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defaultMode`                | `"5m"`  | TTL mode when nothing else is set                                                                                                                                      |
+| `keepalive.enabled`          | `true`  | Whether keepalive runs                                                                                                                                                 |
+| `keepalive.maxPings`         | `5`     | Pings per idle stretch                                                                                                                                                 |
+| `keepalive.minContextTokens` | `50000` | Smallest context worth pinging                                                                                                                                         |
+| `openaiCompatible`           | `true`  | Handle OpenAI Chat Completions and Responses requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped |
+| `cacheProfiles`              | `{}`    | Which cache profile manages a model, by pattern (see below)                                                                                                            |
 
 `cacheProfiles` maps a pattern to a profile. Patterns are matched against `<providerID>/<modelID>`, in order, and the first match wins:
 

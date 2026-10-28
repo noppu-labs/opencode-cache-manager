@@ -1,6 +1,6 @@
-import { type CapturedFrame, type CapturedSpan, RGBA, TextAttributes } from "@opentui/core";
+import { type CapturedFrame, type CapturedSpan, RGBA, TextAttributes } from '@opentui/core';
 
-const ESC = "\u001b[";
+const ESC = '\u001b[';
 const RESET = `${ESC}0m`;
 
 /** The OpenTUI text attributes mapped to SGR; any other attribute bit is dropped from the image. */
@@ -19,13 +19,13 @@ export interface TextPart {
 
 function sgrColor(color: RGBA, layer: 38 | 48): string {
   const [r, g, b, alpha] = color.toInts();
-  return alpha === 0 ? "" : `${ESC}${layer};2;${r};${g};${b}m`;
+  return alpha === 0 ? '' : `${ESC}${layer};2;${r};${g};${b}m`;
 }
 
 function sgrAttributes(attributes: number): string {
   return ATTRIBUTE_CODES.filter(([bit]) => (attributes & bit) !== 0)
     .map(([, code]) => `${ESC}${code}m`)
-    .join("");
+    .join('');
 }
 
 // Attributes go before colours: freeze starts a new text run at each SGR code
@@ -36,7 +36,7 @@ function spanToAnsi(span: CapturedSpan): string {
 
 /** A run of cells the component did not paint: no background and no glyph. */
 function isUnpainted(span: CapturedSpan): boolean {
-  return span.bg.toInts()[3] === 0 && span.text.trim() === "";
+  return span.bg.toInts()[3] === 0 && span.text.trim() === '';
 }
 
 /** Drops the unpainted rows above and below the component: the test terminal around it. */
@@ -46,16 +46,16 @@ export function frameToAnsi(frame: CapturedFrame): string[] {
   if (first === -1) return [];
   return frame.lines
     .slice(first, painted.lastIndexOf(true) + 1)
-    .map((line) => `${line.spans.map(spanToAnsi).join("")}${RESET}`);
+    .map((line) => `${line.spans.map(spanToAnsi).join('')}${RESET}`);
 }
 
 /** One ANSI row of coloured text. */
 export function textRow(parts: readonly TextPart[]): string {
-  const text = parts.map((part) => `${sgrColor(RGBA.fromHex(part.fg), 38)}${part.text}`).join("");
+  const text = parts.map((part) => `${sgrColor(RGBA.fromHex(part.fg), 38)}${part.text}`).join('');
   return `${text}${RESET}`;
 }
 
 /** The visible text of an ANSI row, with trailing padding removed. */
 export function stripAnsi(row: string): string {
-  return row.replace(/\u001b\[[0-9;]*m/g, "").trimEnd();
+  return row.replace(/\u001b\[[0-9;]*m/g, '').trimEnd();
 }

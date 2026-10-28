@@ -1,16 +1,16 @@
-import { sanitizePatch, type SettingsPatch } from "../config/settings.ts";
-import type { KeepaliveEngine } from "../services/keepalive-engine.ts";
-import type { SettingsStore } from "../services/settings-store.ts";
+import { sanitizePatch, type SettingsPatch } from '../config/settings.ts';
+import type { KeepaliveEngine } from '../services/keepalive-engine.ts';
+import type { SettingsStore } from '../services/settings-store.ts';
 
 /** Rejects a patch carrying any invalid or unknown field instead of silently dropping it. */
 function validatePatch(value: unknown): SettingsPatch {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Invalid settings patch: expected an object");
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid settings patch: expected an object');
   }
   const patch = sanitizePatch(value);
   const invalid = Object.keys(value).filter((key) => !(key in patch));
   if (invalid.length > 0) {
-    throw new Error(`Invalid settings patch fields: ${invalid.join(", ")}`);
+    throw new Error(`Invalid settings patch fields: ${invalid.join(', ')}`);
   }
   return patch;
 }

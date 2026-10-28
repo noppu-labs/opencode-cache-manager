@@ -1,6 +1,6 @@
-import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from "../models/cache.ts";
-import { parseCacheProfiles } from "./model-patterns.ts";
-import { isRecord } from "../utils/is-record.ts";
+import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from '../models/cache.ts';
+import { isRecord } from '../utils/is-record.ts';
+import { parseCacheProfiles } from './model-patterns.ts';
 
 /** Effective plugin settings after layering built-in defaults, options, global and session. */
 export interface Settings {
@@ -14,7 +14,7 @@ export interface Settings {
 export type SettingsPatch = Partial<Settings>;
 
 export const BUILTIN_DEFAULTS: Settings = {
-  mode: "5m",
+  mode: '5m',
   keepalive: true,
   maxPings: 5,
   minContextTokens: 50_000,
@@ -25,8 +25,12 @@ export function sanitizePatch(value: unknown): SettingsPatch {
   if (!isRecord(value)) return {};
   const patch: SettingsPatch = {};
   if (isCacheTtlMode(value.mode)) patch.mode = value.mode;
-  if (typeof value.keepalive === "boolean") patch.keepalive = value.keepalive;
-  if (Number.isInteger(value.maxPings) && (value.maxPings as number) >= 0 && (value.maxPings as number) <= 100) {
+  if (typeof value.keepalive === 'boolean') patch.keepalive = value.keepalive;
+  if (
+    Number.isInteger(value.maxPings) &&
+    (value.maxPings as number) >= 0 &&
+    (value.maxPings as number) <= 100
+  ) {
     patch.maxPings = value.maxPings as number;
   }
   if (Number.isInteger(value.minContextTokens) && (value.minContextTokens as number) >= 0) {
@@ -57,7 +61,7 @@ export interface PluginOptions {
 export function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
-    openaiCompatible: typeof record.openaiCompatible === "boolean" ? record.openaiCompatible : true,
+    openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
     cacheProfiles: parseCacheProfiles(record.cacheProfiles),
   };
 }

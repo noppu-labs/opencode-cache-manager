@@ -1,20 +1,20 @@
-import { isRecord } from "../utils/is-record.ts";
+import { isRecord } from '../utils/is-record.ts';
 
 type Rec = Record<string, unknown>;
 
 const isInputText = (part: unknown): part is Rec =>
-  isRecord(part) && part.type === "input_text" && typeof part.text === "string" && part.text !== "";
+  isRecord(part) && part.type === 'input_text' && typeof part.text === 'string' && part.text !== '';
 
 const isMessageItem = (item: Rec): boolean =>
-  item.type === "message" || (item.type === undefined && typeof item.role === "string");
+  item.type === 'message' || (item.type === undefined && typeof item.role === 'string');
 
 /** The last `input_text` part of a Responses `input` message; user string content becomes parts first. */
 export function lastInputTextPart(item: Rec): Rec | undefined {
   if (!isMessageItem(item)) return undefined;
   const { content } = item;
-  if (typeof content === "string") {
-    if (content === "" || item.role === "assistant") return undefined;
-    const part: Rec = { type: "input_text", text: content };
+  if (typeof content === 'string') {
+    if (content === '' || item.role === 'assistant') return undefined;
+    const part: Rec = { type: 'input_text', text: content };
     item.content = [part];
     return part;
   }
@@ -33,11 +33,11 @@ export function firstInputItem(body: Rec): Rec | undefined {
  * Probe: a breakpoint on such a part is honoured, while one on the item itself is ignored.
  */
 export function toolOutputTextPart(item: Rec): Rec | undefined {
-  if (item.type !== "function_call_output") return undefined;
+  if (item.type !== 'function_call_output') return undefined;
   const { output } = item;
-  if (typeof output === "string") {
-    if (output === "") return undefined;
-    const part: Rec = { type: "input_text", text: output };
+  if (typeof output === 'string') {
+    if (output === '') return undefined;
+    const part: Rec = { type: 'input_text', text: output };
     item.output = [part];
     return part;
   }

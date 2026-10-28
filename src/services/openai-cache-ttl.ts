@@ -1,11 +1,11 @@
-import type { CacheTtlMode } from "../models/cache.ts";
-import { isRecord } from "../utils/is-record.ts";
-import { applyTtlToBlock, hasOneHourCacheControl } from "./cache-control.ts";
+import type { CacheTtlMode } from '../models/cache.ts';
+import { isRecord } from '../utils/is-record.ts';
+import { applyTtlToBlock, hasOneHourCacheControl } from './cache-control.ts';
 
 type Rec = Record<string, unknown>;
 
 const isPrefixRole = (message: unknown): boolean =>
-  isRecord(message) && (message.role === "system" || message.role === "developer");
+  isRecord(message) && (message.role === 'system' || message.role === 'developer');
 
 /** Index of the first message that is not `system`/`developer`. */
 export function leadingPrefixEnd(messages: unknown[]): number {
@@ -20,7 +20,8 @@ export function hasCacheControl(body: Rec): boolean {
   if (!Array.isArray(body.messages)) return false;
   return body.messages.some(
     (message) =>
-      marked(message) || (isRecord(message) && Array.isArray(message.content) && message.content.some(marked)),
+      marked(message) ||
+      (isRecord(message) && Array.isArray(message.content) && message.content.some(marked))
   );
 }
 
@@ -32,8 +33,8 @@ export function hasCacheControl(body: Rec): boolean {
  */
 export function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
   let changed = false;
-  const prefixTtl = mode === "5m" ? undefined : "1h";
-  const tailTtl = mode === "1h" ? "1h" : undefined;
+  const prefixTtl = mode === '5m' ? undefined : '1h';
+  const tailTtl = mode === '1h' ? '1h' : undefined;
 
   if (Array.isArray(body.tools)) {
     for (const tool of body.tools) changed = applyTtlToBlock(tool, prefixTtl) || changed;
@@ -54,17 +55,17 @@ export function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
   return changed || hasOneHourCacheControl(body);
 }
 
-const ephemeral = (): Rec => ({ type: "ephemeral" });
+const ephemeral = (): Rec => ({ type: 'ephemeral' });
 
 const isText = (part: unknown): part is Rec =>
-  isRecord(part) && part.type === "text" && typeof part.text === "string" && part.text !== "";
+  isRecord(part) && part.type === 'text' && typeof part.text === 'string' && part.text !== '';
 
 /** The last text part of `message`, turning string content into parts first. */
 export function lastTextPart(message: Rec): Rec | undefined {
   const { content } = message;
-  if (typeof content === "string") {
-    if (content === "") return undefined;
-    const part: Rec = { type: "text", text: content };
+  if (typeof content === 'string') {
+    if (content === '') return undefined;
+    const part: Rec = { type: 'text', text: content };
     message.content = [part];
     return part;
   }

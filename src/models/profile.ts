@@ -1,5 +1,5 @@
-import type { CacheProfileId, CacheTtlMode, Ttl, Wire } from "./cache.ts";
-import type { RequestKind } from "./keepalive.ts";
+import type { CacheProfileId, CacheTtlMode, Ttl, Wire } from './cache.ts';
+import type { RequestKind } from './keepalive.ts';
 
 /** What a profile needs to know about a request to rewrite it. */
 export interface RewriteContext {
@@ -20,7 +20,10 @@ export interface CacheProfile {
   /** Rewrites a parsed body in place for this mode and kind. Returns true if anything changed. */
   rewrite(body: Record<string, unknown>, ctx: RewriteContext): boolean;
   /** Extra headers to merge after `rewrite` (Anthropic: the beta flag when a 1h breakpoint is present). */
-  headers?(body: Record<string, unknown>, ctx: { wire: Wire; mode: CacheTtlMode }): Record<string, string>;
+  headers?(
+    body: Record<string, unknown>,
+    ctx: { wire: Wire; mode: CacheTtlMode }
+  ): Record<string, string>;
   /** Whether keepalive pings are allowed. */
   pings: boolean;
 }

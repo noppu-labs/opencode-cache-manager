@@ -1,6 +1,7 @@
-import type { Plugin } from "@opencode/plugin/tui";
-import type { KeepaliveSnapshot } from "../models/keepalive.ts";
-import type { CacheTtlRpcClient } from "../rpc.ts";
+import type { Plugin } from '@opencode/plugin/tui';
+
+import type { KeepaliveSnapshot } from '../models/keepalive.ts';
+import type { CacheTtlRpcClient } from '../rpc.ts';
 
 export interface SnapshotFeed {
   snapshots(): ReadonlyMap<string, KeepaliveSnapshot>;
@@ -16,8 +17,11 @@ export interface SnapshotFeed {
  * events and from fetches. The sidebar refreshes on a timer because OpenCode
  * does not deliver events emitted from the server's request hooks and timers.
  */
-export function createSnapshotFeed(storage: Plugin.Context["storage"], rpc: CacheTtlRpcClient): SnapshotFeed {
-  const [sidebar, updateSidebar] = storage.memory("keepalive", {
+export function createSnapshotFeed(
+  storage: Plugin.Context['storage'],
+  rpc: CacheTtlRpcClient
+): SnapshotFeed {
+  const [sidebar, updateSidebar] = storage.memory('keepalive', {
     initial: { snapshots: {} as Record<string, KeepaliveSnapshot> },
   });
 
@@ -40,7 +44,7 @@ export function createSnapshotFeed(storage: Plugin.Context["storage"], rpc: Cach
         inflight.delete(sessionID);
         if ((received.get(sessionID) ?? 0) === before) applySnapshot(snapshot);
       },
-      () => inflight.delete(sessionID),
+      () => inflight.delete(sessionID)
     );
   };
 
@@ -52,14 +56,16 @@ export function createSnapshotFeed(storage: Plugin.Context["storage"], rpc: Cach
       (snapshot) => {
         if (sidebar.snapshots[sessionID] === undefined) applySnapshot(snapshot);
       },
-      () => requested.delete(sessionID),
+      () => requested.delete(sessionID)
     );
   };
 
   const abort = new AbortController();
   void (async () => {
     try {
-      for await (const event of rpc.events.subscribe("keepalive.updated", { signal: abort.signal })) {
+      for await (const event of rpc.events.subscribe('keepalive.updated', {
+        signal: abort.signal,
+      })) {
         received.set(event.data.sessionID, (received.get(event.data.sessionID) ?? 0) + 1);
         applySnapshot(event.data);
       }
