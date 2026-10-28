@@ -17,7 +17,7 @@ function lastInputTextPart(item: Rec): Rec | undefined {
   const { content } = item;
   if (typeof content === 'string') {
     if (content === '' || item.role === 'assistant') return undefined;
-    const part: Rec = { type: 'input_text', text: content };
+    const part: Rec = { text: content, type: 'input_text' };
     item.content = [part];
     return part;
   }
@@ -40,7 +40,7 @@ function toolOutputTextPart(item: Rec): Rec | undefined {
   const { output } = item;
   if (typeof output === 'string') {
     if (output === '') return undefined;
-    const part: Rec = { type: 'input_text', text: output };
+    const part: Rec = { text: output, type: 'input_text' };
     item.output = [part];
     return part;
   }

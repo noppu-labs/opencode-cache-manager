@@ -54,22 +54,22 @@ function parseCommandArg(raw: unknown): CommandAction {
   if (text === '' || text === 'toggle') return { type: 'toggle' };
   if (text === 'status') return { type: 'status' };
   if (text === 'reset') return { type: 'reset' };
-  if (isCacheTtlMode(text)) return { type: 'set', patch: { mode: text } };
+  if (isCacheTtlMode(text)) return { patch: { mode: text }, type: 'set' };
 
   const [command, value, ...rest] = text.split(/\s+/u);
   if (rest.length > 0) return { type: 'invalid' };
 
   if (command === 'keepalive' && (value === 'on' || value === 'off')) {
-    return { type: 'set', patch: { keepalive: value === 'on' } };
+    return { patch: { keepalive: value === 'on' }, type: 'set' };
   }
   if (command === 'pings' && /^\d+$/u.test(value ?? '')) {
     const maxPings = Number(value);
-    if (maxPings <= 100) return { type: 'set', patch: { maxPings } };
+    if (maxPings <= 100) return { patch: { maxPings }, type: 'set' };
   }
   if (command === 'min') {
     const minContextTokens = parseTokenCount(value);
     if (minContextTokens !== undefined) {
-      return { type: 'set', patch: { minContextTokens } };
+      return { patch: { minContextTokens }, type: 'set' };
     }
   }
   return { type: 'invalid' };

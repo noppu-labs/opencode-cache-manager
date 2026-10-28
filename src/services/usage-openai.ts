@@ -21,11 +21,11 @@ function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
   const write = num(details.cache_write_tokens) ?? num(raw.cache_creation_input_tokens) ?? 0;
   const writeInPrompt = details.cache_creation_in_prompt === false ? 0 : write;
   return {
-    inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
     cacheReadTokens: read,
     cacheWriteTokens: write,
-    write5mTokens: undefined,
+    inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
     write1hTokens: undefined,
+    write5mTokens: undefined,
   };
 }
 
@@ -110,14 +110,14 @@ function parseOpenAiIdentityFromSse(text: string): ResponseIdentity | undefined 
 /** The Chat Completions parsers for the response tee. */
 const OPENAI_PARSERS: ResponseParsers = {
   fromJson: (body) => ({
-    usage: parseOpenAiUsageFromJson(body),
-    stopReason: parseOpenAiFinishReasonFromJson(body),
     identity: parseOpenAiIdentityFromJson(body),
+    stopReason: parseOpenAiFinishReasonFromJson(body),
+    usage: parseOpenAiUsageFromJson(body),
   }),
   fromSse: (text) => ({
-    usage: parseOpenAiUsageFromSse(text),
-    stopReason: parseOpenAiFinishReasonFromSse(text),
     identity: parseOpenAiIdentityFromSse(text),
+    stopReason: parseOpenAiFinishReasonFromSse(text),
+    usage: parseOpenAiUsageFromSse(text),
   }),
 };
 

@@ -25,10 +25,10 @@ export function observeResponseUsage(
 } {
   if (!response.body) {
     return {
-      response,
-      usage: resolvedUndefined<CacheUsage>(),
-      stopReason: resolvedUndefined<string>(),
       identity: resolvedUndefined<ResponseIdentity>(),
+      response,
+      stopReason: resolvedUndefined<string>(),
+      usage: resolvedUndefined<CacheUsage>(),
     };
   }
 
@@ -38,22 +38,22 @@ export function observeResponseUsage(
   let cancelled = false;
   const forCaller = new ReadableStream<Uint8Array>(
     {
+      async cancel(reason) {
+        cancelled = true;
+        await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
+      },
       async pull(controller) {
         const { done, value } = await callerReader.read();
         if (done) controller.close();
         else controller.enqueue(value);
       },
-      async cancel(reason) {
-        cancelled = true;
-        await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
-      },
     },
     { highWaterMark: 0 }
   );
   const passthrough = new Response(forCaller, {
+    headers: response.headers,
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
   });
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -76,9 +76,9 @@ export function observeResponseUsage(
   })();
 
   return {
-    response: passthrough,
-    usage: parsed.then((p) => p.usage),
-    stopReason: parsed.then((p) => p.stopReason),
     identity: parsed.then((p) => p.identity),
+    response: passthrough,
+    stopReason: parsed.then((p) => p.stopReason),
+    usage: parsed.then((p) => p.usage),
   };
 }

@@ -10,18 +10,18 @@ import { formatTokens } from '../utils/format.ts';
  * Interactive metadata for each cache TTL mode, shown in the picker modal.
  */
 const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> = {
-  '5m': {
-    title: '5 minutes (default)',
-    description: 'Claude: 5m on every breakpoint, 1.25x write cost. GPT-5.6+: automatic 30m cache.',
-  },
   '1h': {
-    title: '1 hour (extended)',
     description: 'Claude: 1h on every breakpoint, 2x write cost. GPT-5.6+: a 12h breakpoint.',
+    title: '1 hour (extended)',
+  },
+  '5m': {
+    description: 'Claude: 5m on every breakpoint, 1.25x write cost. GPT-5.6+: automatic 30m cache.',
+    title: '5 minutes (default)',
   },
   'hybrid': {
-    title: 'Hybrid',
     description:
       'Claude: 1h on tools + system, 5m on messages. GPT-5.6+: 12h on the system prompt, 30m tail.',
+    title: 'Hybrid',
   },
 };
 
@@ -39,10 +39,10 @@ const isField = (value: string | undefined): value is Field =>
 const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
 
 const FIELD_INFO: Record<Field, { row: string; label: string }> = {
-  mode: { row: 'TTL mode', label: 'cache TTL' },
-  keepalive: { row: 'Keepalive', label: 'keepalive' },
-  maxPings: { row: 'Pings per idle', label: 'pings per idle' },
-  minContextTokens: { row: 'Min context', label: 'min context' },
+  keepalive: { label: 'keepalive', row: 'Keepalive' },
+  maxPings: { label: 'pings per idle', row: 'Pings per idle' },
+  minContextTokens: { label: 'min context', row: 'Min context' },
+  mode: { label: 'cache TTL', row: 'TTL mode' },
 };
 
 const PING_CHOICES = [0, 1, 3, 5, 10];
@@ -66,9 +66,9 @@ function settingsOptions(
   return FIELDS.map((field) => {
     const inherited = scope === 'session' && override?.[field] === undefined;
     return {
+      category,
       title: `${FIELD_INFO[field].row}  ${formatValue(field, values[field])}${inherited ? ' · global' : ''}`,
       value: `${scope}:${field}`,
-      category,
     };
   });
 }
@@ -109,7 +109,7 @@ interface PickerDeps {
 function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
   const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
     if (scope === 'session' && sessionID !== undefined) {
-      await rpc.setSession({ sessionID, patch });
+      await rpc.setSession({ patch, sessionID });
     } else {
       await rpc.setGlobal({ patch });
     }
@@ -120,9 +120,9 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
     field: 'maxPings' | 'minContextTokens'
   ): Promise<number | undefined> => {
     const input = await dialog.prompt({
-      title: FIELD_INFO[field].row,
       description: field === 'maxPings' ? 'Number of pings, 0-100.' : 'Tokens, e.g. 50000 or 50k.',
       placeholder: field === 'maxPings' ? '5' : '50k',
+      title: FIELD_INFO[field].row,
     });
     if (input === undefined) return undefined;
     const action = parseCommandArg(`${field === 'maxPings' ? 'pings' : 'min'} ${input}`);
@@ -143,9 +143,9 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
     const current = effective[field];
     const currentChoice = typeof current === 'boolean' ? (current ? 'on' : 'off') : current;
     const selected = await dialog.select<string | number>({
-      title: `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label}`,
       current: currentChoice,
       options: fieldChoices(field),
+      title: `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label}`,
     });
     if (selected === undefined) return;
 
@@ -180,14 +180,14 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
         ? []
         : [
             ...settingsOptions('session', effective, session),
-            { title: 'Reset session to global', value: 'session:reset', category: 'Session' },
+            { category: 'Session', title: 'Reset session to global', value: 'session:reset' },
           ]),
       ...settingsOptions('global', global, null),
     ];
     const choice = await dialog.select<string>({
-      title: 'Cache Manager',
-      placeholder: 'Select a setting',
       options,
+      placeholder: 'Select a setting',
+      title: 'Cache Manager',
     });
     if (choice === undefined) return;
 

@@ -102,9 +102,9 @@ function finalizeRequest(
   headers: Headers
 ): Request {
   return new Request(request.url, {
-    method: request.method,
-    headers,
     body: JSON.stringify(body),
+    headers,
+    method: request.method,
     signal: request.signal,
   });
 }
@@ -156,7 +156,7 @@ async function transformHttpRequest(
 
   if (!request.body) {
     return hadSentinel
-      ? new Request(request.url, { method: request.method, headers, signal: request.signal })
+      ? new Request(request.url, { headers, method: request.method, signal: request.signal })
       : request;
   }
 
@@ -172,25 +172,25 @@ async function transformHttpRequest(
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
     return new Request(request.url, {
-      method: request.method,
-      headers,
       body: buffer,
+      headers,
+      method: request.method,
       signal: request.signal,
     });
   }
 
   const { wire, profile, kind, isPing, inject } = opts;
-  const changed = profile.rewrite(parsed, { wire, mode: activeMode, kind, isPing, inject });
-  applyProfileHeaders(headers, profile.headers?.(parsed, { wire, mode: activeMode }) ?? {});
+  const changed = profile.rewrite(parsed, { inject, isPing, kind, mode: activeMode, wire });
+  applyProfileHeaders(headers, profile.headers?.(parsed, { mode: activeMode, wire }) ?? {});
   if (changed || (wire === 'anthropic-messages' && profile.id === 'anthropic')) {
     return finalizeRequest(request, parsed, headers);
   }
   if (wire !== 'anthropic-messages' && !hadSentinel) return request;
   const original = await request.clone().arrayBuffer();
   return new Request(request.url, {
-    method: request.method,
-    headers,
     body: original,
+    headers,
+    method: request.method,
     signal: request.signal,
   });
 }

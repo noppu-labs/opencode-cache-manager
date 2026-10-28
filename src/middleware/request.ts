@@ -45,16 +45,16 @@ function createRequestHook({
   primaryMessages,
 }: RequestHookDeps) {
   return async (evt: HttpRequestEvent): Promise<void> => {
-    const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
+    const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { patterns: options.cacheProfiles, learned: (r: ModelRef) => profiles.get(r) };
+    const deps = { learned: (r: ModelRef) => profiles.get(r), patterns: options.cacheProfiles };
     const cls = await classifyRequestWithBody(evt.request, ref, deps, {
       openaiWires: options.openaiCompatible,
     });
     const hasSentinel = evt.request.headers.has(SENTINEL_HEADER);
     const route = routeRequest({
-      cls,
       anthropicProvider,
+      cls,
       hasSentinel,
       openaiCompatible: options.openaiCompatible,
     });
@@ -88,11 +88,11 @@ function createRequestHook({
     if (rewrites) {
       try {
         request = await transformHttpRequest(request, mode, {
-          wire: route.transformWire ?? 'anthropic-messages',
-          profile,
-          kind: evt.kind,
-          isPing,
           inject: shouldInject(route, evt.kind, isPing),
+          isPing,
+          kind: evt.kind,
+          profile,
+          wire: route.transformWire ?? 'anthropic-messages',
         });
       } catch {
         // A rewrite failure sends the request as it was rather than failing it.
@@ -108,9 +108,9 @@ function createRequestHook({
         if (parsed) primaryMessages.set(sessionID, parsed.messages);
       }
       engine.requestSent(sessionID, {
-        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
         isPing,
         kind: evt.kind,
+        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
       });
     } catch {
       // Keepalive bookkeeping must never fail the host's request.

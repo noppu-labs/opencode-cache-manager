@@ -25,7 +25,6 @@ export interface CommandDeps {
 /** The `/cache-manager` command: typed arguments edit the current session's settings. */
 export function createCacheManagerCommand({ store, settingsChanged, say }: CommandDeps) {
   return {
-    name: 'cache-manager',
     description:
       "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
     async execute(input: { sessionID: string; prompt: unknown }): Promise<void> {
@@ -65,5 +64,6 @@ export function createCacheManagerCommand({ store, settingsChanged, say }: Comma
         `Session cache settings updated: ${describeSettings(await store.effective(sessionID))}.`
       );
     },
+    name: 'cache-manager',
   };
 }

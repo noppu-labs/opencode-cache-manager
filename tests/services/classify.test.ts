@@ -127,7 +127,7 @@ describe('classifyRequest', () => {
         );
         const profile =
           providerID !== 'some-proxy' || claude.includes(id) ? 'anthropic' : 'implicit';
-        want.push(`${providerID}/${id} ${JSON.stringify({ wire: 'anthropic-messages', profile })}`);
+        want.push(`${providerID}/${id} ${JSON.stringify({ profile, wire: 'anthropic-messages' })}`);
       }
     }
     expect(got).toEqual(want);

@@ -61,7 +61,7 @@ function classifyRequest(
   const wire = requestWire(request);
   if (wire === undefined) return undefined;
   if (wire === 'anthropic-messages' && isAnthropicProvider(ref.providerID))
-    return { wire, profile: 'anthropic' };
+    return { profile: 'anthropic', wire };
 
   const matches = (regex: RegExp) =>
     regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
@@ -72,8 +72,8 @@ function classifyRequest(
     learnedProfile(deps, ref, matches) ??
     'implicit';
   return {
-    wire,
     profile: wire === 'anthropic-messages' && profile === 'openai' ? 'implicit' : profile,
+    wire,
   };
 }
 
@@ -157,12 +157,12 @@ function routeRequest({
     (openaiWire !== undefined && openaiCompatible && cls?.profile !== 'implicit') ||
     (cls?.wire === 'anthropic-messages' && cls.profile === 'anthropic');
   return {
-    rewrites: anthropicProvider || hasSentinel || managed,
-    wire: cls?.wire,
+    managed,
     observedWire: observedWireFor(cls?.wire, anthropicProvider, openaiCompatible),
     profile: cls?.profile,
-    managed,
+    rewrites: anthropicProvider || hasSentinel || managed,
     transformWire: openaiCompatible || hasSentinel ? openaiWire : undefined,
+    wire: cls?.wire,
   };
 }
 

@@ -44,14 +44,12 @@ export default Plugin.define({
     const primaryMessages = new Map<string, unknown[]>();
 
     const engine = new KeepaliveEngine({
-      now: () => Date.now(),
-      setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (handle) => {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
         clearTimeout(handle as ReturnType<typeof setTimeout>);
       },
-      settings: (sessionID) => store.effective(sessionID),
       isChild: async (sessionID) => Boolean((await ctx.session.get({ sessionID })).parentID),
+      now: () => Date.now(),
       onChange: (snapshot: KeepaliveSnapshot) => {
         if (releasesMessages(snapshot, Date.now())) primaryMessages.delete(snapshot.sessionID);
         void Promise.resolve(rpcRegistration?.events.emit('keepalive.updated', snapshot)).catch(
@@ -59,7 +57,9 @@ export default Plugin.define({
         );
       },
       ping: (sessionID) =>
-        pings.send(sessionID, () => ctx.session.generate({ sessionID, prompt: PING_PROMPT })),
+        pings.send(sessionID, () => ctx.session.generate({ prompt: PING_PROMPT, sessionID })),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      settings: (sessionID) => store.effective(sessionID),
     });
 
     /** Applies a settings change to the keepalive schedule and tells the TUI. */
@@ -73,7 +73,7 @@ export default Plugin.define({
 
     try {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the host types handler inputs as unknown, while the handlers take the shapes the method schemas validate
-      const handlers = createRpcHandlers({ store, engine, settingsChanged }) as RpcHandlers<
+      const handlers = createRpcHandlers({ engine, settingsChanged, store }) as RpcHandlers<
         typeof CacheTtlRpc
       >;
       rpcRegistration = await ctx.rpc.register(CacheTtlRpc, handlers);
@@ -84,20 +84,20 @@ export default Plugin.define({
     await ctx.command.transform((editor) => {
       editor.add(
         createCacheManagerCommand({
-          store,
+          say: (sessionID, text) => ctx.session.synthetic({ resume: false, sessionID, text }),
           settingsChanged,
-          say: (sessionID, text) => ctx.session.synthetic({ sessionID, text, resume: false }),
+          store,
         })
       );
     });
 
     await ctx.session.hook(
       'http.request',
-      createRequestHook({ store, engine, pings, options, profiles, primaryMessages })
+      createRequestHook({ engine, options, pings, primaryMessages, profiles, store })
     );
     await ctx.session.hook(
       'http.response',
-      createResponseHook({ engine, pings, options, profiles })
+      createResponseHook({ engine, options, pings, profiles })
     );
 
     void sweepDeletedSessions(ctx.storage, (sessionID) => ctx.session.get({ sessionID })).catch(

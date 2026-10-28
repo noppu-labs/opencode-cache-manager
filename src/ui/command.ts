@@ -49,7 +49,7 @@ function createCommandRunner({ rpc, toast, currentSessionID, openPicker }: Comma
       return;
     }
 
-    await rpc.setSession({ sessionID, patch: action.patch });
+    await rpc.setSession({ patch: action.patch, sessionID });
     for (const field of FIELDS) {
       const message = describeChange(field, action.patch);
       if (message !== undefined) toast(message, 'success');

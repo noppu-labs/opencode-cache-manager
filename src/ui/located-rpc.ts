@@ -19,11 +19,11 @@ export function withLocation(
     return location === undefined ? undefined : { location };
   };
   return {
+    events: rpc.events,
+    getKeepalive: (input) => rpc.getKeepalive(input, options(input.sessionID)),
     getSettings: (input) => rpc.getSettings(input, options(input.sessionID)),
+    resetSession: (input) => rpc.resetSession(input, options(input.sessionID)),
     setGlobal: (input) => rpc.setGlobal(input, options()),
     setSession: (input) => rpc.setSession(input, options(input.sessionID)),
-    resetSession: (input) => rpc.resetSession(input, options(input.sessionID)),
-    getKeepalive: (input) => rpc.getKeepalive(input, options(input.sessionID)),
-    events: rpc.events,
   };
 }

@@ -1,16 +1,16 @@
 import type { Ttl } from '../models/cache.ts';
 
 const TTL_MS: Record<Ttl, number> = {
-  '5m': 300_000,
   '1h': 3_600_000,
-  '30m': 1_800_000,
+  '5m': 300_000,
   '12h': 43_200_000,
+  '30m': 1_800_000,
 };
 const PING_OFFSET_MS: Record<Ttl, number> = {
-  '5m': 240_000,
   '1h': 3_000_000,
-  '30m': 1_500_000,
+  '5m': 240_000,
   '12h': 36_000_000,
+  '30m': 1_500_000,
 };
 /** TTLs a response's usage can report (Anthropic write breakdown); the others are only ever requested. */
 const DETECTABLE_TTLS: ReadonlySet<Ttl> = new Set(['5m', '1h']);

@@ -47,7 +47,7 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
 function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return (evt: HttpResponseEvent): Promise<void> => {
     try {
-      const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
+      const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
       const wire = observedWireFor(
         requestWire(evt.request),
         isAnthropicProvider(ref.providerID),
@@ -85,8 +85,8 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
               )
                 return false;
               return !(await keepsWarm(evt.request, ref, {
-                patterns: options.cacheProfiles,
                 learned: (r) => profiles.get(r),
+                patterns: options.cacheProfiles,
               }));
             })
             .catch(() => false)
@@ -94,7 +94,7 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
 
       const reported = Promise.all([observed.usage, observed.stopReason, unmanagedCheck])
         .then(([usage, stopReason, unmanaged]) =>
-          engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason, unmanaged })
+          engine.responseObserved(sessionID, { isPing, kind, ok, stopReason, unmanaged, usage })
         )
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);

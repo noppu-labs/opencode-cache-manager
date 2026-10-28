@@ -7,8 +7,8 @@ import { openaiProfile } from './openai.ts';
 /** Every cache profile by ID. */
 const PROFILES: Record<CacheProfileId, CacheProfile> = {
   anthropic: anthropicProfile,
-  openai: openaiProfile,
   implicit: implicitProfile,
+  openai: openaiProfile,
 };
 
 /** The profile for an ID. */

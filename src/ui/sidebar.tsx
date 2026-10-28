@@ -13,10 +13,10 @@ type SidebarPalette = Readonly<Record<Tone, RGBA>>;
 function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
   return {
     base: theme.text.base,
+    error: theme.text.feedback.error.base,
     muted: theme.text.muted,
     success: theme.text.feedback.success.base,
     warning: theme.text.feedback.warning.base,
-    error: theme.text.feedback.error.base,
   };
 }
 

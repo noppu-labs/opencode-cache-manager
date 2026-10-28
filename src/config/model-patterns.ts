@@ -36,11 +36,11 @@ export function parseCacheProfiles(value: unknown): ProfilePattern[] {
     const test = compile(source);
     if (test === undefined) continue;
     patterns.push({
-      profile,
       matches: (ref) => {
         test.lastIndex = 0;
         return test.test(`${ref.providerID}/${ref.id}`);
       },
+      profile,
     });
   }
   return patterns;

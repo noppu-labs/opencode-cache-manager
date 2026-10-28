@@ -15,10 +15,10 @@ const SIDEBAR_COMPILED = join(ROOT, 'src/ui/sidebar.compiled.js');
 async function buildSidebar(outFile: string = SIDEBAR_COMPILED): Promise<void> {
   const result = await Bun.build({
     entrypoints: [SIDEBAR_SOURCE],
-    target: 'bun',
     format: 'esm',
     packages: 'external',
     plugins: [solidPlugin],
+    target: 'bun',
   });
   if (!result.success || result.outputs.length !== 1) {
     throw new AggregateError(

@@ -65,7 +65,7 @@ function renderSvg(screen: string, dir: string): boolean {
       svg,
       ...FREEZE_FLAGS,
     ],
-    { cwd: ROOT, stdout: 'inherit', stderr: 'inherit' }
+    { cwd: ROOT, stderr: 'inherit', stdout: 'inherit' }
   );
   if (freeze.exitCode !== 0) {
     console.error(
@@ -92,7 +92,7 @@ function regenerate(): number {
       copyFileSync(join(staging, `${screen}.svg`), join(images, `${screen}.svg`));
     return 0;
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    rmSync(staging, { force: true, recursive: true });
   }
 }
 

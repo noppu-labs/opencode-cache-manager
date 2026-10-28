@@ -23,11 +23,11 @@ function readResponsesUsage(raw: unknown): CacheUsage | undefined {
   const read = num(details.cached_tokens) ?? 0;
   const write = num(details.cache_write_tokens) ?? 0;
   return {
-    inputTokens: Math.max(0, inputTokens - read - write),
     cacheReadTokens: read,
     cacheWriteTokens: write,
-    write5mTokens: undefined,
+    inputTokens: Math.max(0, inputTokens - read - write),
     write1hTokens: undefined,
+    write5mTokens: undefined,
   };
 }
 
@@ -49,9 +49,9 @@ function readIdentity(response: Record<string, unknown>): ResponseIdentity | und
 function observe(response: unknown): ObservedResponse {
   if (!isRecord(response)) return {};
   return {
-    usage: readResponsesUsage(response.usage),
-    stopReason: readStopReason(response),
     identity: readIdentity(response),
+    stopReason: readStopReason(response),
+    usage: readResponsesUsage(response.usage),
   };
 }
 

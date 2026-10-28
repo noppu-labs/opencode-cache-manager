@@ -14,10 +14,10 @@ interface Settings {
 type SettingsPatch = Partial<Settings>;
 
 const BUILTIN_DEFAULTS: Settings = {
-  mode: '5m',
   keepalive: true,
   maxPings: 5,
   minContextTokens: 50_000,
+  mode: '5m',
 };
 
 /** Keeps only the valid fields of `value`; anything else is dropped. */
@@ -44,10 +44,10 @@ function settingsFromOptions(options: unknown): SettingsPatch {
   if (!isRecord(options)) return {};
   const keepalive = isRecord(options.keepalive) ? options.keepalive : {};
   return sanitizePatch({
-    mode: options.defaultMode,
     keepalive: keepalive.enabled,
     maxPings: keepalive.maxPings,
     minContextTokens: keepalive.minContextTokens,
+    mode: options.defaultMode,
   });
 }
 
@@ -61,8 +61,8 @@ interface PluginOptions {
 function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
-    openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
     cacheProfiles: parseCacheProfiles(record.cacheProfiles),
+    openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
   };
 }
 

@@ -63,9 +63,9 @@ async function alignPingRequest(
   const headers = new Headers(request.headers);
   headers.delete('content-length');
   return new Request(request.url, {
-    method: request.method,
-    headers,
     body,
+    headers,
+    method: request.method,
     signal: request.signal,
   });
 }

@@ -11,8 +11,8 @@ const OPENAI_CACHE_MODEL = /(^|\/)gpt-(5\.(?:[6-9]|\d{2,})|[6-9]|[1-9]\d(?<!35))
 
 /** The TTL keepalive tracks per setting: 12h for `1h`; `hybrid` follows its automatic 30m tail, like Claude follows its 5m tail. */
 const OPENAI_TTL_FOR_MODE: Record<CacheTtlMode, Ttl> = {
-  '5m': '30m',
   '1h': '12h',
+  '5m': '30m',
   'hybrid': '30m',
 };
 

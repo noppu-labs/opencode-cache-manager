@@ -17,10 +17,10 @@ interface SidebarLine {
 const LABEL_WIDTH = 14;
 
 const SECTION_HEADER = 'Cache';
-const HEADER: SidebarLine = { text: SECTION_HEADER, tone: 'base', bold: true };
+const HEADER: SidebarLine = { bold: true, text: SECTION_HEADER, tone: 'base' };
 
 const defaultClock = (ms: number): string =>
-  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  new Date(ms).toLocaleTimeString([], { hour: '2-digit', hour12: false, minute: '2-digit' });
 
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
 
@@ -28,9 +28,9 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): Sidebar
   const ratio = (cache.read / cache.total) * 100;
   const percent = cache.read < cache.total ? Math.floor(ratio) : Math.round(ratio);
   return {
+    right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
     text: 'cached',
     tone: 'base',
-    right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
   };
 }
 
@@ -46,9 +46,9 @@ function sidebarLines(
   if (s.skipReason === 'child') return [];
   if (s.skipReason === 'implicit') {
     const keepalive: SidebarLine = {
+      right: 'n/a · implicit cache',
       text: 'keepalive',
       tone: 'base',
-      right: 'n/a · implicit cache',
     };
     return s.lastCache === null
       ? [HEADER, keepalive]
@@ -57,62 +57,62 @@ function sidebarLines(
   if (s.skipReason === 'no-cache-seen' && s.contextTokens !== null) return [];
   if (s.ttl === null) return waiting;
 
-  const ttl: SidebarLine = { text: 'ttl', tone: 'base', right: `${s.ttl} (${s.ttlSource})` };
+  const ttl: SidebarLine = { right: `${s.ttl} (${s.ttlSource})`, text: 'ttl', tone: 'base' };
   const cached: SidebarLine[] = s.lastCache === null ? [] : [cachedLine(s.lastCache)];
   if (s.expiresAt === null) return [HEADER, ttl, ...cached];
 
   if (now >= s.expiresAt) {
     return [
       HEADER,
-      { text: 'status', tone: 'base', bullet: 'error', right: 'expired' },
+      { bullet: 'error', right: 'expired', text: 'status', tone: 'base' },
       ...cached,
-      { text: 'expired', tone: 'base', right: `${formatRemaining(now - s.expiresAt)} ago` },
+      { right: `${formatRemaining(now - s.expiresAt)} ago`, text: 'expired', tone: 'base' },
       ttl,
     ];
   }
   const lines: SidebarLine[] = [
     HEADER,
     {
-      text: 'status',
-      tone: 'base',
       bullet: s.skipReason === 'exhausted' ? 'warning' : 'success',
       right: 'warm',
+      text: 'status',
+      tone: 'base',
     },
     ...cached,
     {
+      right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
       text: 'expires',
       tone: 'base',
-      right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
     },
     ttl,
   ];
 
   if (s.skipReason === 'missed') {
     lines.push({
-      text: 'keepalive',
-      tone: 'base',
       right: 'stopped · last ping missed',
       rightTone: 'error',
-    });
-  } else if (s.skipReason === 'busy') {
-    lines.push({ text: 'keepalive', tone: 'base', right: 'waiting · session busy' });
-  } else if (s.skipReason === 'small-context') {
-    lines.push({
       text: 'keepalive',
       tone: 'base',
+    });
+  } else if (s.skipReason === 'busy') {
+    lines.push({ right: 'waiting · session busy', text: 'keepalive', tone: 'base' });
+  } else if (s.skipReason === 'small-context') {
+    lines.push({
       right: `off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
+      text: 'keepalive',
+      tone: 'base',
     });
   } else if (s.skipReason === 'disabled') {
-    lines.push({ text: 'keepalive', tone: 'base', right: 'off · disabled' });
+    lines.push({ right: 'off · disabled', text: 'keepalive', tone: 'base' });
   } else {
     if (s.nextPingAt !== null) {
       lines.push({
+        right: `${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
         text: 'next ping',
         tone: 'base',
-        right: `${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
       });
     } else if (s.skipReason === 'exhausted') {
-      lines.push({ text: 'next ping', tone: 'base', right: 'none' });
+      lines.push({ right: 'none', text: 'next ping', tone: 'base' });
     }
     const outcome =
       s.lastPing === 'hit'
@@ -123,9 +123,9 @@ function sidebarLines(
             ? ' ✗ failed'
             : '';
     const pings: SidebarLine = {
+      right: `${s.pingsUsed}/${s.maxPings}${outcome}`,
       text: 'pings',
       tone: 'base',
-      right: `${s.pingsUsed}/${s.maxPings}${outcome}`,
     };
     if (s.lastPing !== null) pings.rightTone = s.lastPing === 'hit' ? 'success' : 'error';
     lines.push(pings);

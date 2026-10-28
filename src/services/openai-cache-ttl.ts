@@ -67,7 +67,7 @@ function lastTextPart(message: Rec): Rec | undefined {
   const { content } = message;
   if (typeof content === 'string') {
     if (content === '') return undefined;
-    const part: Rec = { type: 'text', text: content };
+    const part: Rec = { text: content, type: 'text' };
     message.content = [part];
     return part;
   }

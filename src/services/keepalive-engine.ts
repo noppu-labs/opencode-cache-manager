@@ -225,31 +225,31 @@ class KeepaliveEngine {
 
   private newState(sessionID: string): SessionState {
     const s: SessionState = {
-      ttl: null,
-      ttlSource: null,
-      requestedTtl: null,
-      lastRequestAt: null,
-      requestSentAt: null,
+      busy: false,
+      cacheSeen: false,
+      child: undefined,
       confirmedAt: null,
-      nextPingAt: null,
-      pingsUsed: 0,
+      contextTokens: null,
+      deferred: false,
+      generation: 0,
+      inflight: null,
+      lastCache: null,
+      lastEmitted: '',
+      lastPing: null,
+      lastRequestAt: null,
       maxPings: BUILTIN_DEFAULTS.maxPings,
       minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
-      lastPing: null,
-      skipReason: 'no-cache-seen',
-      contextTokens: null,
-      lastCache: null,
-      cacheSeen: false,
       missed: false,
-      busy: false,
-      retryAt: null,
-      inflight: null,
+      nextPingAt: null,
       pingPending: false,
-      deferred: false,
+      pingsUsed: 0,
+      requestSentAt: null,
+      requestedTtl: null,
+      retryAt: null,
+      skipReason: 'no-cache-seen',
       timer: null,
-      generation: 0,
-      child: undefined,
-      lastEmitted: '',
+      ttl: null,
+      ttlSource: null,
     };
     s.lastEmitted = JSON.stringify(this.toSnapshot(sessionID, s));
     return s;
@@ -257,20 +257,20 @@ class KeepaliveEngine {
 
   private toSnapshot(sessionID: string, s: SessionState): KeepaliveSnapshot {
     return {
-      sessionID,
-      ttl: s.ttl,
-      ttlSource: s.ttlSource,
-      lastRequestAt: s.lastRequestAt,
+      contextTokens: s.contextTokens,
       expiresAt:
         s.lastRequestAt !== null && s.ttl !== null ? s.lastRequestAt + TTL_MS[s.ttl] : null,
-      nextPingAt: s.nextPingAt,
-      pingsUsed: s.pingsUsed,
+      lastCache: s.lastCache,
+      lastPing: s.lastPing,
+      lastRequestAt: s.lastRequestAt,
       maxPings: s.maxPings,
       minContextTokens: s.minContextTokens,
-      lastPing: s.lastPing,
+      nextPingAt: s.nextPingAt,
+      pingsUsed: s.pingsUsed,
+      sessionID,
       skipReason: s.skipReason,
-      contextTokens: s.contextTokens,
-      lastCache: s.lastCache,
+      ttl: s.ttl,
+      ttlSource: s.ttlSource,
     };
   }
 
@@ -401,7 +401,7 @@ class KeepaliveEngine {
 
     s.pingsUsed++;
     s.nextPingAt = null;
-    const inflight: PingInFlight = { firedAt: now, sentAt: null, contextBefore: s.contextTokens };
+    const inflight: PingInFlight = { contextBefore: s.contextTokens, firedAt: now, sentAt: null };
     s.inflight = inflight;
     s.pingPending = true;
     this.commit(sessionID, s);

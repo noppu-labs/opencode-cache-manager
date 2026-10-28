@@ -74,11 +74,11 @@ export function createSnapshotFeed(
   })();
 
   return {
-    snapshots: () => new Map(Object.entries(sidebar.snapshots)),
-    load,
-    refresh,
     dispose: () => {
       abort.abort();
     },
+    load,
+    refresh,
+    snapshots: () => new Map(Object.entries(sidebar.snapshots)),
   };
 }

@@ -28,9 +28,9 @@ type PartialUsage = Partial<CacheUsage>;
 function readUsage(raw: unknown): PartialUsage | undefined {
   if (!isRecord(raw)) return undefined;
   const out: PartialUsage = {
-    inputTokens: num(raw.input_tokens),
     cacheReadTokens: num(raw.cache_read_input_tokens),
     cacheWriteTokens: num(raw.cache_creation_input_tokens),
+    inputTokens: num(raw.input_tokens),
   };
   if (isRecord(raw.cache_creation)) {
     out.write5mTokens = num(raw.cache_creation.ephemeral_5m_input_tokens) ?? 0;
@@ -41,11 +41,11 @@ function readUsage(raw: unknown): PartialUsage | undefined {
 
 function finalize(partial: PartialUsage): CacheUsage {
   return {
-    inputTokens: partial.inputTokens ?? 0,
     cacheReadTokens: partial.cacheReadTokens ?? 0,
     cacheWriteTokens: partial.cacheWriteTokens ?? 0,
-    write5mTokens: partial.write5mTokens,
+    inputTokens: partial.inputTokens ?? 0,
     write1hTokens: partial.write1hTokens,
+    write5mTokens: partial.write5mTokens,
   };
 }
 
@@ -144,17 +144,17 @@ const ANTHROPIC_PARSERS: ResponseParsers = {
   fromJson: (body) => {
     const model = parseModelFromJson(body);
     return {
-      usage: parseUsageFromJson(body),
-      stopReason: parseStopReasonFromJson(body),
       identity: model === undefined ? undefined : { model },
+      stopReason: parseStopReasonFromJson(body),
+      usage: parseUsageFromJson(body),
     };
   },
   fromSse: (text) => {
     const model = parseModelFromSse(text);
     return {
-      usage: parseUsageFromSse(text),
-      stopReason: parseStopReasonFromSse(text),
       identity: model === undefined ? undefined : { model },
+      stopReason: parseStopReasonFromSse(text),
+      usage: parseUsageFromSse(text),
     };
   },
 };
