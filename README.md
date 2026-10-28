@@ -65,8 +65,8 @@ Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. O
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
-    "@noppu-labs/opencode-cache-manager@^0.6.0"
-    // or: "opencode-cache-manager@^0.6.0" -- same package, unscoped name
+    "@noppu-labs/opencode-cache-manager@^0.6.1"
+    // or: "opencode-cache-manager@^0.6.1" -- same package, unscoped name
   ]
 }
 ```
