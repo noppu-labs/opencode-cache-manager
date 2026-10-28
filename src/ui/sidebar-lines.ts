@@ -42,6 +42,63 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): Sidebar
   };
 }
 
+/** The keepalive rows of a warm cache: why pings stopped, or the next ping and the pings used so far. */
+function keepaliveLines(
+  snapshot: KeepaliveSnapshot,
+  now: number,
+  formatClock: (ms: number) => string
+): SidebarLine[] {
+  if (snapshot.skipReason === 'missed') {
+    return [
+      { right: 'stopped · last ping missed', rightTone: 'error', text: 'keepalive', tone: 'base' },
+    ];
+  }
+  if (snapshot.skipReason === 'busy') {
+    return [{ right: 'waiting · session busy', text: 'keepalive', tone: 'base' }];
+  }
+  if (snapshot.skipReason === 'small-context') {
+    return [
+      {
+        right: `off · ${thousands(snapshot.contextTokens ?? 0)} < ${thousands(snapshot.minContextTokens)}`,
+        text: 'keepalive',
+        tone: 'base',
+      },
+    ];
+  }
+  if (snapshot.skipReason === 'disabled') {
+    return [{ right: 'off · disabled', text: 'keepalive', tone: 'base' }];
+  }
+  return pingLines(snapshot, now, formatClock);
+}
+
+function pingLines(
+  snapshot: KeepaliveSnapshot,
+  now: number,
+  formatClock: (ms: number) => string
+): SidebarLine[] {
+  const lines: SidebarLine[] = [];
+  if (snapshot.nextPingAt !== null) {
+    lines.push({
+      right: `${formatClock(snapshot.nextPingAt)} (${formatRemaining(snapshot.nextPingAt - now)})`,
+      text: 'next ping',
+      tone: 'base',
+    });
+  } else if (snapshot.skipReason === 'exhausted') {
+    lines.push({ right: 'none', text: 'next ping', tone: 'base' });
+  }
+  const outcome = snapshot.lastPing === null ? '' : PING_OUTCOMES[snapshot.lastPing];
+  const pings: SidebarLine = {
+    right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}`,
+    text: 'pings',
+    tone: 'base',
+  };
+  if (snapshot.lastPing !== null) {
+    pings.rightTone = snapshot.lastPing === 'hit' ? 'success' : 'error';
+  }
+  lines.push(pings);
+  return lines;
+}
+
 /** Lines for the sidebar cache section; an empty array means render nothing. */
 function sidebarLines(
   snapshot: KeepaliveSnapshot | undefined,
@@ -82,7 +139,7 @@ function sidebarLines(
       ttl,
     ];
   }
-  const lines: SidebarLine[] = [
+  return [
     HEADER,
     {
       bullet: snapshot.skipReason === 'exhausted' ? 'warning' : 'success',
@@ -97,47 +154,8 @@ function sidebarLines(
       tone: 'base',
     },
     ttl,
+    ...keepaliveLines(snapshot, now, formatClock),
   ];
-
-  if (snapshot.skipReason === 'missed') {
-    lines.push({
-      right: 'stopped · last ping missed',
-      rightTone: 'error',
-      text: 'keepalive',
-      tone: 'base',
-    });
-  } else if (snapshot.skipReason === 'busy') {
-    lines.push({ right: 'waiting · session busy', text: 'keepalive', tone: 'base' });
-  } else if (snapshot.skipReason === 'small-context') {
-    lines.push({
-      right: `off · ${thousands(snapshot.contextTokens ?? 0)} < ${thousands(snapshot.minContextTokens)}`,
-      text: 'keepalive',
-      tone: 'base',
-    });
-  } else if (snapshot.skipReason === 'disabled') {
-    lines.push({ right: 'off · disabled', text: 'keepalive', tone: 'base' });
-  } else {
-    if (snapshot.nextPingAt !== null) {
-      lines.push({
-        right: `${formatClock(snapshot.nextPingAt)} (${formatRemaining(snapshot.nextPingAt - now)})`,
-        text: 'next ping',
-        tone: 'base',
-      });
-    } else if (snapshot.skipReason === 'exhausted') {
-      lines.push({ right: 'none', text: 'next ping', tone: 'base' });
-    }
-    const outcome = snapshot.lastPing === null ? '' : PING_OUTCOMES[snapshot.lastPing];
-    const pings: SidebarLine = {
-      right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}`,
-      text: 'pings',
-      tone: 'base',
-    };
-    if (snapshot.lastPing !== null) {
-      pings.rightTone = snapshot.lastPing === 'hit' ? 'success' : 'error';
-    }
-    lines.push(pings);
-  }
-  return lines;
 }
 
 export type { Tone, SidebarLine };

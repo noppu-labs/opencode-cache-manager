@@ -33,6 +33,15 @@ interface PingInFlight {
   contextBefore: number | null;
 }
 
+interface ResponseInfo {
+  usage: CacheUsage | undefined;
+  ok: boolean;
+  isPing: boolean;
+  kind: RequestKind;
+  stopReason?: string;
+  unmanaged?: boolean;
+}
+
 interface SessionState {
   ttl: Ttl | null;
   ttlSource: 'detected' | 'requested' | null;
@@ -119,17 +128,7 @@ class KeepaliveEngine {
   }
 
   /** `unmanaged` on a primary or compaction response stops keeping the session warm until the next request sets a TTL. */
-  public async responseObserved(
-    sessionID: string,
-    info: {
-      usage: CacheUsage | undefined;
-      ok: boolean;
-      isPing: boolean;
-      kind: RequestKind;
-      stopReason?: string;
-      unmanaged?: boolean;
-    }
-  ): Promise<void> {
+  public async responseObserved(sessionID: string, info: ResponseInfo): Promise<void> {
     if (this.disposed) return;
     const state = this.state(sessionID);
     if (
@@ -141,50 +140,16 @@ class KeepaliveEngine {
     }
 
     if (info.isPing) {
-      const { inflight } = state;
-      if (!inflight) return;
-      state.inflight = null;
-      if (!info.ok || !info.usage) {
-        await this.failPing(sessionID, state);
-        return;
-      }
-      const { usage } = info;
-      const before = inflight.contextBefore ?? contextTokens(usage);
-      const hit = usage.cacheReadTokens >= HIT_RATIO * before;
-      // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
-      if (hit) {
-        state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
-        state.confirmedAt = state.lastRequestAt;
-      }
-      state.lastPing = hit ? 'hit' : 'miss';
-      state.missed = !hit;
-      state.retryAt = null;
-      this.commit(sessionID, state);
-      await this.schedule(sessionID);
+      await this.pingObserved(sessionID, state, info);
       return;
     }
 
-    if (!info.ok) {
+    if (info.ok) {
+      this.recordResponse(state, info);
+    } else {
       // The request did not reach the cache, so the expiry goes back to the last confirmed request.
       state.lastRequestAt = state.confirmedAt;
-      this.commit(sessionID, state);
-      await this.schedule(sessionID);
-      return;
     }
-    if (state.requestSentAt !== null) {
-      state.confirmedAt = state.requestSentAt;
-      state.lastRequestAt = state.requestSentAt;
-    }
-    if (info.usage && info.kind === 'primary') {
-      const total = contextTokens(info.usage);
-      state.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
-    }
-    // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
-    if (info.usage && (info.kind === 'primary' || info.kind === 'compaction')) {
-      state.contextTokens = contextTokens(info.usage);
-      this.learn(state, info.usage);
-    }
-    if (info.kind === 'primary' && info.stopReason === 'tool_use') state.busy = true;
     this.commit(sessionID, state);
     await this.schedule(sessionID);
   }
@@ -212,6 +177,51 @@ class KeepaliveEngine {
       state.generation++;
       state.inflight = null;
     }
+  }
+
+  private async pingObserved(
+    sessionID: string,
+    state: SessionState,
+    info: ResponseInfo
+  ): Promise<void> {
+    const { inflight } = state;
+    if (!inflight) return;
+    state.inflight = null;
+    if (!info.ok || !info.usage) {
+      await this.failPing(sessionID, state);
+      return;
+    }
+    const { usage } = info;
+    const before = inflight.contextBefore ?? contextTokens(usage);
+    const hit = usage.cacheReadTokens >= HIT_RATIO * before;
+    // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
+    if (hit) {
+      state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
+      state.confirmedAt = state.lastRequestAt;
+    }
+    state.lastPing = hit ? 'hit' : 'miss';
+    state.missed = !hit;
+    state.retryAt = null;
+    this.commit(sessionID, state);
+    await this.schedule(sessionID);
+  }
+
+  /** Records a successful non-ping response: the expiry anchor, the cache readout and the learned TTL. */
+  private recordResponse(state: SessionState, info: ResponseInfo): void {
+    if (state.requestSentAt !== null) {
+      state.confirmedAt = state.requestSentAt;
+      state.lastRequestAt = state.requestSentAt;
+    }
+    if (info.usage && info.kind === 'primary') {
+      const total = contextTokens(info.usage);
+      state.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
+    }
+    // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
+    if (info.usage && (info.kind === 'primary' || info.kind === 'compaction')) {
+      state.contextTokens = contextTokens(info.usage);
+      this.learn(state, info.usage);
+    }
+    if (info.kind === 'primary' && info.stopReason === 'tool_use') state.busy = true;
   }
 
   private state(sessionID: string): SessionState {
