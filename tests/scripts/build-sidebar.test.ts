@@ -19,7 +19,7 @@ function importSpecifiers(code: string): string[] {
   ]) {
     for (const match of code.matchAll(re)) found.add(match[1]);
   }
-  return [...found].sort();
+  return [...found].toSorted();
 }
 
 describe('buildSidebar', () => {

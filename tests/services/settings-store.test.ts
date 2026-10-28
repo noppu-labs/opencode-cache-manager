@@ -161,7 +161,7 @@ describe('sweepDeletedSessions', () => {
     await sweepDeletedSessions(kv, async (id) => {
       looked.push(id);
     });
-    expect(looked.sort()).toEqual(['ses_a', 'ses_b']);
+    expect(looked.toSorted()).toEqual(['ses_a', 'ses_b']);
   });
 
   test('keeps stored settings when the lookup fails for another reason', async () => {

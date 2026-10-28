@@ -56,7 +56,7 @@ function parseExample(file: string): any {
 
 const EXAMPLE_FILES = readdirSync(EXAMPLES_DIR)
   .filter((f) => f.endsWith('.jsonc'))
-  .sort();
+  .toSorted();
 
 interface ExampleVariant {
   id: string;

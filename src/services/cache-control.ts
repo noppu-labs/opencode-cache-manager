@@ -26,18 +26,18 @@ export function applyTtlToBlock(block: unknown, ttl: '1h' | undefined): boolean 
   return false;
 }
 
+const isOneHour = (block: unknown): boolean => {
+  if (!block || typeof block !== 'object') return false;
+  const cacheControl = (block as Record<string, unknown>).cache_control;
+  return (
+    !!cacheControl &&
+    typeof cacheControl === 'object' &&
+    (cacheControl as Record<string, unknown>).ttl === '1h'
+  );
+};
+
 /** Returns true when any ephemeral breakpoint in the payload carries a 1h TTL. */
 export function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
-  const isOneHour = (block: unknown): boolean => {
-    if (!block || typeof block !== 'object') return false;
-    const cacheControl = (block as Record<string, unknown>).cache_control;
-    return (
-      !!cacheControl &&
-      typeof cacheControl === 'object' &&
-      (cacheControl as Record<string, unknown>).ttl === '1h'
-    );
-  };
-
   const tools = body.tools;
   if (Array.isArray(tools)) {
     for (const tool of tools) {

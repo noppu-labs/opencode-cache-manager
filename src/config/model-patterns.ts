@@ -8,6 +8,7 @@ const substring = (source: string) => new RegExp(source.replace(REGEX_SPECIALS, 
 
 function validFlags(flags: string): boolean {
   try {
+    // oxlint-disable-next-line eslint/no-new -- constructed only to see whether the engine accepts the flags
     new RegExp('', flags);
     return true;
   } catch {

@@ -160,7 +160,7 @@ function harness(
     for (;;) {
       const due = [...timers.entries()]
         .filter(([, t]) => t.at <= target)
-        .sort((a, b) => a[1].at - b[1].at)[0];
+        .toSorted((a, b) => a[1].at - b[1].at)[0];
       if (!due) break;
       timers.delete(due[0]);
       if (stepClock) clock = Math.max(clock, due[1].at);

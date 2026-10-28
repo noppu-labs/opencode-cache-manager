@@ -88,6 +88,8 @@ function fieldChoices(field: Field): Choice<string | number>[] {
         ...MIN_CONTEXT_CHOICES.map((value) => ({ title: formatTokens(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
+    default:
+      throw new Error(`unknown setting: ${String(field satisfies never)}`);
   }
 }
 

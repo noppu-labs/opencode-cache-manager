@@ -159,10 +159,10 @@ describe('createCommandRunner', () => {
     expect(t.resetCalls).toHaveLength(0);
     expect(t.getSettingsCalls).toHaveLength(0);
     expect(t.toasts).toEqual(
-      Array(3).fill({
+      Array.from({ length: 3 }, () => ({
         message: 'Open a session to change session cache settings.',
         variant: 'warning',
-      })
+      }))
     );
   });
 

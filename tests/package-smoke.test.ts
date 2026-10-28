@@ -72,7 +72,7 @@ function extract(): string {
 
 /** Every source file under `src/`, relative to the repo root. */
 function sourceFiles(): string[] {
-  return [...new Bun.Glob('src/**/*.{ts,tsx}').scanSync({ cwd: CWD })].sort();
+  return [...new Bun.Glob('src/**/*.{ts,tsx}').scanSync({ cwd: CWD })].toSorted();
 }
 
 const COMPILED_SIDEBAR = 'src/ui/sidebar.compiled.js';
@@ -84,7 +84,7 @@ const SHIP_FILES = [
   'package.json',
   COMPILED_SIDEBAR,
   ...sourceFiles(),
-].sort();
+].toSorted();
 
 afterAll(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -125,7 +125,7 @@ describe('npm package manifest', () => {
   });
 
   test('files whitelist covers exactly the ship set', () => {
-    expect([...(manifest.files ?? [])].sort()).toEqual(['LICENSE', 'README.md', 'src']);
+    expect((manifest.files ?? []).toSorted()).toEqual(['LICENSE', 'README.md', 'src']);
   });
 });
 
@@ -144,7 +144,7 @@ describe('npm package tarball', () => {
       .map((l) => l.trim())
       .filter(Boolean)
       .map((l) => l.replace(/^package\//, ''))
-      .sort();
+      .toSorted();
     expect(listed).toEqual(SHIP_FILES);
   });
 
