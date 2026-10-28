@@ -96,7 +96,7 @@ describe('npm package manifest', () => {
     // Release-time consistency (tag == vX.Y.Z of package.json) is enforced by
     // the release workflow's gate; here the version only needs to be
     // well-formed.
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/);
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/u);
     expect(manifest.license).toBe('MIT');
     expect(manifest.publishConfig?.access).toBe('public');
   });
@@ -143,7 +143,7 @@ describe('npm package tarball', () => {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-      .map((l) => l.replace(/^package\//, ''))
+      .map((l) => l.replace(/^package\//u, ''))
       .toSorted();
     expect(listed).toEqual(SHIP_FILES);
   });
@@ -218,7 +218,7 @@ describe('Host.resolve against the extracted package', () => {
     expect(code).toContain('createComponent');
     expect(code).not.toContain('jsx-dev-runtime');
     const allowed = new Set(['@opentui/solid', 'solid-js', 'solid-js/store']);
-    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
+    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/gu)) {
       expect(allowed.has(match[1])).toBe(true);
     }
   });

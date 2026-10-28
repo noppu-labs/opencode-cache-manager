@@ -40,7 +40,7 @@ export type CommandAction =
 
 /** Parses `50000` or `50k` into a token count; `undefined` when malformed. */
 function parseTokenCount(text: string | undefined): number | undefined {
-  const match = /^(\d+)(k?)$/.exec(text ?? '');
+  const match = /^(\d+)(k?)$/u.exec(text ?? '');
   if (!match) return undefined;
   return Number(match[1]) * (match[2] ? 1000 : 1);
 }
@@ -56,13 +56,13 @@ export function parseCommandArg(raw: unknown): CommandAction {
   if (text === 'reset') return { type: 'reset' };
   if (isCacheTtlMode(text)) return { type: 'set', patch: { mode: text } };
 
-  const [command, value, ...rest] = text.split(/\s+/);
+  const [command, value, ...rest] = text.split(/\s+/u);
   if (rest.length > 0) return { type: 'invalid' };
 
   if (command === 'keepalive' && (value === 'on' || value === 'off')) {
     return { type: 'set', patch: { keepalive: value === 'on' } };
   }
-  if (command === 'pings' && /^\d+$/.test(value ?? '')) {
+  if (command === 'pings' && /^\d+$/u.test(value ?? '')) {
     const maxPings = Number(value);
     if (maxPings <= 100) return { type: 'set', patch: { maxPings } };
   }

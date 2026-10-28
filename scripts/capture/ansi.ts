@@ -1,6 +1,6 @@
 import { type CapturedFrame, type CapturedSpan, RGBA, TextAttributes } from '@opentui/core';
 
-const ESC = '\u001b[';
+const ESC = '\u001B[';
 const RESET = `${ESC}0m`;
 
 /** The OpenTUI text attributes mapped to SGR; any other attribute bit is dropped from the image. */
@@ -58,5 +58,5 @@ export function textRow(parts: readonly TextPart[]): string {
 /** The visible text of an ANSI row, with trailing padding removed. */
 export function stripAnsi(row: string): string {
   // oxlint-disable-next-line eslint/no-control-regex -- matching the ESC byte of SGR sequences is the point
-  return row.replace(/\u001b\[[0-9;]*m/g, '').trimEnd();
+  return row.replaceAll(/\u001B\[[0-9;]*m/gu, '').trimEnd();
 }

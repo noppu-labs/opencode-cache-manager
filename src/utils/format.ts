@@ -12,7 +12,7 @@ export function formatTokens(tokens: number): string {
   return tokens > 0 && tokens % 1000 === 0 ? `${tokens / 1000}k` : String(tokens);
 }
 
-const trim = (value: number): string => value.toFixed(1).replace(/\.0$/, '');
+const trim = (value: number): string => value.toFixed(1).replace(/\.0$/u, '');
 
 /** "732", "14.8k", "16k", "123k", "1.2M": a short token count for narrow displays. */
 export function formatCompactTokens(tokens: number): string {

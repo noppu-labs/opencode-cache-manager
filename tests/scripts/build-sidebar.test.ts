@@ -13,9 +13,9 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 function importSpecifiers(code: string): string[] {
   const found = new Set<string>();
   for (const re of [
-    /\bfrom\s*["']([^"']+)["']/g,
-    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
-    /\bimport\s+["']([^"']+)["']/g,
+    /\bfrom\s*["']([^"']+)["']/gu,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu,
+    /\bimport\s+["']([^"']+)["']/gu,
   ]) {
     for (const match of code.matchAll(re)) found.add(match[1]);
   }

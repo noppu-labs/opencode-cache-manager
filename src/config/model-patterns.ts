@@ -1,10 +1,10 @@
 import { isCacheProfileId, type ProfilePattern } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 
-const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
-const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/u;
+const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/gu;
 
-const substring = (source: string) => new RegExp(source.replace(REGEX_SPECIALS, '\\$&'), 'i');
+const substring = (source: string) => new RegExp(source.replaceAll(REGEX_SPECIALS, '\\$&'), 'iu');
 
 function validFlags(flags: string): boolean {
   try {

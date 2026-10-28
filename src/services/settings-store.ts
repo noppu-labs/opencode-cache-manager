@@ -68,7 +68,7 @@ export class SettingsStore {
 function isSessionNotFound(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const { _tag, name } = error as { _tag?: unknown; name?: unknown };
-  return [_tag, name].some((tag) => typeof tag === 'string' && /SessionNotFound/.test(tag));
+  return [_tag, name].some((tag) => typeof tag === 'string' && /SessionNotFound/u.test(tag));
 }
 
 /** Drops stored settings for sessions that were deleted while the plugin was not running. */
