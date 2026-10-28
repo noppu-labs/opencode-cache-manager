@@ -72,10 +72,10 @@ class KeepaliveEngine {
   private readonly sessions = new Map<string, SessionState>();
   private disposed = false;
 
-  constructor(private readonly deps: EngineDeps) {}
+  public constructor(private readonly deps: EngineDeps) {}
 
   /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
-  requestSent(
+  public requestSent(
     sessionID: string,
     info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }
   ): void {
@@ -119,7 +119,7 @@ class KeepaliveEngine {
   }
 
   /** `unmanaged` on a primary or compaction response stops keeping the session warm until the next request sets a TTL. */
-  async responseObserved(
+  public async responseObserved(
     sessionID: string,
     info: {
       usage: CacheUsage | undefined;
@@ -189,7 +189,7 @@ class KeepaliveEngine {
     await this.schedule(sessionID);
   }
 
-  async reevaluate(sessionID?: string): Promise<void> {
+  public async reevaluate(sessionID?: string): Promise<void> {
     if (this.disposed) return;
     const ids =
       sessionID === undefined
@@ -198,14 +198,14 @@ class KeepaliveEngine {
     await Promise.all(ids.map(async (id) => this.schedule(id)));
   }
 
-  snapshot(sessionID: string): KeepaliveSnapshot {
+  public snapshot(sessionID: string): KeepaliveSnapshot {
     const state = this.sessions.get(sessionID);
     return state
       ? this.toSnapshot(sessionID, state)
       : this.toSnapshot(sessionID, this.newState(sessionID));
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.disposed = true;
     for (const state of this.sessions.values()) {
       this.cancelTimer(state);
