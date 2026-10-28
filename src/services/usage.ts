@@ -1,3 +1,4 @@
+import { SSE_DATA_PREFIX } from '../constants/sse.ts';
 import type { CacheUsage, ResponseParsers, Ttl } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { num } from '../utils/num.ts';
@@ -64,10 +65,10 @@ function parseUsageFromSse(text: string): CacheUsage | undefined {
   let merged: PartialUsage | undefined;
 
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     let event: unknown;
     try {
-      event = JSON.parse(line.slice(5).trim());
+      event = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
     } catch {
       continue;
     }
@@ -101,9 +102,9 @@ function parseStopReasonFromJson(body: unknown): string | undefined {
 function parseStopReasonFromSse(text: string): string | undefined {
   let stopReason: string | undefined;
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      const event: unknown = JSON.parse(line.slice(5).trim());
+      const event: unknown = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
       if (isRecord(event) && event.type === 'message_delta' && isRecord(event.delta)) {
         const reason = event.delta.stop_reason;
         if (typeof reason === 'string') stopReason = reason;
@@ -125,9 +126,9 @@ function parseModelFromJson(body: unknown): string | undefined {
 /** The `message.model` of the first `message_start` event of a streamed Messages response. */
 function parseModelFromSse(text: string): string | undefined {
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      const event: unknown = JSON.parse(line.slice(5).trim());
+      const event: unknown = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
       if (isRecord(event) && event.type === 'message_start' && isRecord(event.message)) {
         const model = event.message.model;
         if (typeof model === 'string' && model !== '') return model;

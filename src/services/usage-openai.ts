@@ -1,4 +1,5 @@
 import { FINISH_REASON_MAP } from '../constants/openai.ts';
+import { SSE_DATA_PREFIX } from '../constants/sse.ts';
 import type { CacheUsage, ResponseIdentity, ResponseParsers } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { num } from '../utils/num.ts';
@@ -55,9 +56,9 @@ function readIdentity(body: unknown): ResponseIdentity | undefined {
 function sseEvents(text: string): unknown[] {
   const events: unknown[] = [];
   for (const line of text.split('\n')) {
-    if (!line.startsWith('data:')) continue;
+    if (!line.startsWith(SSE_DATA_PREFIX)) continue;
     try {
-      events.push(JSON.parse(line.slice(5).trim()));
+      events.push(JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim()));
     } catch {
       continue;
     }

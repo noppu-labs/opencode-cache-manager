@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+/* oxlint-disable eslint/no-magic-numbers -- sample snapshots for the README images: the numbers are the fixture data */
 import { RGBA } from '@opentui/core';
 import { testRender } from '@opentui/solid';
 

@@ -45,8 +45,10 @@ const FIELD_INFO: Record<Field, { row: string; label: string }> = {
   mode: { label: 'cache TTL', row: 'TTL mode' },
 };
 
+/* oxlint-disable eslint/no-magic-numbers -- the preset values offered in the picker are the data itself */
 const PING_CHOICES = [0, 1, 3, 5, 10];
 const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
+/* oxlint-enable eslint/no-magic-numbers */
 
 type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 

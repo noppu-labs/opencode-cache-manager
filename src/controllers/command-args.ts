@@ -1,4 +1,5 @@
-import type { SettingsPatch } from '../config/settings.ts';
+import { MAX_PINGS_LIMIT, type SettingsPatch } from '../config/settings.ts';
+import { THOUSAND } from '../constants/units.ts';
 import { isCacheTtlMode } from '../models/cache.ts';
 
 /** Extracts a plain string from the various shapes a slash-command argument may take. */
@@ -42,7 +43,7 @@ type CommandAction =
 function parseTokenCount(text: string | undefined): number | undefined {
   const match = /^(\d+)(k?)$/u.exec(text ?? '');
   if (!match) return undefined;
-  return Number(match[1]) * (match[2] ? 1000 : 1);
+  return Number(match[1]) * (match[2] ? THOUSAND : 1);
 }
 
 /**
@@ -64,7 +65,7 @@ function parseCommandArg(raw: unknown): CommandAction {
   }
   if (command === 'pings' && /^\d+$/u.test(value ?? '')) {
     const maxPings = Number(value);
-    if (maxPings <= 100) return { patch: { maxPings }, type: 'set' };
+    if (maxPings <= MAX_PINGS_LIMIT) return { patch: { maxPings }, type: 'set' };
   }
   if (command === 'min') {
     const minContextTokens = parseTokenCount(value);

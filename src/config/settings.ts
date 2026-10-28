@@ -2,6 +2,9 @@ import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from '../model
 import { isRecord } from '../utils/is-record.ts';
 import { parseCacheProfiles } from './model-patterns.ts';
 
+/** Highest accepted `maxPings`. */
+const MAX_PINGS_LIMIT = 100;
+
 /** Effective plugin settings after layering built-in defaults, options, global and session. */
 interface Settings {
   mode: CacheTtlMode;
@@ -26,7 +29,7 @@ function sanitizePatch(value: unknown): SettingsPatch {
   const patch: SettingsPatch = {};
   if (isCacheTtlMode(value.mode)) patch.mode = value.mode;
   if (typeof value.keepalive === 'boolean') patch.keepalive = value.keepalive;
-  if (isNonNegativeInteger(value.maxPings) && value.maxPings <= 100) {
+  if (isNonNegativeInteger(value.maxPings) && value.maxPings <= MAX_PINGS_LIMIT) {
     patch.maxPings = value.maxPings;
   }
   if (isNonNegativeInteger(value.minContextTokens)) {
@@ -79,4 +82,11 @@ function mergeSettings(...layers: SettingsPatch[]): Settings {
 }
 
 export type { Settings, SettingsPatch, PluginOptions };
-export { BUILTIN_DEFAULTS, sanitizePatch, settingsFromOptions, pluginOptions, mergeSettings };
+export {
+  BUILTIN_DEFAULTS,
+  MAX_PINGS_LIMIT,
+  sanitizePatch,
+  settingsFromOptions,
+  pluginOptions,
+  mergeSettings,
+};

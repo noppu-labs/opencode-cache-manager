@@ -4,6 +4,7 @@ import type { RGBA } from '@opentui/core';
 import { createEffect, createSignal, Index, onCleanup, Show } from 'solid-js';
 
 import { SIDEBAR_REFRESH_MS } from '../constants/keepalive.ts';
+import { MS_PER_SECOND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { LABEL_WIDTH, sidebarLines, type Tone } from './sidebar-lines.ts';
 
@@ -27,7 +28,7 @@ function CacheLines(props: {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => {
     setNow(Date.now());
-  }, 1000);
+  }, MS_PER_SECOND);
   onCleanup(() => {
     clearInterval(timer);
   });

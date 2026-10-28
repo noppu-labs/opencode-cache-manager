@@ -13,8 +13,11 @@ const MESSAGES_SUFFIX = '/messages';
 /** Request header carrying Anthropic beta flags. */
 const BETA_HEADER = 'anthropic-beta';
 
+const HTTP_BAD_REQUEST = 400;
+const HTTP_UNPROCESSABLE_CONTENT = 422;
+
 /** Response statuses that mean the upstream rejected the request itself, so a learned profile may be wrong. */
-const REJECTED_REQUEST_STATUSES: readonly number[] = [400, 422];
+const REJECTED_REQUEST_STATUSES: readonly number[] = [HTTP_BAD_REQUEST, HTTP_UNPROCESSABLE_CONTENT];
 
 export {
   EXTENDED_CACHE_BETA,

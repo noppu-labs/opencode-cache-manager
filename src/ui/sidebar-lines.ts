@@ -1,3 +1,4 @@
+import { PERCENT, THOUSAND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { formatCompactTokens, formatRemaining } from '../utils/format.ts';
 
@@ -22,10 +23,10 @@ const HEADER: SidebarLine = { bold: true, text: SECTION_HEADER, tone: 'base' };
 const defaultClock = (ms: number): string =>
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', hour12: false, minute: '2-digit' });
 
-const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`;
+const thousands = (tokens: number): string => `${Math.round(tokens / THOUSAND)}k`;
 
 function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): SidebarLine {
-  const ratio = (cache.read / cache.total) * 100;
+  const ratio = (cache.read / cache.total) * PERCENT;
   const percent = cache.read < cache.total ? Math.floor(ratio) : Math.round(ratio);
   return {
     right: `${percent}% · ${formatCompactTokens(cache.read)} / ${formatCompactTokens(cache.total)}`,
