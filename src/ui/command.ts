@@ -1,4 +1,4 @@
-import { mergeSettings } from '../config/settings.ts';
+import { mergeSettings, type Settings, type SettingsPatch } from '../config/settings.ts';
 import { parseCommandArg } from '../controllers/command-args.ts';
 import type { CacheTtlRpcClient } from '../rpc.ts';
 import { errorMessage, formatTokens } from '../utils/format.ts';
@@ -56,12 +56,8 @@ export function createCommandRunner({
 
     await rpc.setSession({ sessionID, patch: action.patch });
     for (const field of FIELDS) {
-      const value = action.patch[field];
-      if (value === undefined) continue;
-      toast(
-        `Session ${FIELD_INFO[field].label} set to ${formatValue(field, value as never)}.`,
-        'success'
-      );
+      const message = describeChange(field, action.patch);
+      if (message !== undefined) toast(message, 'success');
     }
   };
 
@@ -72,4 +68,10 @@ export function createCommandRunner({
       toast(`Cache Manager error: ${errorMessage(error)}`, 'error');
     }
   };
+}
+
+function describeChange(field: keyof Settings, patch: SettingsPatch): string | undefined {
+  const value = patch[field];
+  if (value === undefined) return undefined;
+  return `Session ${FIELD_INFO[field].label} set to ${formatValue(field, value)}.`;
 }

@@ -247,7 +247,7 @@ describe('transformHttpRequest', () => {
     expect(out.headers.get('anthropic-beta')).toBe(
       'interleaved-thinking-2025-05-14,extended-cache-ttl-2025-04-11'
     );
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
   });
 
@@ -270,43 +270,27 @@ describe('transformHttpRequest', () => {
       transformOpts()
     );
     expect(out.headers.get('anthropic-beta')).toBeNull();
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect('ttl' in cc).toBe(false);
   });
 
-  test('x-cache-ttl: 1h overrides a 5m fallback and is stripped', async () => {
+  test.each([
+    ['x-cache-ttl: 1h overrides a 5m fallback and is stripped', '1h', '5m', '1h'],
+    ['x-cache-ttl: 5m overrides a 1h fallback and is stripped', '5m', '1h', '5m'],
+    ['an invalid sentinel value falls back to the fallback mode', 'bogus', '1h', '1h'],
+  ] as const)('%s', async (_label, sentinel, fallback, applied) => {
     const out = await transformHttpRequest(
-      makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: '1h' }),
-      '5m',
+      makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: sentinel }),
+      fallback,
       transformOpts()
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(out.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
-    for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
-  });
-
-  test('x-cache-ttl: 5m overrides a 1h fallback and is stripped', async () => {
-    const out = await transformHttpRequest(
-      makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: '5m' }),
-      '1h',
-      transformOpts()
-    );
-    expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(out.headers.get('anthropic-beta')).toBeNull();
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
-    for (const cc of collectCacheControls(body)) expect('ttl' in cc).toBe(false);
-  });
-
-  test('an invalid sentinel value falls back to the fallback mode', async () => {
-    const out = await transformHttpRequest(
-      makeRequest(JSON.stringify(sampleBody()), { [SENTINEL_HEADER]: 'bogus' }),
-      '1h',
-      transformOpts()
-    );
-    expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
-    for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
+    expect(out.headers.get('anthropic-beta')).toBe(applied === '1h' ? EXTENDED_CACHE_BETA : null);
+    const body = await parsedBodyOf(out);
+    for (const cc of collectCacheControls(body)) {
+      if (applied === '1h') expect(cc.ttl).toBe('1h');
+      else expect('ttl' in cc).toBe(false);
+    }
   });
 
   test('5m mode with no body and no sentinel returns the same request', async () => {
@@ -384,7 +368,7 @@ describe('transformHttpRequest', () => {
       const out = await transformHttpRequest(request, mode, transformOpts());
       expect(out).not.toBe(request);
       expect(out.signal.aborted).toBe(false);
-      controllers[i]!.abort();
+      controllers[i].abort();
       expect(out.signal.aborted).toBe(true);
     }
   });

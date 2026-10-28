@@ -56,7 +56,7 @@ function parseExample(file: string): any {
 
 const EXAMPLE_FILES = readdirSync(EXAMPLES_DIR)
   .filter((f) => f.endsWith('.jsonc'))
-  .sort();
+  .toSorted();
 
 interface ExampleVariant {
   id: string;
@@ -205,7 +205,7 @@ describe('docs/examples', () => {
   describe.each(EXAMPLE_FILES)('%s', (file) => {
     const config = parseExample(file);
     const variants = oneHourVariants(config);
-    const kind = EXAMPLE_KIND[file]!;
+    const kind = EXAMPLE_KIND[file];
 
     test('parses and declares providers with models', () => {
       expect(config.$schema).toBe('https://opencode.ai/config.json');

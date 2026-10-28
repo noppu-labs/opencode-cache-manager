@@ -163,7 +163,7 @@ describe('sidebarLines', () => {
     expect(
       lines(
         snap({ skipReason: 'small-context', contextTokens: 30_600, minContextTokens: 49_600 })
-      )[4]!.right
+      )[4].right
     ).toBe('off · 31k < 50k');
   });
 
@@ -196,7 +196,7 @@ describe('sidebarLines', () => {
 
   test('default clock renders local 24h HH:MM', () => {
     const out = sidebarLines(snap(), NOW);
-    expect(out[2]!.right).toMatch(/^\d{2}:\d{2} \(4m\)$/);
+    expect(out[2].right).toMatch(/^\d{2}:\d{2} \(4m\)$/);
   });
 });
 
@@ -206,12 +206,12 @@ describe('sidebarLines: cached line', () => {
 
   test('sits directly under status on a warm cache', () => {
     const out = lines(snap({ lastCache: cache }));
-    expect(out.slice(0, 4)).toEqual([TITLE, WARM[0]!, CACHED, WARM[1]!]);
+    expect(out.slice(0, 4)).toEqual([TITLE, WARM[0], CACHED, WARM[1]]);
   });
 
   test('sits directly under status on an expired cache', () => {
     const out = lines(snap({ lastCache: cache, expiresAt: NOW - MIN }));
-    expect(out[1]!.right).toBe('expired');
+    expect(out[1].right).toBe('expired');
     expect(out[2]).toEqual(CACHED);
   });
 

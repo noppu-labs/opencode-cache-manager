@@ -8,6 +8,7 @@ const substring = (source: string) => new RegExp(source.replace(REGEX_SPECIALS, 
 
 function validFlags(flags: string): boolean {
   try {
+    // oxlint-disable-next-line eslint/no-new -- constructed only to see whether the engine accepts the flags
     new RegExp('', flags);
     return true;
   } catch {
@@ -18,9 +19,9 @@ function validFlags(flags: string): boolean {
 /** `/body/flags` is a regex (an invalid body gives `undefined`); anything else, including bad flags like `/auto/opus`, is a substring. */
 function compile(source: string): RegExp | undefined {
   const literal = REGEX_LITERAL.exec(source);
-  if (!literal || !validFlags(literal[2]!)) return substring(source);
+  if (!literal || !validFlags(literal[2])) return substring(source);
   try {
-    return new RegExp(literal[1]!, literal[2]);
+    return new RegExp(literal[1], literal[2]);
   } catch {
     return undefined;
   }

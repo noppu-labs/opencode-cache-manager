@@ -1,13 +1,14 @@
 import type { KeepaliveSnapshot, SkipReason } from '../models/keepalive.ts';
+import { isRecord } from '../utils/is-record.ts';
 
 /** Copy of a message with `cache_control` removed from it and from its content parts. */
 function withoutCacheControl(message: unknown): unknown {
-  if (typeof message !== 'object' || message === null || Array.isArray(message)) return message;
-  const { cache_control: _message, ...rest } = message as Record<string, unknown>;
+  if (!isRecord(message)) return message;
+  const { cache_control: _message, ...rest } = message;
   if (Array.isArray(rest.content)) {
-    rest.content = rest.content.map((part) => {
-      if (typeof part !== 'object' || part === null || Array.isArray(part)) return part;
-      const { cache_control: _part, ...kept } = part as Record<string, unknown>;
+    rest.content = rest.content.map((part: unknown) => {
+      if (!isRecord(part)) return part;
+      const { cache_control: _part, ...kept } = part;
       return kept;
     });
   }
@@ -39,16 +40,10 @@ export async function readMessages(
 ): Promise<{ body: Record<string, unknown>; key: MessagesKey; messages: unknown[] } | undefined> {
   try {
     const body: unknown = JSON.parse(await request.clone().text());
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
-    const record = body as Record<string, unknown>;
-    const key: MessagesKey | undefined = Array.isArray(record.messages)
-      ? 'messages'
-      : Array.isArray(record.input)
-        ? 'input'
-        : undefined;
-    return key === undefined
-      ? undefined
-      : { body: record, key, messages: record[key] as unknown[] };
+    if (!isRecord(body)) return undefined;
+    if (Array.isArray(body.messages)) return { body, key: 'messages', messages: body.messages };
+    if (Array.isArray(body.input)) return { body, key: 'input', messages: body.input };
+    return undefined;
   } catch {
     return undefined;
   }

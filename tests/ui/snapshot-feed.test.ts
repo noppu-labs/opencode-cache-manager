@@ -107,7 +107,7 @@ describe('createSnapshotFeed', () => {
 
     expect(t.subscriptions.map((s) => s.name)).toEqual(['keepalive.updated']);
     const map = t.feed.snapshots();
-    expect([...map.keys()].sort()).toEqual(['ses_a', 'ses_b']);
+    expect([...map.keys()].toSorted()).toEqual(['ses_a', 'ses_b']);
     expect(map.get('ses_a')!.pingsUsed).toBe(1);
     expect(map.get('ses_b')!.pingsUsed).toBe(2);
   });
@@ -196,7 +196,7 @@ describe('createSnapshotFeed', () => {
 
   test('dispose aborts the subscription', () => {
     const t = setup();
-    const sub = t.subscriptions[0]!;
+    const sub = t.subscriptions[0];
     expect(sub.signal?.aborted).toBe(false);
 
     t.feed.dispose();

@@ -785,7 +785,7 @@ describe('createRequestHook on openai-chat', () => {
   test('a Claude /responses request is observed only: no rewrite, no TTL, no ping alignment', async () => {
     const h = harness();
     await h.store.setSession('ses_a', { mode: '1h' });
-    const body = JSON.stringify({
+    const raw = JSON.stringify({
       model: 'claude-opus-5-5',
       instructions: 'You are helpful.',
       input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
@@ -793,10 +793,10 @@ describe('createRequestHook on openai-chat', () => {
     const request = new Request('https://omni.example/v1/responses', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body,
+      body: raw,
     });
     const evt = await h.dispatch(request, claude);
-    expect(await evt.request.text()).toBe(body);
+    expect(await evt.request.text()).toBe(raw);
     expect(evt.request.headers.has('anthropic-beta')).toBe(false);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]?.info.requestedTtl).toBeNull();

@@ -31,6 +31,11 @@ type Field = keyof Settings;
 type Scope = 'session' | 'global';
 type Choice<V> = { title: string; value: V; description?: string };
 
+const isScope = (value: string | undefined): value is Scope =>
+  value === 'session' || value === 'global';
+const isField = (value: string | undefined): value is Field =>
+  FIELDS.some((field) => field === value);
+
 export const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
 
 export const FIELD_INFO: Record<Field, { row: string; label: string }> = {
@@ -45,9 +50,9 @@ const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
 
 export type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 
-export function formatValue<F extends Field>(field: F, value: Settings[F]): string {
+export function formatValue(field: Field, value: Settings[Field]): string {
   if (field === 'keepalive') return value ? 'on' : 'off';
-  if (field === 'minContextTokens') return formatTokens(value as number);
+  if (field === 'minContextTokens' && typeof value === 'number') return formatTokens(value);
   return String(value);
 }
 
@@ -88,6 +93,8 @@ function fieldChoices(field: Field): Choice<string | number>[] {
         ...MIN_CONTEXT_CHOICES.map((value) => ({ title: formatTokens(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
+    default:
+      throw new Error(`unknown setting: ${String(field satisfies never)}`);
   }
 }
 
@@ -139,30 +146,31 @@ export function createPicker({
     effective: Settings
   ): Promise<void> => {
     const current = effective[field];
-    const currentChoice = field === 'keepalive' ? (current ? 'on' : 'off') : current;
+    const currentChoice = typeof current === 'boolean' ? (current ? 'on' : 'off') : current;
     const selected = await dialog.select<string | number>({
       title: `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label}`,
-      current: currentChoice as string | number,
+      current: currentChoice,
       options: fieldChoices(field),
     });
     if (selected === undefined) return;
 
     let patch: SettingsPatch;
     if (selected === CUSTOM) {
-      const value = await promptNumber(field as 'maxPings' | 'minContextTokens');
+      if (field !== 'maxPings' && field !== 'minContextTokens') return;
+      const value = await promptNumber(field);
       if (value === undefined) return;
       patch = { [field]: value };
     } else if (field === 'keepalive') {
       patch = { keepalive: selected === 'on' };
     } else {
-      patch = { [field]: selected } as SettingsPatch;
+      patch = { [field]: selected };
     }
 
-    const next = patch[field] as Settings[Field];
-    if (next === current) return;
+    const next = patch[field];
+    if (next === undefined || next === current) return;
     await write(scope, sessionID, patch);
     toast(
-      `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label} set to ${formatValue(field, next as never)}.`,
+      `${scope === 'session' ? 'Session' : 'Global'} ${FIELD_INFO[field].label} set to ${formatValue(field, next)}.`,
       'success'
     );
   };
@@ -194,7 +202,8 @@ export function createPicker({
       toast('Session cache settings reset to global.', 'success');
       return;
     }
-    const [scope, field] = choice.split(':') as [Scope, Field];
+    const [scope, field] = choice.split(':');
+    if (!isScope(scope) || !isField(field)) return;
     await editField(scope, field, sessionID, scope === 'session' ? effective : global);
   };
 }

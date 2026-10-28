@@ -21,9 +21,8 @@ export function createSnapshotFeed(
   storage: Plugin.Context['storage'],
   rpc: CacheTtlRpcClient
 ): SnapshotFeed {
-  const [sidebar, updateSidebar] = storage.memory('keepalive', {
-    initial: { snapshots: {} as Record<string, KeepaliveSnapshot> },
-  });
+  const snapshots: Record<string, KeepaliveSnapshot> = {};
+  const [sidebar, updateSidebar] = storage.memory('keepalive', { initial: { snapshots } });
 
   /** Counts events per session, so a fetch can tell whether one arrived while it ran. */
   const received = new Map<string, number>();

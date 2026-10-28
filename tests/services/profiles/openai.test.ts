@@ -66,16 +66,16 @@ function expectedWithBreakpoint(wire: OpenAiWire, mode: '1h' | 'hybrid'): Rec {
   if (wire === 'openai-chat') {
     const messages = body.messages as Rec[];
     if (mode === 'hybrid') {
-      (messages[1]!.content as Rec[])[1]!.prompt_cache_breakpoint = BP;
+      (messages[1].content as Rec[])[1].prompt_cache_breakpoint = BP;
     } else {
-      messages[4]!.content = [text('question', { prompt_cache_breakpoint: BP })];
+      messages[4].content = [text('question', { prompt_cache_breakpoint: BP })];
     }
   } else {
     const input = body.input as Rec[];
     if (mode === 'hybrid') {
-      (input[0]!.content as Rec[]).at(-1)!.prompt_cache_breakpoint = BP;
+      (input[0].content as Rec[]).at(-1)!.prompt_cache_breakpoint = BP;
     } else {
-      input[3]!.output = [inputText('result', { prompt_cache_breakpoint: BP })];
+      input[3].output = [inputText('result', { prompt_cache_breakpoint: BP })];
     }
   }
   return body;
@@ -140,8 +140,8 @@ describe('openai profile', () => {
           expect(openaiProfile.rewrite(body, ctx(wire, 'hybrid', kind))).toBe(true);
           const expected = expectedWithBreakpoint(wire, 'hybrid');
           // The earlier 1h send already turned the final string message or tool output into parts.
-          if (wire === 'openai-chat') (expected.messages as Rec[])[4]!.content = [text('question')];
-          else (expected.input as Rec[])[3]!.output = [inputText('result')];
+          if (wire === 'openai-chat') (expected.messages as Rec[])[4].content = [text('question')];
+          else (expected.input as Rec[])[3].output = [inputText('result')];
           expect(body).toEqual(expected);
         });
 
@@ -219,10 +219,10 @@ describe('openai profile', () => {
         ],
       };
       expect(openaiProfile.rewrite(body, ctx('openai-chat', '1h'))).toBe(true);
-      expect((body.messages as Rec[])[0]!.content).toEqual([
+      expect((body.messages as Rec[])[0].content).toEqual([
         text('ask', { prompt_cache_breakpoint: BP }),
       ]);
-      expect((body.messages as Rec[])[2]!.content).toBe('');
+      expect((body.messages as Rec[])[2].content).toBe('');
     });
 
     const assistant = (content: unknown): Rec => ({ role: 'assistant', content });
@@ -237,10 +237,10 @@ describe('openai profile', () => {
         ],
       };
       expect(openaiProfile.rewrite(body, ctx('openai-chat', '1h'))).toBe(true);
-      expect((body.messages as Rec[])[2]!.content).toEqual([
+      expect((body.messages as Rec[])[2].content).toEqual([
         text('result', { prompt_cache_breakpoint: BP }),
       ]);
-      expect((body.messages as Rec[])[0]!.content).toBe('ask');
+      expect((body.messages as Rec[])[0].content).toBe('ask');
     });
 
     test('1h skips a final assistant message with text and lands on the previous user message', () => {

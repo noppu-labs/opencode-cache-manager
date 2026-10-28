@@ -160,7 +160,7 @@ function harness(
     for (;;) {
       const due = [...timers.entries()]
         .filter(([, t]) => t.at <= target)
-        .sort((a, b) => a[1].at - b[1].at)[0];
+        .toSorted((a, b) => a[1].at - b[1].at)[0];
       if (!due) break;
       timers.delete(due[0]);
       if (stepClock) clock = Math.max(clock, due[1].at);
@@ -699,7 +699,7 @@ describe('keepalive engine: races and lifecycle', () => {
     const before = h.engine.snapshot('s1');
     expect(before).toMatchObject({ lastRequestAt: 52 * MIN, pingsUsed: 0, lastPing: null });
 
-    h.held[0]!();
+    h.held[0]();
     await h.flush();
     expect(h.engine.snapshot('s1')).toEqual(before);
     expect(h.pings).toHaveLength(1);
@@ -733,9 +733,9 @@ describe('keepalive engine: races and lifecycle', () => {
     expect(h.timerCount).toBe(0);
     expect(gates).toHaveLength(2);
 
-    gates[1]!();
+    gates[1]();
     await h.flush();
-    gates[0]!();
+    gates[0]();
     await h.flush();
     expect(h.timerCount).toBe(1);
     expect(h.engine.snapshot('s1')).toMatchObject({
@@ -758,7 +758,7 @@ describe('keepalive engine: races and lifecycle', () => {
     await h.engine.reevaluate('s1');
     await h.advance(MIN);
     expect(h.pings).toHaveLength(1);
-    h.held[0]!();
+    h.held[0]();
     await h.flush();
     expect(h.engine.snapshot('s1')).toMatchObject({
       lastPing: 'hit',
@@ -942,7 +942,7 @@ describe('keepalive engine: review fixes', () => {
 
     h.engine.dispose();
     const changesAtDispose = h.changes.length;
-    h.held[0]!();
+    h.held[0]();
     await h.flush();
     await h.advance(120 * MIN);
     expect(h.timerCount).toBe(0);
@@ -1054,11 +1054,11 @@ describe('keepalive engine: final review fixes', () => {
     await h.advance(52 * MIN);
     expect(h.pings).toHaveLength(1);
 
-    h.held[0]!();
+    h.held[0]();
     await h.flush();
     await h.advance(0);
     expect(h.pings).toHaveLength(2);
-    expect(h.pings[1]!.at).toBe(102 * MIN);
+    expect(h.pings[1].at).toBe(102 * MIN);
   });
 });
 

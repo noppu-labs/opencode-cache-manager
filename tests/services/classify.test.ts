@@ -309,7 +309,7 @@ describe('classifyRequestWithBody', () => {
   });
 
   test('on the Messages wire never reads the body for an Anthropic ID or a Claude model ID', async () => {
-    for (const ref of [
+    for (const trusted of [
       { providerID: 'anthropic', id: 'auto/fast' },
       { providerID: 'omniroute-anthropic', id: 'auto/fast' },
       { providerID: 'some-proxy', id: 'claude-haiku-5-5' },
@@ -319,7 +319,9 @@ describe('classifyRequestWithBody', () => {
         body: '{}',
       });
       const spy = spyOn(request, 'clone');
-      expect((await classifyRequestWithBody(request, ref, noDeps, off))?.profile).toBe('anthropic');
+      expect((await classifyRequestWithBody(request, trusted, noDeps, off))?.profile).toBe(
+        'anthropic'
+      );
       expect(spy).not.toHaveBeenCalled();
     }
   });
@@ -565,15 +567,15 @@ describe('routeRequest', () => {
           for (const hasSentinel of bools)
             for (const openaiCompatible of bools) {
               const cls = wire ? { wire, profile } : undefined;
-              const chat = cls?.wire === 'openai-chat';
-              const managedChat = chat && openaiCompatible && cls.profile !== 'implicit';
+              const isChat = cls?.wire === 'openai-chat';
+              const managedChat = isChat && openaiCompatible && cls.profile !== 'implicit';
               const explicitChat = managedChat && cls.profile === 'anthropic';
               const claudeMessages =
                 cls?.wire === 'anthropic-messages' && cls.profile === 'anthropic';
               const observed =
                 anthropicProvider ||
                 cls?.wire === 'anthropic-messages' ||
-                (chat && openaiCompatible);
+                (isChat && openaiCompatible);
               const got = route({ cls, anthropicProvider, hasSentinel, openaiCompatible });
               expect(got.profile).toBe(cls?.profile);
               expect(got.wire).toBe(cls?.wire);
@@ -589,7 +591,7 @@ describe('routeRequest', () => {
               );
               expect(got.observedWire !== undefined).toBe(observed);
               expect(got.transformWire).toBe(
-                chat && (openaiCompatible || hasSentinel) ? 'openai-chat' : undefined
+                isChat && (openaiCompatible || hasSentinel) ? 'openai-chat' : undefined
               );
               const responseWire =
                 cls?.wire === 'openai-chat' && openaiCompatible

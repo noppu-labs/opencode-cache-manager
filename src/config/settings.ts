@@ -26,17 +26,17 @@ export function sanitizePatch(value: unknown): SettingsPatch {
   const patch: SettingsPatch = {};
   if (isCacheTtlMode(value.mode)) patch.mode = value.mode;
   if (typeof value.keepalive === 'boolean') patch.keepalive = value.keepalive;
-  if (
-    Number.isInteger(value.maxPings) &&
-    (value.maxPings as number) >= 0 &&
-    (value.maxPings as number) <= 100
-  ) {
-    patch.maxPings = value.maxPings as number;
+  if (isNonNegativeInteger(value.maxPings) && value.maxPings <= 100) {
+    patch.maxPings = value.maxPings;
   }
-  if (Number.isInteger(value.minContextTokens) && (value.minContextTokens as number) >= 0) {
-    patch.minContextTokens = value.minContextTokens as number;
+  if (isNonNegativeInteger(value.minContextTokens)) {
+    patch.minContextTokens = value.minContextTokens;
   }
   return patch;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 /** Reads the plugin options (`defaultMode`, `keepalive.*`) as a settings layer. */

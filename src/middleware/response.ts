@@ -70,7 +70,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
       )
         void profiles.forget(ref).catch(() => {});
       // Learning settles before the engine hears of the response, so a flip to a non-pinging profile cannot leave a ping armed.
-      const unmanaged = learns
+      const unmanagedCheck = learns
         ? observed.identity
             .then(async (identity) => {
               await profiles.learnFromResponse(ref, identity);
@@ -87,7 +87,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
             .catch(() => false)
         : Promise.resolve(false);
 
-      const reported = Promise.all([observed.usage, observed.stopReason, unmanaged])
+      const reported = Promise.all([observed.usage, observed.stopReason, unmanagedCheck])
         .then(([usage, stopReason, unmanaged]) =>
           engine.responseObserved(sessionID, { usage, ok, isPing, kind, stopReason, unmanaged })
         )

@@ -30,13 +30,13 @@ describe('parseCacheProfiles', () => {
       'opus': 'anthropic',
     });
     expect(patterns).toHaveLength(1);
-    expect(patterns[0]!.profile).toBe('anthropic');
+    expect(patterns[0].profile).toBe('anthropic');
   });
 
   test('a leading ! is part of the pattern, not a negation', () => {
     const [pattern] = parseCacheProfiles({ '!opus': 'anthropic' });
-    expect(pattern!.matches({ providerID: 'omniroute', id: '!opus' })).toBe(true);
-    expect(pattern!.matches({ providerID: 'omniroute', id: 'opus' })).toBe(false);
+    expect(pattern.matches({ providerID: 'omniroute', id: '!opus' })).toBe(true);
+    expect(pattern.matches({ providerID: 'omniroute', id: 'opus' })).toBe(false);
   });
 
   test('a missing, array or non-record option gives []', () => {

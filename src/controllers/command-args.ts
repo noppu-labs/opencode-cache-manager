@@ -5,33 +5,24 @@ import { isCacheTtlMode } from '../models/cache.ts';
 function extractRawText(raw: unknown): string {
   if (typeof raw === 'string') return raw;
 
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    'text' in raw &&
-    typeof (raw as { text: unknown }).text === 'string'
-  ) {
-    return (raw as { text: string }).text;
-  }
+  const own = textField(raw);
+  if (own !== undefined) return own;
 
   if (Array.isArray(raw)) {
     return raw
-      .map((item) => {
-        if (
-          item &&
-          typeof item === 'object' &&
-          'text' in item &&
-          typeof (item as { text: unknown }).text === 'string'
-        ) {
-          return (item as { text: string }).text;
-        }
-        return '';
-      })
+      .map((item: unknown) => textField(item) ?? '')
       .filter((part) => part.length > 0)
       .join(' ');
   }
 
   return '';
+}
+
+function textField(value: unknown): string | undefined {
+  if (value && typeof value === 'object' && 'text' in value && typeof value.text === 'string') {
+    return value.text;
+  }
+  return undefined;
 }
 
 /** What a `/cache-manager` argument asks for. */

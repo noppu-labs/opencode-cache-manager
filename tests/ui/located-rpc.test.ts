@@ -57,13 +57,13 @@ describe('withLocation', () => {
   test('passes inputs through unchanged', async () => {
     const { rpc, calls } = rawClient();
     await withLocation(rpc, locate).setSession({ sessionID: 'ses_a', patch: { maxPings: 3 } });
-    expect(calls[0]!.input).toEqual({ sessionID: 'ses_a', patch: { maxPings: 3 } });
+    expect(calls[0].input).toEqual({ sessionID: 'ses_a', patch: { maxPings: 3 } });
   });
 
   test('omits options when no location is known', async () => {
     const { rpc, calls } = rawClient();
     await withLocation(rpc, () => undefined).getKeepalive({ sessionID: 'ses_x' });
-    expect(calls[0]!.options).toBeUndefined();
+    expect(calls[0].options).toBeUndefined();
   });
 
   test('keeps the events client', () => {

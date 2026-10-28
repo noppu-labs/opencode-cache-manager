@@ -106,9 +106,9 @@ function createMockCtx(options: Record<string, unknown> = {}): MockCtx {
 }
 
 async function setup(overrides: Record<string, unknown> = {}) {
-  const mock = createMockCtx(overrides);
-  mock.cleanup = await (plugin as any).setup(mock.ctx);
-  return mock;
+  const host = createMockCtx(overrides);
+  host.cleanup = await (plugin as any).setup(host.ctx);
+  return host;
 }
 
 function invocation(text: string) {
@@ -121,46 +121,41 @@ function invocation(text: string) {
 
 describe('plugin.setup', () => {
   test('registers the cache-manager command, not cache-ttl', async () => {
-    const mock = await setup();
-    expect(mock.command().name).toBe('cache-manager');
+    const host = await setup();
+    expect(host.command().name).toBe('cache-manager');
   });
 
   test('defaults to 5m when no stored mode or option is present', async () => {
-    const mock = await setup();
-    await mock.command().execute(invocation('status'));
-    expect(mock.synthetic).toHaveLength(1);
-    expect(mock.synthetic[0].text).toContain('Session');
-    expect(mock.synthetic[0].text).toContain('5m');
+    const host = await setup();
+    await host.command().execute(invocation('status'));
+    expect(host.synthetic).toHaveLength(1);
+    expect(host.synthetic[0].text).toContain('Session');
+    expect(host.synthetic[0].text).toContain('5m');
   });
 
-  test('the legacy stored mode key seeds the global mode', async () => {
-    const mock = createMockCtx();
-    mock.store.set('mode', 'hybrid');
-    await (plugin as any).setup(mock.ctx);
-    await mock.command().execute(invocation('status'));
-    expect(mock.synthetic[0].text).toContain('hybrid');
+  test.each([
+    ['the legacy stored mode key seeds the global mode', 'hybrid', 'hybrid'],
+    ['ignores an invalid stored mode', 'banana', '5m'],
+  ])('%s', async (_label, stored, shown) => {
+    const host = createMockCtx();
+    host.store.set('mode', stored);
+    await (plugin as any).setup(host.ctx);
+    await host.command().execute(invocation('status'));
+    expect(host.synthetic[0].text).toContain(shown);
   });
 
   test('falls back to ctx.options.defaultMode when storage is empty', async () => {
-    const mock = await setup({ defaultMode: '1h' });
-    await mock.command().execute(invocation('status'));
-    expect(mock.synthetic[0].text).toContain('1h');
-  });
-
-  test('ignores an invalid stored mode', async () => {
-    const mock = createMockCtx();
-    mock.store.set('mode', 'banana');
-    await (plugin as any).setup(mock.ctx);
-    await mock.command().execute(invocation('status'));
-    expect(mock.synthetic[0].text).toContain('5m');
+    const host = await setup({ defaultMode: '1h' });
+    await host.command().execute(invocation('status'));
+    expect(host.synthetic[0].text).toContain('1h');
   });
 
   test('reads keepalive options from ctx.options', async () => {
-    const mock = await setup({
+    const host = await setup({
       keepalive: { enabled: false, maxPings: 2, minContextTokens: 20000 },
     });
-    await mock.command().execute(invocation('status'));
-    const text = mock.synthetic[0].text;
+    await host.command().execute(invocation('status'));
+    const text = host.synthetic[0].text;
     expect(text).toContain('off');
     expect(text).toContain('2');
     expect(text).toContain('20000');
@@ -183,14 +178,14 @@ describe('keepalive wiring', () => {
   });
 
   afterEach(() => {
-    for (const mock of open.splice(0)) mock.cleanup?.();
+    for (const host of open.splice(0)) host.cleanup?.();
     jest.useRealTimers();
   });
 
   async function start(options: Record<string, unknown> = {}) {
-    const mock = await setup(options);
-    open.push(mock);
-    return mock;
+    const host = await setup(options);
+    open.push(host);
+    return host;
   }
 
   /** Lets the response tee, usage parsing and engine promises settle. */
@@ -225,7 +220,7 @@ describe('keepalive wiring', () => {
   }
 
   /** Runs the request hook, then the response hook, the way the host does for one model call. */
-  async function roundTrip(mock: MockCtx, turn: Turn = {}) {
+  async function roundTrip(host: MockCtx, turn: Turn = {}) {
     const sessionID = turn.sessionID ?? 'ses_a';
     const kind = turn.kind ?? 'primary';
     const model = {
@@ -238,7 +233,7 @@ describe('keepalive wiring', () => {
       body: JSON.stringify(turn.body ?? sampleBody()),
     });
     const requestEvt = { sessionID, kind, model, request };
-    await mock.hook()(requestEvt);
+    await host.hook()(requestEvt);
     const original = turn.responseText ?? JSON.stringify({ usage: turn.usage ?? WRITE_1H });
     const responseEvt = {
       sessionID,
@@ -250,31 +245,31 @@ describe('keepalive wiring', () => {
         headers: { 'content-type': turn.contentType ?? 'application/json' },
       }),
     } as { response: Response } & Record<string, unknown>;
-    await mock.responseHook()(responseEvt);
+    await host.responseHook()(responseEvt);
     return { requestEvt, responseEvt, original };
   }
 
-  const snapshots = (mock: MockCtx, sessionID = 'ses_a') =>
-    mock.emits
+  const snapshots = (host: MockCtx, sessionID = 'ses_a') =>
+    host.emits
       .filter((e) => e.name === 'keepalive.updated' && (e.data as any).sessionID === sessionID)
       .map((e) => e.data as any);
-  const lastSnapshot = (mock: MockCtx, sessionID = 'ses_a') => snapshots(mock, sessionID).at(-1);
+  const lastSnapshot = (host: MockCtx, sessionID = 'ses_a') => snapshots(host, sessionID).at(-1);
 
   /** A generate stand-in that performs the ping's own request/response round trip. */
-  function pingingGenerate(mock: MockCtx, gates: Record<string, Promise<void>> = {}) {
-    mock.generate.mockImplementation(async (input: any) => {
+  function pingingGenerate(host: MockCtx, gates: Record<string, Promise<void>> = {}) {
+    host.generate.mockImplementation(async (input: any) => {
       await gates[input.sessionID];
-      await roundTrip(mock, { sessionID: input.sessionID, kind: 'generate', usage: READ_HIT });
+      await roundTrip(host, { sessionID: input.sessionID, kind: 'generate', usage: READ_HIT });
       return {};
     });
   }
 
   test('an Anthropic response with cache activity publishes a detected 1h snapshot', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
-    const snapshot = lastSnapshot(mock);
+    const snapshot = lastSnapshot(host);
     expect(snapshot).toMatchObject({
       sessionID: 'ses_a',
       ttl: '1h',
@@ -288,78 +283,78 @@ describe('keepalive wiring', () => {
   });
 
   test('when the timer fires, generate is called with the ping prompt', async () => {
-    const mock = await start();
-    pingingGenerate(mock);
-    await roundTrip(mock);
+    const host = await start();
+    pingingGenerate(host);
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
 
-    expect(mock.generate).toHaveBeenCalledTimes(1);
-    expect(mock.generate.mock.calls[0][0]).toEqual({ sessionID: 'ses_a', prompt: PING_PROMPT });
+    expect(host.generate).toHaveBeenCalledTimes(1);
+    expect(host.generate.mock.calls[0][0]).toEqual({ sessionID: 'ses_a', prompt: PING_PROMPT });
   });
 
   test('a ping is recorded as a hit only after its response is observed', async () => {
-    const mock = await start();
-    pingingGenerate(mock);
-    await roundTrip(mock);
+    const host = await start();
+    pingingGenerate(host);
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
 
-    expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'hit', pingsUsed: 1, skipReason: null });
+    expect(lastSnapshot(host)).toMatchObject({ lastPing: 'hit', pingsUsed: 1, skipReason: null });
   });
 
   test('a ping whose request never reaches an Anthropic hook counts as failed', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
 
-    expect(mock.generate).toHaveBeenCalledTimes(1);
-    expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'failed', pingsUsed: 1 });
+    expect(host.generate).toHaveBeenCalledTimes(1);
+    expect(lastSnapshot(host)).toMatchObject({ lastPing: 'failed', pingsUsed: 1 });
   });
 
   test('a throwing generate counts as a failed ping', async () => {
-    const mock = await start();
-    mock.generate.mockImplementation(async () => {
+    const host = await start();
+    host.generate.mockImplementation(async () => {
       throw new Error('boom');
     });
-    await roundTrip(mock);
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
 
-    expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'failed' });
+    expect(lastSnapshot(host)).toMatchObject({ lastPing: 'failed' });
   });
 
   test('ping flag is per session', async () => {
-    const mock = await start();
+    const host = await start();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
-    pingingGenerate(mock, { ses_a: gate });
+    pingingGenerate(host, { ses_a: gate });
 
-    await roundTrip(mock, { sessionID: 'ses_a' });
-    await roundTrip(mock, { sessionID: 'ses_b' });
+    await roundTrip(host, { sessionID: 'ses_a' });
+    await roundTrip(host, { sessionID: 'ses_b' });
     await flush();
 
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
-    expect(lastSnapshot(mock, 'ses_b')).toMatchObject({ pingsUsed: 1, lastPing: 'hit' });
-    expect(lastSnapshot(mock, 'ses_a')).toMatchObject({ pingsUsed: 1, nextPingAt: null });
+    expect(lastSnapshot(host, 'ses_b')).toMatchObject({ pingsUsed: 1, lastPing: 'hit' });
+    expect(lastSnapshot(host, 'ses_a')).toMatchObject({ pingsUsed: 1, nextPingAt: null });
 
-    await roundTrip(mock, { sessionID: 'ses_b', kind: 'generate', usage: WRITE_1H });
+    await roundTrip(host, { sessionID: 'ses_b', kind: 'generate', usage: WRITE_1H });
     await flush();
-    expect(lastSnapshot(mock, 'ses_b')).toMatchObject({ pingsUsed: 0, lastPing: null });
+    expect(lastSnapshot(host, 'ses_b')).toMatchObject({ pingsUsed: 0, lastPing: null });
 
     release();
     await flush();
-    expect(lastSnapshot(mock, 'ses_a')).toMatchObject({ lastPing: 'hit' });
+    expect(lastSnapshot(host, 'ses_a')).toMatchObject({ lastPing: 'hit' });
   });
 
   describe('openai-chat', () => {
@@ -399,10 +394,10 @@ describe('keepalive wiring', () => {
     });
 
     test('a Claude model is injected, pinged with an aligned request and the ping is a hit', async () => {
-      const mock = await start({ defaultMode: '1h' });
+      const host = await start({ defaultMode: '1h' });
       const pings: Array<Record<string, any>> = [];
-      mock.generate.mockImplementation(async (input: any) => {
-        const ping = await roundTrip(mock, {
+      host.generate.mockImplementation(async (input: any) => {
+        const ping = await roundTrip(host, {
           ...chatTurn('claude-opus-5-5', {
             sse: [READ_CHAT, { model: 'claude-opus-5-5', provider: 'Anthropic' }],
           }),
@@ -414,12 +409,12 @@ describe('keepalive wiring', () => {
         return {};
       });
 
-      const first = await roundTrip(mock, chatTurn('claude-opus-5-5'));
+      const first = await roundTrip(host, chatTurn('claude-opus-5-5'));
       await flush();
       const primary = (await parsedBodyOf(first.requestEvt.request)) as Record<string, any>;
       expect(collectCacheControls(primary).length).toBeGreaterThan(0);
       expect(first.requestEvt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-      expect(lastSnapshot(mock)).toMatchObject({
+      expect(lastSnapshot(host)).toMatchObject({
         ttl: '1h',
         ttlSource: 'requested',
         contextTokens: 60_000,
@@ -430,20 +425,20 @@ describe('keepalive wiring', () => {
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
 
-      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(host.generate).toHaveBeenCalledTimes(1);
       expect(pings[0]?.messages.slice(0, 3)).toEqual(primary.messages.slice(0, 3));
       expect(pings[0]?.messages[3]).toEqual({ role: 'user', content: PING_PROMPT });
-      expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
+      expect(lastSnapshot(host)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
     });
 
     test('a GPT model is pinged on the 12h schedule with an aligned request and the ping is a hit', async () => {
-      const mock = await start({ defaultMode: '1h' });
+      const host = await start({ defaultMode: '1h' });
       const model = 'gpt-6-luna';
       const drifted = chatBody(model, PING_PROMPT);
       drifted.messages[1] = { role: 'user', content: 'rewritten by another plugin' };
       const pings: Array<Record<string, any>> = [];
-      mock.generate.mockImplementation(async (input: any) => {
-        const ping = await roundTrip(mock, {
+      host.generate.mockImplementation(async (input: any) => {
+        const ping = await roundTrip(host, {
           ...chatTurn(model, { sse: [READ_CHAT] }),
           sessionID: input.sessionID,
           kind: 'generate',
@@ -453,7 +448,7 @@ describe('keepalive wiring', () => {
         return {};
       });
 
-      const first = await roundTrip(mock, chatTurn(model));
+      const first = await roundTrip(host, chatTurn(model));
       await flush();
       const primary = (await parsedBodyOf(first.requestEvt.request)) as Record<string, any>;
       expect(primary.prompt_cache_options).toBeUndefined();
@@ -466,7 +461,7 @@ describe('keepalive wiring', () => {
         { type: 'text', text: 'again', prompt_cache_breakpoint: { mode: 'explicit', ttl: '12h' } },
       ]);
       expect(first.requestEvt.request.headers.get('anthropic-beta')).toBeNull();
-      expect(lastSnapshot(mock)).toMatchObject({
+      expect(lastSnapshot(host)).toMatchObject({
         ttl: '12h',
         ttlSource: 'requested',
         contextTokens: 60_000,
@@ -476,20 +471,20 @@ describe('keepalive wiring', () => {
 
       jest.advanceTimersByTime(TEN_HOURS - 1);
       await flush();
-      expect(mock.generate).not.toHaveBeenCalled();
+      expect(host.generate).not.toHaveBeenCalled();
       jest.advanceTimersByTime(1);
       await flush();
 
-      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(host.generate).toHaveBeenCalledTimes(1);
       expect(pings[0]?.messages.slice(0, 3)).toEqual(primary.messages.slice(0, 3));
       expect(pings[0]?.messages[3]).toEqual({ role: 'user', content: PING_PROMPT });
       expect(pings[0]?.prompt_cache_options).toBeUndefined();
       expect(pings[0]).toEqual(chatBody(model, PING_PROMPT));
-      expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
+      expect(lastSnapshot(host)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
     });
 
     test('a DeepSeek session is observed but never pings', async () => {
-      const mock = await start({ defaultMode: '1h' });
+      const host = await start({ defaultMode: '1h' });
       const model = 'deepseek/deepseek-v4.1-flash';
       const turn = chatTurn(model, {
         sse: [
@@ -498,40 +493,40 @@ describe('keepalive wiring', () => {
         ],
       });
       const raw = JSON.stringify(turn.body);
-      const { requestEvt } = await roundTrip(mock, turn);
+      const { requestEvt } = await roundTrip(host, turn);
       await flush();
 
       expect(await requestEvt.request.text()).toBe(raw);
-      expect(lastSnapshot(mock)).toMatchObject({
+      expect(lastSnapshot(host)).toMatchObject({
         skipReason: 'implicit',
         nextPingAt: null,
         lastCache: { read: 10_112, total: 60_000 },
       });
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
-      expect(mock.generate).not.toHaveBeenCalled();
+      expect(host.generate).not.toHaveBeenCalled();
     });
 
     test('an alias is unmanaged on turn 1 and injected on turn 2 once learned', async () => {
-      const mock = await start({ defaultMode: '1h' });
+      const host = await start({ defaultMode: '1h' });
       const alias = 'auto/opus-5';
       const learnedResponse: Parameters<typeof openaiSse> = [
         WRITE_CHAT,
         { model: 'claude-opus-5-5', provider: 'Anthropic' },
       ];
 
-      const first = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
+      const first = await roundTrip(host, chatTurn(alias, { sse: learnedResponse }));
       await flush();
       expect(collectCacheControls(await parsedBodyOf(first.requestEvt.request))).toHaveLength(0);
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'implicit' });
-      expect(mock.store.get('learned-models')).toEqual({ 'omniroute/auto/opus-5': 'anthropic' });
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'implicit' });
+      expect(host.store.get('learned-models')).toEqual({ 'omniroute/auto/opus-5': 'anthropic' });
 
-      const second = await roundTrip(mock, chatTurn(alias, { sse: learnedResponse }));
+      const second = await roundTrip(host, chatTurn(alias, { sse: learnedResponse }));
       await flush();
       expect(
         collectCacheControls(await parsedBodyOf(second.requestEvt.request)).length
       ).toBeGreaterThan(0);
-      expect(lastSnapshot(mock)).toMatchObject({ ttl: '1h', skipReason: null });
+      expect(lastSnapshot(host)).toMatchObject({ ttl: '1h', skipReason: null });
     });
 
     test('a learned profile survives a restart', async () => {
@@ -555,25 +550,25 @@ describe('keepalive wiring', () => {
     });
 
     test('openaiCompatible: false leaves chat completions alone', async () => {
-      const mock = await start({ openaiCompatible: false });
+      const host = await start({ openaiCompatible: false });
       const turn = chatTurn('claude-opus-5-5');
       const raw = JSON.stringify(turn.body);
-      const { requestEvt } = await roundTrip(mock, turn);
+      const { requestEvt } = await roundTrip(host, turn);
       await flush();
       expect(await requestEvt.request.text()).toBe(raw);
-      expect(snapshots(mock)).toHaveLength(0);
-      expect(mock.store.has('learned-models')).toBe(false);
+      expect(snapshots(host)).toHaveLength(0);
+      expect(host.store.has('learned-models')).toBe(false);
     });
   });
 
   test('an Anthropic-shaped URL on an unknown provider is still observed', async () => {
-    const mock = await start();
-    await roundTrip(mock, {
+    const host = await start();
+    await roundTrip(host, {
       providerID: 'some-proxy',
       url: 'https://proxy.example/anthropic/v1/messages',
     });
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ ttl: '1h' });
+    expect(lastSnapshot(host)).toMatchObject({ ttl: '1h' });
   });
 
   describe('anthropic-messages under a non-Anthropic provider ID', () => {
@@ -597,14 +592,14 @@ describe('keepalive wiring', () => {
     });
 
     test('a DeepSeek session is observed but never pings', async () => {
-      const mock = await start({ keepalive: { minContextTokens: 0 } });
+      const host = await start({ keepalive: { minContextTokens: 0 } });
       const turn = proxyTurn('deepseek/deepseek-v4.1-flash', READ_HIT);
       const raw = JSON.stringify(turn.body);
-      const { requestEvt } = await roundTrip(mock, turn);
+      const { requestEvt } = await roundTrip(host, turn);
       await flush();
 
       expect(await requestEvt.request.text()).toBe(raw);
-      expect(lastSnapshot(mock)).toMatchObject({
+      expect(lastSnapshot(host)).toMatchObject({
         skipReason: 'implicit',
         nextPingAt: null,
         lastCache: { read: 60_000, total: 60_010 },
@@ -613,22 +608,22 @@ describe('keepalive wiring', () => {
       await flush();
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
-      expect(mock.generate).not.toHaveBeenCalled();
+      expect(host.generate).not.toHaveBeenCalled();
     });
 
     test('an alias is untouched on turn 1, then rewritten and kept warm once its response names Claude', async () => {
-      const mock = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
+      const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/fast';
       const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
       const pings: Array<Record<string, any>> = [];
-      mock.generate.mockImplementation(async (input: any) => {
+      host.generate.mockImplementation(async (input: any) => {
         const body = { ...sampleBody(), model: alias } as Record<string, any>;
         body.messages = [
           diverging,
           { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] },
         ];
         const ping = await roundTrip(
-          mock,
+          host,
           proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {
             sessionID: input.sessionID,
             kind: 'generate',
@@ -641,20 +636,20 @@ describe('keepalive wiring', () => {
 
       const turn = proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5');
       const raw = JSON.stringify(turn.body);
-      const first = await roundTrip(mock, turn);
+      const first = await roundTrip(host, turn);
       await flush();
       expect(await first.requestEvt.request.text()).toBe(raw);
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
-      expect(mock.store.get('learned-models')).toEqual({ 'some-proxy/auto/fast': 'anthropic' });
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
+      expect(host.store.get('learned-models')).toEqual({ 'some-proxy/auto/fast': 'anthropic' });
 
-      const second = await roundTrip(mock, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
+      const second = await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
       await flush();
       const primary = (await parsedBodyOf(second.requestEvt.request)) as Record<string, any>;
       const controls = collectCacheControls(primary);
       expect(controls.length).toBeGreaterThan(0);
       expect(controls.every((control) => control.ttl === '1h')).toBe(true);
       expect(second.requestEvt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-      expect(lastSnapshot(mock)).toMatchObject({
+      expect(lastSnapshot(host)).toMatchObject({
         ttl: '1h',
         ttlSource: 'detected',
         skipReason: null,
@@ -664,22 +659,22 @@ describe('keepalive wiring', () => {
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
 
-      expect(mock.generate).toHaveBeenCalledTimes(1);
+      expect(host.generate).toHaveBeenCalledTimes(1);
       expect(pings[0]?.messages[0]).toEqual(primary.messages[0]);
       expect(pings[0]?.messages[0]).not.toEqual(diverging);
       expect(JSON.stringify(pings[0]?.messages[1])).toContain(PING_PROMPT);
-      expect(lastSnapshot(mock)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
+      expect(lastSnapshot(host)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
     });
 
     test('a learned alias whose response names a non-Claude model stops pinging and is left alone next turn', async () => {
-      const mock = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
+      const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/best';
-      await roundTrip(mock, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
+      await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
       await flush();
-      expect(mock.store.get('learned-models')).toEqual({ 'some-proxy/auto/best': 'anthropic' });
+      expect(host.store.get('learned-models')).toEqual({ 'some-proxy/auto/best': 'anthropic' });
 
       const stale = await roundTrip(
-        mock,
+        host,
         proxyTurn(alias, READ_HIT, 'deepseek/deepseek-v4.1-flash')
       );
       await flush();
@@ -687,29 +682,29 @@ describe('keepalive wiring', () => {
         collectCacheControls(await parsedBodyOf(stale.requestEvt.request)).length
       ).toBeGreaterThan(0);
       expect(stale.requestEvt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-      expect(mock.store.get('learned-models')).toEqual({ 'some-proxy/auto/best': 'implicit' });
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
+      expect(host.store.get('learned-models')).toEqual({ 'some-proxy/auto/best': 'implicit' });
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
 
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
       jest.advanceTimersByTime(FIFTY_MIN);
       await flush();
-      expect(mock.generate).not.toHaveBeenCalled();
+      expect(host.generate).not.toHaveBeenCalled();
 
       const next = proxyTurn(alias, READ_HIT, 'deepseek/deepseek-v4.1-flash');
       const raw = JSON.stringify(next.body);
-      const { requestEvt } = await roundTrip(mock, next);
+      const { requestEvt } = await roundTrip(host, next);
       expect(await requestEvt.request.text()).toBe(raw);
     });
 
     test('a learned alias answered with an error drops the entry, and the next turn is left alone', async () => {
-      const mock = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
+      const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/best';
-      await roundTrip(mock, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
+      await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
       await flush();
 
       const rejected = await roundTrip(
-        mock,
+        host,
         proxyTurn(alias, READ_HIT, alias, {
           status: 400,
           contentType: 'application/json',
@@ -721,61 +716,61 @@ describe('keepalive wiring', () => {
       );
       await flush();
       expect(rejected.requestEvt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-      expect(mock.store.get('learned-models')).toEqual({});
+      expect(host.store.get('learned-models')).toEqual({});
 
       const next = proxyTurn(alias, READ_HIT, alias);
       const raw = JSON.stringify(next.body);
-      const { requestEvt } = await roundTrip(mock, next);
+      const { requestEvt } = await roundTrip(host, next);
       await flush();
       expect(await requestEvt.request.text()).toBe(raw);
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'implicit', nextPingAt: null });
     });
   });
 
   test('a session with a parent is skipped as a child', async () => {
-    const mock = await start();
-    mock.sessionGet.mockImplementation(async (input: any) => ({
+    const host = await start();
+    host.sessionGet.mockImplementation(async (input: any) => ({
       id: input.sessionID,
       parentID: 'ses_parent',
     }));
-    await roundTrip(mock);
+    await roundTrip(host);
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'child', nextPingAt: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'child', nextPingAt: null });
   });
 
   test('a failed parent lookup does not schedule a ping', async () => {
-    const mock = await start();
-    mock.sessionGet.mockImplementation(async () => {
+    const host = await start();
+    host.sessionGet.mockImplementation(async () => {
       throw new Error('lookup failed');
     });
-    await roundTrip(mock);
+    await roundTrip(host);
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'child', nextPingAt: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'child', nextPingAt: null });
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
-    expect(mock.generate).not.toHaveBeenCalled();
+    expect(host.generate).not.toHaveBeenCalled();
   });
 
   test('/cache-manager keepalive off disables the session and cancels the timer', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
-    expect(lastSnapshot(mock).nextPingAt).toBe(T0 + FIFTY_MIN);
+    expect(lastSnapshot(host).nextPingAt).toBe(T0 + FIFTY_MIN);
 
-    await mock.command().execute({ ...invocation('keepalive off'), sessionID: 'ses_a' });
+    await host.command().execute({ ...invocation('keepalive off'), sessionID: 'ses_a' });
     await flush();
 
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'disabled', nextPingAt: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'disabled', nextPingAt: null });
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
-    expect(mock.generate).not.toHaveBeenCalled();
+    expect(host.generate).not.toHaveBeenCalled();
   });
 
   test('the typed command also publishes settings.updated for the session', async () => {
-    const mock = await start();
-    await mock.command().execute({ ...invocation('1h'), sessionID: 'ses_a' });
-    await mock.command().execute({ ...invocation('reset'), sessionID: 'ses_a' });
-    const updates = mock.emits.filter((e) => e.name === 'settings.updated');
+    const host = await start();
+    await host.command().execute({ ...invocation('1h'), sessionID: 'ses_a' });
+    await host.command().execute({ ...invocation('reset'), sessionID: 'ses_a' });
+    const updates = host.emits.filter((e) => e.name === 'settings.updated');
     expect(updates).toEqual([
       { name: 'settings.updated', data: { sessionID: 'ses_a' } },
       { name: 'settings.updated', data: { sessionID: 'ses_a' } },
@@ -783,39 +778,39 @@ describe('keepalive wiring', () => {
   });
 
   test('RPC setSession re-evaluates the schedule', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
-    await mock.rpc().setSession({ sessionID: 'ses_a', patch: { keepalive: false } });
+    await host.rpc().setSession({ sessionID: 'ses_a', patch: { keepalive: false } });
     await flush();
 
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'disabled', nextPingAt: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'disabled', nextPingAt: null });
   });
 
   test('RPC setGlobal re-evaluates every known session', async () => {
-    const mock = await start();
-    await roundTrip(mock, { sessionID: 'ses_a' });
-    await roundTrip(mock, { sessionID: 'ses_b' });
+    const host = await start();
+    await roundTrip(host, { sessionID: 'ses_a' });
+    await roundTrip(host, { sessionID: 'ses_b' });
     await flush();
 
-    await mock.rpc().setGlobal({ patch: { keepalive: false } });
+    await host.rpc().setGlobal({ patch: { keepalive: false } });
     await flush();
 
-    expect(lastSnapshot(mock, 'ses_a')).toMatchObject({ skipReason: 'disabled' });
-    expect(lastSnapshot(mock, 'ses_b')).toMatchObject({ skipReason: 'disabled' });
+    expect(lastSnapshot(host, 'ses_a')).toMatchObject({ skipReason: 'disabled' });
+    expect(lastSnapshot(host, 'ses_b')).toMatchObject({ skipReason: 'disabled' });
   });
 
   test('RPC resetSession re-evaluates the schedule', async () => {
-    const mock = await start();
-    await mock.rpc().setSession({ sessionID: 'ses_a', patch: { keepalive: false } });
-    await roundTrip(mock);
+    const host = await start();
+    await host.rpc().setSession({ sessionID: 'ses_a', patch: { keepalive: false } });
+    await roundTrip(host);
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'disabled' });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'disabled' });
 
-    await mock.rpc().resetSession({ sessionID: 'ses_a' });
+    await host.rpc().resetSession({ sessionID: 'ses_a' });
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: null, nextPingAt: T0 + FIFTY_MIN });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: null, nextPingAt: T0 + FIFTY_MIN });
   });
 
   test('the keepalive snapshot schema requires minContextTokens as an integer', () => {
@@ -828,12 +823,12 @@ describe('keepalive wiring', () => {
   });
 
   test('RPC getKeepalive returns the current snapshot', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
-    expect(await mock.rpc().getKeepalive({ sessionID: 'ses_a' })).toEqual(lastSnapshot(mock));
-    expect(await mock.rpc().getKeepalive({ sessionID: 'ses_unknown' })).toMatchObject({
+    expect(await host.rpc().getKeepalive({ sessionID: 'ses_a' })).toEqual(lastSnapshot(host));
+    expect(await host.rpc().getKeepalive({ sessionID: 'ses_unknown' })).toMatchObject({
       sessionID: 'ses_unknown',
       ttl: null,
       nextPingAt: null,
@@ -842,47 +837,47 @@ describe('keepalive wiring', () => {
   });
 
   test('cleanup disposes the engine', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
-    expect(typeof mock.cleanup).toBe('function');
+    expect(typeof host.cleanup).toBe('function');
 
-    await mock.cleanup!();
+    await host.cleanup!();
     jest.advanceTimersByTime(FIFTY_MIN * 2);
     await flush();
 
-    expect(mock.generate).not.toHaveBeenCalled();
+    expect(host.generate).not.toHaveBeenCalled();
   });
 
   test('a failed response does not extend the expiry', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIVE_MIN);
-    await roundTrip(mock, { status: 529, usage: {} });
+    await roundTrip(host, { status: 529, usage: {} });
     await flush();
 
-    expect(lastSnapshot(mock).lastRequestAt).toBe(T0);
+    expect(lastSnapshot(host).lastRequestAt).toBe(T0);
   });
 
   test('an uncached response with no usage still resets the pending schedule', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
 
     jest.advanceTimersByTime(FIVE_MIN);
-    await roundTrip(mock, { responseText: '{}' });
+    await roundTrip(host, { responseText: '{}' });
     await flush();
 
-    expect(lastSnapshot(mock)).toMatchObject({
+    expect(lastSnapshot(host)).toMatchObject({
       lastRequestAt: T0 + FIVE_MIN,
       nextPingAt: T0 + FIVE_MIN + FIFTY_MIN,
     });
   });
 
   test('the requested TTL is read before the sentinel is stripped', async () => {
-    const mock = await start();
+    const host = await start();
     const request = new Request('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', [SENTINEL_HEADER]: '1h' },
@@ -894,8 +889,8 @@ describe('keepalive wiring', () => {
       model: { providerID: 'anthropic' },
       request,
     };
-    await mock.hook()(evt);
-    await mock.responseHook()({
+    await host.hook()(evt);
+    await host.responseHook()({
       ...evt,
       request: evt.request,
       response: new Response(
@@ -907,7 +902,7 @@ describe('keepalive wiring', () => {
     });
     await flush();
     expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
-    expect(lastSnapshot(mock)).toMatchObject({ ttl: '1h', ttlSource: 'requested' });
+    expect(lastSnapshot(host)).toMatchObject({ ttl: '1h', ttlSource: 'requested' });
   });
 
   describe('ping alignment', () => {
@@ -915,15 +910,15 @@ describe('keepalive wiring', () => {
       ((await parsedBodyOf(request)) as any).messages as unknown[];
 
     /** Fires the next ping with a diverging body; true when the ping was aligned to stored messages. */
-    async function nextPingAligned(mock: MockCtx, advance = FIFTY_MIN) {
+    async function nextPingAligned(host: MockCtx, advance = FIFTY_MIN) {
       const diverging = sampleBody();
       diverging.messages = [
         { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] },
         { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] },
       ];
       let sent: unknown[] | undefined;
-      mock.generate.mockImplementation(async () => {
-        const { requestEvt } = await roundTrip(mock, {
+      host.generate.mockImplementation(async () => {
+        const { requestEvt } = await roundTrip(host, {
           kind: 'generate',
           body: diverging,
           usage: READ_HIT,
@@ -938,44 +933,44 @@ describe('keepalive wiring', () => {
     }
 
     test('stored messages are dropped once the session is exhausted', async () => {
-      const mock = await start();
-      await mock.command().execute({ ...invocation('pings 1'), sessionID: 'ses_a' });
-      await roundTrip(mock);
+      const host = await start();
+      await host.command().execute({ ...invocation('pings 1'), sessionID: 'ses_a' });
+      await roundTrip(host);
       await flush();
-      expect(await nextPingAligned(mock)).toBe(true);
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'exhausted' });
+      expect(await nextPingAligned(host)).toBe(true);
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'exhausted' });
 
-      await mock.command().execute({ ...invocation('pings 5'), sessionID: 'ses_a' });
+      await host.command().execute({ ...invocation('pings 5'), sessionID: 'ses_a' });
       await flush();
-      expect(await nextPingAligned(mock)).toBe(false);
+      expect(await nextPingAligned(host)).toBe(false);
     });
 
     test('messages of a child session are not stored', async () => {
-      const mock = await start();
-      mock.sessionGet.mockImplementation(async () => {
+      const host = await start();
+      host.sessionGet.mockImplementation(async () => {
         throw new Error('lookup failed');
       });
-      await roundTrip(mock);
+      await roundTrip(host);
       await flush();
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'child' });
-      await roundTrip(mock);
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'child' });
+      await roundTrip(host);
       await flush();
 
       // The failed lookup is retried and now reports a top-level session.
-      mock.sessionGet.mockImplementation(async (input: any) => ({ id: input.sessionID }));
-      await mock.rpc().setSession({ sessionID: 'ses_a', patch: { maxPings: 4 } });
+      host.sessionGet.mockImplementation(async (input: any) => ({ id: input.sessionID }));
+      await host.rpc().setSession({ sessionID: 'ses_a', patch: { maxPings: 4 } });
       await flush();
-      expect(lastSnapshot(mock)).toMatchObject({ skipReason: null });
-      expect(await nextPingAligned(mock)).toBe(false);
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: null });
+      expect(await nextPingAligned(host)).toBe(false);
     });
 
     test('cleanup clears the stored messages', async () => {
-      const mock = await start();
-      await roundTrip(mock);
+      const host = await start();
+      await roundTrip(host);
       await flush();
       const clear = spyOn(Map.prototype, 'clear');
       try {
-        await mock.cleanup!();
+        await host.cleanup!();
         expect(clear).toHaveBeenCalled();
       } finally {
         clear.mockRestore();
@@ -984,28 +979,28 @@ describe('keepalive wiring', () => {
   });
 
   test('a primary response stopping for tool_use marks the session busy', async () => {
-    const mock = await start();
-    await roundTrip(mock, {
+    const host = await start();
+    await roundTrip(host, {
       responseText: JSON.stringify({ stop_reason: 'tool_use', usage: WRITE_1H }),
     });
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: 'busy', nextPingAt: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: 'busy', nextPingAt: null });
     jest.advanceTimersByTime(FIFTY_MIN);
     await flush();
-    expect(mock.generate).not.toHaveBeenCalled();
+    expect(host.generate).not.toHaveBeenCalled();
 
-    await roundTrip(mock, {
+    await roundTrip(host, {
       responseText: JSON.stringify({ stop_reason: 'end_turn', usage: WRITE_1H }),
     });
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ skipReason: null });
+    expect(lastSnapshot(host)).toMatchObject({ skipReason: null });
   });
 
   test('a title response does not overwrite the context size or TTL', async () => {
-    const mock = await start();
-    await roundTrip(mock);
+    const host = await start();
+    await roundTrip(host);
     await flush();
-    await roundTrip(mock, {
+    await roundTrip(host, {
       kind: 'title',
       usage: {
         input_tokens: 10,
@@ -1014,38 +1009,38 @@ describe('keepalive wiring', () => {
       },
     });
     await flush();
-    expect(lastSnapshot(mock)).toMatchObject({ ttl: '1h', contextTokens: 60_010 });
+    expect(lastSnapshot(host)).toMatchObject({ ttl: '1h', contextTokens: 60_010 });
   });
 
   describe('startup sweep', () => {
     test('removes stored settings for sessions that no longer exist', async () => {
-      const mock = createMockCtx();
-      mock.store.set('session/ses_gone', { mode: '1h' });
-      mock.store.set('session/ses_live', { mode: '1h' });
-      mock.store.set('global', { mode: '5m' });
-      mock.sessionGet.mockImplementation(async (input: any) => {
+      const host = createMockCtx();
+      host.store.set('session/ses_gone', { mode: '1h' });
+      host.store.set('session/ses_live', { mode: '1h' });
+      host.store.set('global', { mode: '5m' });
+      host.sessionGet.mockImplementation(async (input: any) => {
         if (input.sessionID === 'ses_gone')
           throw Object.assign(new Error('Session not found'), { _tag: 'SessionNotFoundError' });
         return { id: input.sessionID };
       });
-      mock.cleanup = await (plugin as any).setup(mock.ctx);
-      open.push(mock);
+      host.cleanup = await (plugin as any).setup(host.ctx);
+      open.push(host);
       await flush();
 
-      expect(mock.store.has('session/ses_gone')).toBe(false);
-      expect(mock.store.has('session/ses_live')).toBe(true);
-      expect(mock.store.has('global')).toBe(true);
+      expect(host.store.has('session/ses_gone')).toBe(false);
+      expect(host.store.has('session/ses_live')).toBe(true);
+      expect(host.store.has('global')).toBe(true);
     });
 
     test('a failing scan does not fail setup', async () => {
-      const mock = createMockCtx();
-      mock.ctx.storage.scan = async () => {
+      const host = createMockCtx();
+      host.ctx.storage.scan = async () => {
         throw new Error('scan unsupported');
       };
-      mock.cleanup = await (plugin as any).setup(mock.ctx);
-      open.push(mock);
+      host.cleanup = await (plugin as any).setup(host.ctx);
+      open.push(host);
       await flush();
-      expect(typeof mock.cleanup).toBe('function');
+      expect(typeof host.cleanup).toBe('function');
     });
   });
 });
@@ -1056,10 +1051,10 @@ describe('keepalive wiring', () => {
 
 describe('cache-manager RPC', () => {
   test('setup resolves and getSettings returns the built-in defaults', async () => {
-    const mock = createMockCtx();
-    await (plugin as any).setup(mock.ctx);
-    expect(mock.rpc()).toBeDefined();
-    expect(await mock.rpc().getSettings({})).toEqual({
+    const host = createMockCtx();
+    await (plugin as any).setup(host.ctx);
+    expect(host.rpc()).toBeDefined();
+    expect(await host.rpc().getSettings({})).toEqual({
       global: { mode: '5m', keepalive: true, maxPings: 5, minContextTokens: 50_000 },
       session: null,
     });
@@ -1077,35 +1072,35 @@ describe('cache-manager RPC', () => {
   });
 
   test('setSession persists, emits settings.updated with the session ID and returns {}', async () => {
-    const mock = createMockCtx();
-    await (plugin as any).setup(mock.ctx);
+    const host = createMockCtx();
+    await (plugin as any).setup(host.ctx);
 
-    const result = await mock.rpc().setSession({ sessionID: 'ses_x', patch: { mode: 'hybrid' } });
+    const result = await host.rpc().setSession({ sessionID: 'ses_x', patch: { mode: 'hybrid' } });
 
     expect(result).toEqual({});
-    expect(mock.store.get('session/ses_x')).toEqual({ mode: 'hybrid' });
-    expect(mock.emits).toEqual([{ name: 'settings.updated', data: { sessionID: 'ses_x' } }]);
-    expect((await mock.rpc().getSettings({ sessionID: 'ses_x' })).session).toEqual({
+    expect(host.store.get('session/ses_x')).toEqual({ mode: 'hybrid' });
+    expect(host.emits).toEqual([{ name: 'settings.updated', data: { sessionID: 'ses_x' } }]);
+    expect((await host.rpc().getSettings({ sessionID: 'ses_x' })).session).toEqual({
       mode: 'hybrid',
     });
   });
 
   test('setGlobal persists, emits settings.updated with null and returns {}', async () => {
-    const mock = createMockCtx();
-    await (plugin as any).setup(mock.ctx);
+    const host = createMockCtx();
+    await (plugin as any).setup(host.ctx);
 
-    const result = await mock.rpc().setGlobal({ patch: { mode: '1h', maxPings: 2 } });
+    const result = await host.rpc().setGlobal({ patch: { mode: '1h', maxPings: 2 } });
 
     expect(result).toEqual({});
-    expect(mock.store.get('global')).toEqual({ mode: '1h', maxPings: 2 });
-    expect(mock.emits).toEqual([{ name: 'settings.updated', data: { sessionID: null } }]);
-    expect((await mock.rpc().getSettings({})).global.mode).toBe('1h');
+    expect(host.store.get('global')).toEqual({ mode: '1h', maxPings: 2 });
+    expect(host.emits).toEqual([{ name: 'settings.updated', data: { sessionID: null } }]);
+    expect((await host.rpc().getSettings({})).global.mode).toBe('1h');
   });
 
   test('a global change applies to the http.request hook', async () => {
-    const mock = createMockCtx();
-    await (plugin as any).setup(mock.ctx);
-    await mock.rpc().setGlobal({ patch: { mode: '1h' } });
+    const host = createMockCtx();
+    await (plugin as any).setup(host.ctx);
+    await host.rpc().setGlobal({ patch: { mode: '1h' } });
 
     const evt = {
       sessionID: 'ses_x',
@@ -1113,7 +1108,7 @@ describe('cache-manager RPC', () => {
       model: { providerID: 'anthropic' },
       request: makeRequest(JSON.stringify(sampleBody())),
     };
-    await mock.hook()(evt);
+    await host.hook()(evt);
     expect(evt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
   });
 });

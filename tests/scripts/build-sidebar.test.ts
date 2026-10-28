@@ -17,9 +17,9 @@ function importSpecifiers(code: string): string[] {
     /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
     /\bimport\s+["']([^"']+)["']/g,
   ]) {
-    for (const match of code.matchAll(re)) found.add(match[1]!);
+    for (const match of code.matchAll(re)) found.add(match[1]);
   }
-  return [...found].sort();
+  return [...found].toSorted();
 }
 
 describe('buildSidebar', () => {

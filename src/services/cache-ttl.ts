@@ -43,9 +43,9 @@ export function mergeBetaHeader(
 
 /** Applies a TTL to a tool block and any nested namespace `tools`. */
 function applyTtlToTool(tool: unknown, ttl: '1h' | undefined): boolean {
-  if (!tool || typeof tool !== 'object') return false;
+  if (!isRecord(tool)) return false;
   let changed = applyTtlToBlock(tool, ttl);
-  const nested = (tool as Record<string, unknown>).tools;
+  const nested = tool.tools;
   if (Array.isArray(nested)) {
     for (const child of nested) {
       changed = applyTtlToTool(child, ttl) || changed;
@@ -86,7 +86,7 @@ export function rewriteAnthropicCacheTtl(
   if (Array.isArray(body.messages)) {
     for (const message of body.messages) {
       changed = applyTtlToBlock(message, messageTtl) || changed;
-      const content = (message as Record<string, unknown> | null)?.content;
+      const content = isRecord(message) ? message.content : undefined;
       if (Array.isArray(content)) {
         for (const part of content) {
           changed = applyTtlToBlock(part, messageTtl) || changed;

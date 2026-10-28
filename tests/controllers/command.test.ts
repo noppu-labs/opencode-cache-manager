@@ -41,9 +41,9 @@ describe('createCacheManagerCommand', () => {
     expect(data.has('global')).toBe(false);
     expect(data.has('mode')).toBe(false);
     expect(said).toHaveLength(1);
-    expect(said[0]!.sessionID).toBe(SESSION);
-    expect(said[0]!.text).toContain('Session');
-    expect(said[0]!.text).toContain('1h');
+    expect(said[0].sessionID).toBe(SESSION);
+    expect(said[0].text).toContain('Session');
+    expect(said[0].text).toContain('1h');
   });
 
   test('an explicit mode does not touch an existing global setting', async () => {
@@ -57,7 +57,7 @@ describe('createCacheManagerCommand', () => {
     const { run, data, said } = await setup();
     await run('hybrid');
     expect(data.get(`session/${SESSION}`)).toEqual({ mode: 'hybrid' });
-    expect(said[0]!.text).toContain('hybrid');
+    expect(said[0].text).toContain('hybrid');
   });
 
   test('no argument toggles the session mode 5m -> 1h -> 5m', async () => {
@@ -66,8 +66,8 @@ describe('createCacheManagerCommand', () => {
     await run('');
     expect(data.get(`session/${SESSION}`)).toEqual({ mode: '1h' });
     expect(said).toHaveLength(1);
-    expect(said[0]!.sessionID).toBe(SESSION);
-    expect(said[0]!.text).toContain('1h');
+    expect(said[0].sessionID).toBe(SESSION);
+    expect(said[0].text).toContain('1h');
 
     await run('');
     expect(data.get(`session/${SESSION}`)).toEqual({ mode: '5m' });
@@ -94,7 +94,7 @@ describe('createCacheManagerCommand', () => {
 
     await run('keepalive off');
     expect(data.get(`session/${SESSION}`)).toEqual({ keepalive: false });
-    expect(said[0]!.text).toContain('Session');
+    expect(said[0].text).toContain('Session');
 
     await run('pings 3');
     await run('min 20k');
@@ -103,8 +103,8 @@ describe('createCacheManagerCommand', () => {
       maxPings: 3,
       minContextTokens: 20000,
     });
-    expect(said[1]!.text).toContain('3');
-    expect(said[2]!.text).toContain('20000');
+    expect(said[1].text).toContain('3');
+    expect(said[2].text).toContain('20000');
     expect(data.has('global')).toBe(false);
   });
 
@@ -114,15 +114,15 @@ describe('createCacheManagerCommand', () => {
     await run('reset');
     expect(data.has(`session/${SESSION}`)).toBe(false);
     expect(said).toHaveLength(2);
-    expect(said[1]!.sessionID).toBe(SESSION);
-    expect(said[1]!.text).toContain('Session');
+    expect(said[1].sessionID).toBe(SESSION);
+    expect(said[1].text).toContain('Session');
   });
 
   test('reset reports the settings the session falls back to', async () => {
     const { run, said } = await setup({}, { global: { mode: 'hybrid' } });
     await run('1h');
     await run('reset');
-    expect(said[1]!.text).toContain('hybrid');
+    expect(said[1].text).toContain('hybrid');
   });
 
   test('status reports the effective session settings without writing', async () => {
@@ -136,7 +136,7 @@ describe('createCacheManagerCommand', () => {
 
     expect(new Map(data)).toEqual(before);
     expect(said).toHaveLength(1);
-    const text = said[0]!.text;
+    const text = said[0].text;
     expect(text).toContain('hybrid');
     expect(text).toContain('off');
     expect(text).toContain('7');
@@ -147,8 +147,8 @@ describe('createCacheManagerCommand', () => {
     const { run, said } = await setup();
     await run('status');
     expect(said).toHaveLength(1);
-    expect(said[0]!.text).toContain('Session');
-    expect(said[0]!.text).toContain('5m');
+    expect(said[0].text).toContain('Session');
+    expect(said[0].text).toContain('5m');
   });
 
   test('an invalid argument lists the valid ones without writing', async () => {
@@ -157,7 +157,7 @@ describe('createCacheManagerCommand', () => {
     expect(data.size).toBe(0);
     expect(said).toHaveLength(1);
     for (const word of ['5m', '1h', 'hybrid', 'status', 'reset', 'keepalive', 'pings', 'min']) {
-      expect(said[0]!.text).toContain(word);
+      expect(said[0].text).toContain(word);
     }
     expect(settingsChanged).not.toHaveBeenCalled();
   });

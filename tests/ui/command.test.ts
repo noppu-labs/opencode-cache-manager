@@ -159,10 +159,10 @@ describe('createCommandRunner', () => {
     expect(t.resetCalls).toHaveLength(0);
     expect(t.getSettingsCalls).toHaveLength(0);
     expect(t.toasts).toEqual(
-      Array(3).fill({
+      Array.from({ length: 3 }, () => ({
         message: 'Open a session to change session cache settings.',
         variant: 'warning',
-      })
+      }))
     );
   });
 
@@ -193,7 +193,7 @@ describe('createCommandRunner', () => {
 
     expect(t.setSessionCalls).toHaveLength(1);
     expect(t.toasts).toHaveLength(1);
-    expect(t.toasts[0]!.variant).toBe('error');
-    expect(t.toasts[0]!.message).toContain('rpc down');
+    expect(t.toasts[0].variant).toBe('error');
+    expect(t.toasts[0].message).toContain('rpc down');
   });
 });

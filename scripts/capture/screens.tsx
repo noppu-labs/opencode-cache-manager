@@ -153,7 +153,7 @@ const STATES: readonly Block[] = [
 
 export const SCREENS = { 'sidebar': HERO, 'sidebar-states': STATES } as const;
 export type ScreenName = keyof typeof SCREENS;
-export const SCREEN_NAMES = Object.keys(SCREENS) as ScreenName[];
+export const SCREEN_NAMES: ScreenName[] = Object.keys(SCREENS).filter(isScreenName);
 
 export function isScreenName(name: string): name is ScreenName {
   return name in SCREENS;

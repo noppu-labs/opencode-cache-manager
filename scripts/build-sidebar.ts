@@ -26,7 +26,7 @@ export async function buildSidebar(outFile: string = SIDEBAR_COMPILED): Promise<
       `sidebar build failed (${result.outputs.length} outputs)`
     );
   }
-  await Bun.write(outFile, result.outputs[0]!);
+  await Bun.write(outFile, result.outputs[0]);
 }
 
 if (import.meta.main) await buildSidebar();
