@@ -88,12 +88,11 @@ export function injectOpenAiBreakpoints(body: Rec): boolean {
     injected = true;
   };
 
-  if (Array.isArray(body.tools) && body.tools.length > 0) {
-    const last = body.tools[body.tools.length - 1];
-    if (isRecord(last)) mark(last);
-  }
+  const tools: unknown[] = Array.isArray(body.tools) ? body.tools : [];
+  const lastTool = tools.at(-1);
+  if (isRecord(lastTool)) mark(lastTool);
 
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const messages: unknown[] = Array.isArray(body.messages) ? body.messages : [];
   const prefixEnd = leadingPrefixEnd(messages);
 
   for (let index = prefixEnd - 1; index >= 0; index--) {

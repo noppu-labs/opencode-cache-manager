@@ -1,4 +1,5 @@
 import { Plugin } from '@opencode/plugin';
+import type { RpcHandlers, RpcRegistration } from '@opencode/plugin/promise/rpc';
 
 import { pluginOptions, settingsFromOptions } from './config/settings.ts';
 import { PING_PROMPT } from './constants/keepalive.ts';
@@ -38,7 +39,7 @@ export default Plugin.define({
 
     // Referenced from inside its own handlers so they can emit the update
     // event; declared before the `await` to avoid a temporal-dead-zone hazard.
-    let rpcRegistration: any;
+    let rpcRegistration: RpcRegistration<typeof CacheTtlRpc> | undefined;
     const pings = new PingTracker();
     const primaryMessages = new Map<string, unknown[]>();
 
@@ -70,10 +71,10 @@ export default Plugin.define({
 
     try {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the host types handler inputs as unknown, while the handlers take the shapes the method schemas validate
-      rpcRegistration = await (ctx.rpc.register as any)(
-        CacheTtlRpc,
-        createRpcHandlers({ store, engine, settingsChanged })
-      );
+      const handlers = createRpcHandlers({ store, engine, settingsChanged }) as RpcHandlers<
+        typeof CacheTtlRpc
+      >;
+      rpcRegistration = await ctx.rpc.register(CacheTtlRpc, handlers);
     } catch {
       // RPC is optional (older hosts / headless runs): keep command + hook.
     }
