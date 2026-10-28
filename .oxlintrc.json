@@ -5,7 +5,8 @@
     "correctness": "error",
     "suspicious": "error",
     "pedantic": "error",
-    "style": "error"
+    "style": "error",
+    "restriction": "error"
   },
   "env": {
     "builtin": true
@@ -33,6 +34,27 @@
     "eslint/no-continue": "off",
     "import/consistent-type-specifier-style": "off",
     "eslint/init-declarations": "off",
+    "oxc/no-async-await": "off",
+    "eslint/no-undefined": "off",
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "eslint/no-plusplus": "off",
+    "unicorn/import-style": "off",
+    "import/no-relative-parent-imports": "off",
+    "eslint/class-methods-use-this": "off",
+    "eslint/require-await": "off",
+    "typescript/explicit-function-return-type": [
+      "error",
+      {
+        "allowExpressions": true,
+        "allowHigherOrderFunctions": true,
+        "allowIIFEs": true,
+        "allowTypedFunctionExpressions": true
+      }
+    ],
+    "eslint/no-void": ["error", { "allowAsStatement": true }],
+    "eslint/no-empty-function": ["error", { "allow": ["arrowFunctions"] }],
+    "eslint/no-use-before-define": ["error", { "functions": false }],
     "eslint/curly": ["error", "multi-line"],
     "eslint/no-magic-numbers": [
       "error",
@@ -92,7 +114,12 @@
         "eslint/no-magic-numbers": "off",
         "eslint/sort-keys": "off",
         "eslint/id-length": "off",
-        "unicorn/no-await-expression-member": "off"
+        "unicorn/no-await-expression-member": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/explicit-function-return-type": "off",
+        "typescript/promise-function-async": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/explicit-module-boundary-types": "off"
       }
     }
   ],
