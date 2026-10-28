@@ -1,5 +1,5 @@
 /**
- * Shared RPC contract for the Anthropic prompt-cache plugin.
+ * Shared RPC contract for the prompt-cache plugin.
  *
  * Imported by both the server entrypoint (`server.ts`), which registers the
  * handlers, and the TUI entrypoint (`tui.ts`), which calls them and subscribes

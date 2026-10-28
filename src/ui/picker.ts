@@ -11,15 +11,15 @@ import { formatTokens } from "../utils/format.ts";
 const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> = {
   "5m": {
     title: "5 minutes (default)",
-    description: "Standard ephemeral cache. 1.25x base input write cost, 0.1x read.",
+    description: "Claude: 5m on every breakpoint, 1.25x write cost. GPT-5.6+: automatic 30m cache.",
   },
   "1h": {
     title: "1 hour (extended)",
-    description: "1h ephemeral on every breakpoint. 2x base input write cost, 0.1x read.",
+    description: "Claude: 1h on every breakpoint, 2x write cost. GPT-5.6+: a 12h breakpoint.",
   },
   hybrid: {
     title: "Hybrid",
-    description: "1h on tools + system prompt; 5m on rolling messages.",
+    description: "Claude: 1h on tools + system, 5m on messages. GPT-5.6+: 12h on the system prompt, 30m tail.",
   },
 };
 

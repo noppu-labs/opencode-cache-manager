@@ -7,7 +7,7 @@ import { createSnapshotFeed } from "./ui/snapshot-feed.ts";
 import { isInsideNodeModules } from "./utils/node-modules.ts";
 
 /**
- * TUI entrypoint for the Anthropic prompt-cache plugin.
+ * TUI entrypoint for the prompt-cache plugin.
  *
  * Registers a palette + `/cache-manager` slash command. With no argument it
  * opens a picker with Session and Global sections; a typed argument is applied
@@ -40,7 +40,7 @@ export default Plugin.define({
         {
           id: "cache-manager.open",
           title: "Cache Manager",
-          description: "Manage the Anthropic prompt cache TTL and keepalive",
+          description: "Manage the prompt cache TTL and keepalive (Claude, GPT-5.6+)",
           group: "Provider",
           palette: true,
           slash: { name: "cache-manager", arguments: true },

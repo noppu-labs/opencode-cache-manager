@@ -14,7 +14,7 @@ import { SettingsStore, sweepDeletedSessions } from "./services/settings-store.t
 import { ProfileStore } from "./services/profile-store.ts";
 
 /**
- * Server entrypoint for the Anthropic prompt-cache plugin.
+ * Server entrypoint for the prompt-cache plugin.
  *
  * Registers a `/cache-manager` command and an `http.request` hook that rewrites
  * `cache_control.ttl` using layered settings (built-in defaults, plugin options,
