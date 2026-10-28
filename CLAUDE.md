@@ -9,13 +9,13 @@ bun install
 bun test             # all tests in tests/
 bun run typecheck    # tsc -p . (noEmit, strict), covers src/, tests/ and scripts/ with Bun types
 bun run build        # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js (also runs on prepack)
-bun run lint         # oxlint, correctness rules, type-aware
+bun run lint         # oxlint, all five categories (correctness, suspicious, pedantic, style, restriction), type-aware
 bun run lint:fix     # oxlint --fix
 bun run fmt          # oxfmt, rewrites files in place
 bun run fmt:check    # oxfmt --check, what CI runs
 ```
 
-Lint is type-aware through `oxlint-tsgolint`; type checking itself stays with `tsc` (`bun run typecheck`).
+Lint is type-aware through `oxlint-tsgolint`; type checking itself stays with `tsc` (`bun run typecheck`). Fix a finding rather than silence it. When a rule can't apply to one line, use `// oxlint-disable-next-line <rule> -- <reason>`. Turning a rule off, everywhere or for `tests/**`, is a change to `.oxlintrc.json`.
 
 Runtime is Bun (>= 1.3). The `.ts` sources ship as-is and OpenCode loads them directly, with one exception: OpenCode only runs the Solid JSX transform on files outside `node_modules`, so `bun run build` compiles `src/ui/sidebar.tsx` into `src/ui/sidebar.compiled.js` (gitignored, shipped in the tarball), and `tui.ts` loads that copy when installed from npm.
 
