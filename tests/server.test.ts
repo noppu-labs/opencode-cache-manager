@@ -133,26 +133,21 @@ describe('plugin.setup', () => {
     expect(host.synthetic[0].text).toContain('5m');
   });
 
-  test('the legacy stored mode key seeds the global mode', async () => {
+  test.each([
+    ['the legacy stored mode key seeds the global mode', 'hybrid', 'hybrid'],
+    ['ignores an invalid stored mode', 'banana', '5m'],
+  ])('%s', async (_label, stored, shown) => {
     const host = createMockCtx();
-    host.store.set('mode', 'hybrid');
+    host.store.set('mode', stored);
     await (plugin as any).setup(host.ctx);
     await host.command().execute(invocation('status'));
-    expect(host.synthetic[0].text).toContain('hybrid');
+    expect(host.synthetic[0].text).toContain(shown);
   });
 
   test('falls back to ctx.options.defaultMode when storage is empty', async () => {
     const host = await setup({ defaultMode: '1h' });
     await host.command().execute(invocation('status'));
     expect(host.synthetic[0].text).toContain('1h');
-  });
-
-  test('ignores an invalid stored mode', async () => {
-    const host = createMockCtx();
-    host.store.set('mode', 'banana');
-    await (plugin as any).setup(host.ctx);
-    await host.command().execute(invocation('status'));
-    expect(host.synthetic[0].text).toContain('5m');
   });
 
   test('reads keepalive options from ctx.options', async () => {
