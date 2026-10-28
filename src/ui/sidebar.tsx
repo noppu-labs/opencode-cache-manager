@@ -80,7 +80,7 @@ function CacheSection(props: {
   const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
 
   createEffect(() => {
-    const sessionID = props.sessionID;
+    const { sessionID } = props;
     props.load(sessionID);
     const timer = setInterval(() => {
       if (!child()) props.refresh(sessionID);

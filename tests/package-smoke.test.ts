@@ -106,7 +106,7 @@ describe('npm package manifest', () => {
      * the release workflow's gate; here the version only needs to be
      * well-formed.
      */
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/u);
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u);
     expect(manifest.license).toBe('MIT');
     expect(manifest.publishConfig?.access).toBe('public');
   });
@@ -177,7 +177,7 @@ describe('Host.resolve against the extracted package', () => {
    */
   test('resolves server, tui and rpc entrypoints', () => {
     const dir = extract();
-    const name = manifest.name;
+    const { name } = manifest;
 
     const server = Bun.resolveSync(`${name}/server`, dir);
     expect(server.endsWith('src/server.ts')).toBe(true);
@@ -238,8 +238,8 @@ describe('Host.resolve against the extracted package', () => {
     expect(code).toContain('createComponent');
     expect(code).not.toContain('jsx-dev-runtime');
     const allowed = new Set(['@opentui/solid', 'solid-js', 'solid-js/store']);
-    for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/gu)) {
-      expect(allowed.has(match[1])).toBe(true);
+    for (const match of code.matchAll(/\bfrom\s*["'](?<specifier>[^"']+)["']/gu)) {
+      expect(allowed.has(match.groups?.specifier ?? '')).toBe(true);
     }
   });
 

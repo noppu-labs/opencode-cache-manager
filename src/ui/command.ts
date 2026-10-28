@@ -36,9 +36,9 @@ function createCommandRunner({ rpc, toast, currentSessionID, openPicker }: Comma
 
     if (action.type === 'status') {
       const { global, session } = await rpc.getSettings({ sessionID });
-      const s = mergeSettings(global, session ?? {});
+      const settings = mergeSettings(global, session ?? {});
       toast(
-        `Session cache: TTL ${s.mode}, keepalive ${formatValue('keepalive', s.keepalive)}, pings ${s.maxPings}, min context ${formatTokens(s.minContextTokens)}.`,
+        `Session cache: TTL ${settings.mode}, keepalive ${formatValue('keepalive', settings.keepalive)}, pings ${settings.maxPings}, min context ${formatTokens(settings.minContextTokens)}.`,
         'info'
       );
       return;

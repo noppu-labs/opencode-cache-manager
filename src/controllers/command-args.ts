@@ -41,9 +41,9 @@ type CommandAction =
 
 /** Parses `50000` or `50k` into a token count; `undefined` when malformed. */
 function parseTokenCount(text: string | undefined): number | undefined {
-  const match = /^(\d+)(k?)$/u.exec(text ?? '');
-  if (!match) return undefined;
-  return Number(match[1]) * (match[2] ? THOUSAND : 1);
+  const groups = /^(?<count>\d+)(?<unit>k?)$/u.exec(text ?? '')?.groups;
+  if (!groups) return undefined;
+  return Number(groups.count) * (groups.unit ? THOUSAND : 1);
 }
 
 /**

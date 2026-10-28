@@ -9,7 +9,7 @@ export interface SnapshotFeed {
   load: (sessionID: string) => void;
   /** Fetches a session's snapshot again and stores it, unless an event arrived meanwhile. */
   refresh: (sessionID: string) => void;
-  dispose(): void;
+  dispose: () => void;
 }
 
 /**

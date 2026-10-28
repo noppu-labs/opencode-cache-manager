@@ -26,8 +26,8 @@ function withoutCacheControl(message: unknown): unknown {
  */
 function alignPingMessages(pingMessages: unknown[], primaryMessages: unknown[]): unknown[] {
   const shared = Math.max(0, Math.min(pingMessages.length - 1, primaryMessages.length));
-  return pingMessages.map((message, i) =>
-    i < shared ? primaryMessages[i] : withoutCacheControl(message)
+  return pingMessages.map((message, index) =>
+    index < shared ? primaryMessages[index] : withoutCacheControl(message)
   );
 }
 

@@ -4,12 +4,12 @@ import { isRecord } from '../utils/is-record.ts';
 import { num } from '../utils/num.ts';
 
 /** Total prompt size: uncached input plus cache reads plus cache writes. */
-function contextTokens(u: CacheUsage): number {
-  return u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+function contextTokens(usage: CacheUsage): number {
+  return usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
 }
 
-function hasCacheActivity(u: CacheUsage): boolean {
-  return u.cacheReadTokens + u.cacheWriteTokens > 0;
+function hasCacheActivity(usage: CacheUsage): boolean {
+  return usage.cacheReadTokens + usage.cacheWriteTokens > 0;
 }
 
 /**
@@ -17,9 +17,9 @@ function hasCacheActivity(u: CacheUsage): boolean {
  * request with a 5m breakpoint expires its tail at 5m; `undefined` when there
  * was no write or no breakdown.
  */
-function grantedTtl(u: CacheUsage): Ttl | undefined {
-  if ((u.write5mTokens ?? 0) > 0) return '5m';
-  if ((u.write1hTokens ?? 0) > 0) return '1h';
+function grantedTtl(usage: CacheUsage): Ttl | undefined {
+  if ((usage.write5mTokens ?? 0) > 0) return '5m';
+  if ((usage.write1hTokens ?? 0) > 0) return '1h';
   return undefined;
 }
 
@@ -57,6 +57,13 @@ function parseUsageFromJson(body: unknown): CacheUsage | undefined {
   return partial && finalize(partial);
 }
 
+/** The usage a `message_start` or `message_delta` event carries. */
+function eventUsage(event: Record<string, unknown>): unknown {
+  if (event.type === 'message_start' && isRecord(event.message)) return event.message.usage;
+  if (event.type === 'message_delta') return event.usage;
+  return undefined;
+}
+
 /**
  * Parses a streamed Messages response: `message_start` carries the prompt
  * usage and `message_delta` updates the fields it reports.
@@ -74,13 +81,7 @@ function parseUsageFromSse(text: string): CacheUsage | undefined {
     }
     if (!isRecord(event)) continue;
 
-    const raw =
-      event.type === 'message_start' && isRecord(event.message)
-        ? event.message.usage
-        : event.type === 'message_delta'
-          ? event.usage
-          : undefined;
-    const partial = readUsage(raw);
+    const partial = readUsage(eventUsage(event));
     if (!partial) continue;
 
     merged ??= {};
@@ -130,7 +131,7 @@ function parseModelFromSse(text: string): string | undefined {
     try {
       const event: unknown = JSON.parse(line.slice(SSE_DATA_PREFIX.length).trim());
       if (isRecord(event) && event.type === 'message_start' && isRecord(event.message)) {
-        const model = event.message.model;
+        const { model } = event.message;
         if (typeof model === 'string' && model !== '') return model;
       }
     } catch {

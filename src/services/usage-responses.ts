@@ -34,8 +34,9 @@ function readResponsesUsage(raw: unknown): CacheUsage | undefined {
 /** `completed` reads as `stop`, a trailing tool call as `tool_use`; any other status passes through. */
 function readStopReason(response: Record<string, unknown>): string | undefined {
   const last: unknown = Array.isArray(response.output) ? response.output.at(-1) : undefined;
-  if (isRecord(last) && typeof last.type === 'string' && TOOL_CALL_ITEMS.has(last.type))
+  if (isRecord(last) && typeof last.type === 'string' && TOOL_CALL_ITEMS.has(last.type)) {
     return 'tool_use';
+  }
   if (typeof response.status !== 'string') return undefined;
   return response.status === 'completed' ? 'stop' : response.status;
 }
@@ -58,8 +59,9 @@ function observe(response: unknown): ObservedResponse {
 /** The final `response` of a stream event: `event.response` of `response.completed` / `response.incomplete`, or a bare response object. */
 function terminalResponse(event: unknown): unknown {
   if (!isRecord(event)) return undefined;
-  if (typeof event.type === 'string')
+  if (typeof event.type === 'string') {
     return TERMINAL_EVENTS.has(event.type) ? event.response : undefined;
+  }
   return isRecord(event.usage) ? event : undefined;
 }
 

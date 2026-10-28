@@ -20,6 +20,13 @@ const LABEL_WIDTH = 14;
 const SECTION_HEADER = 'Cache';
 const HEADER: SidebarLine = { bold: true, text: SECTION_HEADER, tone: 'base' };
 
+/** Suffix of the pings row for the last ping's outcome. */
+const PING_OUTCOMES: Record<NonNullable<KeepaliveSnapshot['lastPing']>, string> = {
+  failed: ' ✗ failed',
+  hit: ' ✓ hit',
+  miss: ' ✗ miss',
+};
+
 const defaultClock = (ms: number): string =>
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', hour12: false, minute: '2-digit' });
 
@@ -37,98 +44,97 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): Sidebar
 
 /** Lines for the sidebar cache section; an empty array means render nothing. */
 function sidebarLines(
-  s: KeepaliveSnapshot | undefined,
+  snapshot: KeepaliveSnapshot | undefined,
   now: number,
   formatClock: (ms: number) => string = defaultClock
 ): SidebarLine[] {
   const waiting: SidebarLine[] = [HEADER, { text: 'waiting for first response', tone: 'muted' }];
   // No snapshot yet (e.g. after a restart) still shows the section, so the user can see the plugin is there.
-  if (s === undefined || s.lastRequestAt === null) return waiting;
-  if (s.skipReason === 'child') return [];
-  if (s.skipReason === 'implicit') {
+  if (snapshot === undefined || snapshot.lastRequestAt === null) return waiting;
+  if (snapshot.skipReason === 'child') return [];
+  if (snapshot.skipReason === 'implicit') {
     const keepalive: SidebarLine = {
       right: 'n/a · implicit cache',
       text: 'keepalive',
       tone: 'base',
     };
-    return s.lastCache === null
+    return snapshot.lastCache === null
       ? [HEADER, keepalive]
-      : [HEADER, cachedLine(s.lastCache), keepalive];
+      : [HEADER, cachedLine(snapshot.lastCache), keepalive];
   }
-  if (s.skipReason === 'no-cache-seen' && s.contextTokens !== null) return [];
-  if (s.ttl === null) return waiting;
+  if (snapshot.skipReason === 'no-cache-seen' && snapshot.contextTokens !== null) return [];
+  if (snapshot.ttl === null) return waiting;
 
-  const ttl: SidebarLine = { right: `${s.ttl} (${s.ttlSource})`, text: 'ttl', tone: 'base' };
-  const cached: SidebarLine[] = s.lastCache === null ? [] : [cachedLine(s.lastCache)];
-  if (s.expiresAt === null) return [HEADER, ttl, ...cached];
+  const ttl: SidebarLine = {
+    right: `${snapshot.ttl} (${snapshot.ttlSource})`,
+    text: 'ttl',
+    tone: 'base',
+  };
+  const cached: SidebarLine[] = snapshot.lastCache === null ? [] : [cachedLine(snapshot.lastCache)];
+  if (snapshot.expiresAt === null) return [HEADER, ttl, ...cached];
 
-  if (now >= s.expiresAt) {
+  if (now >= snapshot.expiresAt) {
     return [
       HEADER,
       { bullet: 'error', right: 'expired', text: 'status', tone: 'base' },
       ...cached,
-      { right: `${formatRemaining(now - s.expiresAt)} ago`, text: 'expired', tone: 'base' },
+      { right: `${formatRemaining(now - snapshot.expiresAt)} ago`, text: 'expired', tone: 'base' },
       ttl,
     ];
   }
   const lines: SidebarLine[] = [
     HEADER,
     {
-      bullet: s.skipReason === 'exhausted' ? 'warning' : 'success',
+      bullet: snapshot.skipReason === 'exhausted' ? 'warning' : 'success',
       right: 'warm',
       text: 'status',
       tone: 'base',
     },
     ...cached,
     {
-      right: `${formatClock(s.expiresAt)} (${formatRemaining(s.expiresAt - now)})`,
+      right: `${formatClock(snapshot.expiresAt)} (${formatRemaining(snapshot.expiresAt - now)})`,
       text: 'expires',
       tone: 'base',
     },
     ttl,
   ];
 
-  if (s.skipReason === 'missed') {
+  if (snapshot.skipReason === 'missed') {
     lines.push({
       right: 'stopped · last ping missed',
       rightTone: 'error',
       text: 'keepalive',
       tone: 'base',
     });
-  } else if (s.skipReason === 'busy') {
+  } else if (snapshot.skipReason === 'busy') {
     lines.push({ right: 'waiting · session busy', text: 'keepalive', tone: 'base' });
-  } else if (s.skipReason === 'small-context') {
+  } else if (snapshot.skipReason === 'small-context') {
     lines.push({
-      right: `off · ${thousands(s.contextTokens ?? 0)} < ${thousands(s.minContextTokens)}`,
+      right: `off · ${thousands(snapshot.contextTokens ?? 0)} < ${thousands(snapshot.minContextTokens)}`,
       text: 'keepalive',
       tone: 'base',
     });
-  } else if (s.skipReason === 'disabled') {
+  } else if (snapshot.skipReason === 'disabled') {
     lines.push({ right: 'off · disabled', text: 'keepalive', tone: 'base' });
   } else {
-    if (s.nextPingAt !== null) {
+    if (snapshot.nextPingAt !== null) {
       lines.push({
-        right: `${formatClock(s.nextPingAt)} (${formatRemaining(s.nextPingAt - now)})`,
+        right: `${formatClock(snapshot.nextPingAt)} (${formatRemaining(snapshot.nextPingAt - now)})`,
         text: 'next ping',
         tone: 'base',
       });
-    } else if (s.skipReason === 'exhausted') {
+    } else if (snapshot.skipReason === 'exhausted') {
       lines.push({ right: 'none', text: 'next ping', tone: 'base' });
     }
-    const outcome =
-      s.lastPing === 'hit'
-        ? ' ✓ hit'
-        : s.lastPing === 'miss'
-          ? ' ✗ miss'
-          : s.lastPing === 'failed'
-            ? ' ✗ failed'
-            : '';
+    const outcome = snapshot.lastPing === null ? '' : PING_OUTCOMES[snapshot.lastPing];
     const pings: SidebarLine = {
-      right: `${s.pingsUsed}/${s.maxPings}${outcome}`,
+      right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}`,
       text: 'pings',
       tone: 'base',
     };
-    if (s.lastPing !== null) pings.rightTone = s.lastPing === 'hit' ? 'success' : 'error';
+    if (snapshot.lastPing !== null) {
+      pings.rightTone = snapshot.lastPing === 'hit' ? 'success' : 'error';
+    }
     lines.push(pings);
   }
   return lines;

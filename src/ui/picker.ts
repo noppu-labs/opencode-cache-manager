@@ -27,9 +27,15 @@ const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> 
 
 const CUSTOM = 'custom';
 
+const onOff = (value: boolean): string => (value ? 'on' : 'off');
+
 type Field = keyof Settings;
 type Scope = 'session' | 'global';
-type Choice<V> = { title: string; value: V; description?: string };
+interface Choice<Value> {
+  title: string;
+  value: Value;
+  description?: string;
+}
 
 const isScope = (value: string | undefined): value is Scope =>
   value === 'session' || value === 'global';
@@ -78,25 +84,30 @@ function settingsOptions(
 /** The sub-dialog choices for a setting; `custom` is present for numeric ones. */
 function fieldChoices(field: Field): Choice<string | number>[] {
   switch (field) {
-    case 'mode':
+    case 'mode': {
       return (['5m', '1h', 'hybrid'] as const).map((value) => ({ value, ...OPTION_INFO[value] }));
-    case 'keepalive':
+    }
+    case 'keepalive': {
       return [
         { title: 'on', value: 'on' },
         { title: 'off', value: 'off' },
       ];
-    case 'maxPings':
+    }
+    case 'maxPings': {
       return [
         ...PING_CHOICES.map((value) => ({ title: String(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
-    case 'minContextTokens':
+    }
+    case 'minContextTokens': {
       return [
         ...MIN_CONTEXT_CHOICES.map((value) => ({ title: formatTokens(value), value })),
         { title: 'Custom…', value: CUSTOM },
       ];
-    default:
+    }
+    default: {
       throw new Error(`unknown setting: ${String(field satisfies never)}`);
+    }
   }
 }
 
@@ -110,11 +121,9 @@ interface PickerDeps {
 /** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */
 function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
   const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
-    if (scope === 'session' && sessionID !== undefined) {
-      await rpc.setSession({ patch, sessionID });
-    } else {
-      await rpc.setGlobal({ patch });
-    }
+    await (scope === 'session' && sessionID !== undefined
+      ? rpc.setSession({ patch, sessionID })
+      : rpc.setGlobal({ patch }));
   };
 
   /** Asks for a number via the prompt dialog; `undefined` on cancel or invalid input. */
@@ -143,7 +152,7 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
     effective: Settings
   ): Promise<void> => {
     const current = effective[field];
-    const currentChoice = typeof current === 'boolean' ? (current ? 'on' : 'off') : current;
+    const currentChoice = typeof current === 'boolean' ? onOff(current) : current;
     const selected = await dialog.select<string | number>({
       current: currentChoice,
       options: fieldChoices(field),

@@ -66,13 +66,13 @@ interface ObservedResponse {
 
 /** The per-wire parsers the response tee applies: `fromJson` gets the body parsed once, `fromSse` the raw stream text. */
 interface ResponseParsers {
-  fromJson(body: unknown): ObservedResponse;
-  fromSse(text: string): ObservedResponse;
+  fromJson: (body: unknown) => ObservedResponse;
+  fromSse: (text: string) => ObservedResponse;
 }
 
 /** A user-supplied `cacheProfiles` entry, compiled. */
 interface ProfilePattern {
-  matches(ref: ModelRef): boolean;
+  matches: (ref: ModelRef) => boolean;
   profile: CacheProfileId;
 }
 

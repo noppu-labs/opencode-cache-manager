@@ -151,34 +151,38 @@ const CacheTtlRpc = {
   },
 } as const;
 
-type RpcLocation = { directory: string };
-type RpcCallOptions = { location?: RpcLocation };
+interface RpcLocation {
+  directory: string;
+}
+interface RpcCallOptions {
+  location?: RpcLocation;
+}
 
 /** Loose client shape mirroring the `@opencode/client` RPC client for this contract. */
 type RawCacheTtlRpcClient = {
-  [M in Exclude<keyof CacheTtlRpcClient, 'events'>]: (
-    input: Parameters<CacheTtlRpcClient[M]>[0],
+  [Method in Exclude<keyof CacheTtlRpcClient, 'events'>]: (
+    input: Parameters<CacheTtlRpcClient[Method]>[0],
     options?: RpcCallOptions
-  ) => ReturnType<CacheTtlRpcClient[M]>;
+  ) => ReturnType<CacheTtlRpcClient[Method]>;
 } & Pick<CacheTtlRpcClient, 'events'>;
 
 /** The RPC client the TUI uses; each call already targets the right location. */
-type CacheTtlRpcClient = {
-  getSettings(input: { sessionID?: string }): Promise<{
+interface CacheTtlRpcClient {
+  getSettings: (input: { sessionID?: string }) => Promise<{
     global: Settings;
     session: SettingsPatch | null;
   }>;
-  setGlobal(input: { patch: SettingsPatch }): Promise<unknown>;
-  setSession(input: { sessionID: string; patch: SettingsPatch }): Promise<unknown>;
-  resetSession(input: { sessionID: string }): Promise<unknown>;
-  getKeepalive(input: { sessionID: string }): Promise<KeepaliveSnapshot>;
+  setGlobal: (input: { patch: SettingsPatch }) => Promise<unknown>;
+  setSession: (input: { sessionID: string; patch: SettingsPatch }) => Promise<unknown>;
+  resetSession: (input: { sessionID: string }) => Promise<unknown>;
+  getKeepalive: (input: { sessionID: string }) => Promise<KeepaliveSnapshot>;
   events: {
-    subscribe(
+    subscribe: (
       name: 'keepalive.updated',
       options?: { signal?: AbortSignal }
-    ): AsyncIterable<{ data: KeepaliveSnapshot }>;
+    ) => AsyncIterable<{ data: KeepaliveSnapshot }>;
   };
-};
+}
 
 export type { RpcLocation, RpcCallOptions, RawCacheTtlRpcClient, CacheTtlRpcClient };
 export { CacheTtlRpc };

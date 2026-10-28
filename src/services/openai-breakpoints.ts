@@ -17,16 +17,18 @@ export function stripBreakpoints(body: Rec, keep?: Rec): boolean {
     changed = stripFrom(node, keep) || changed;
     if (!isRecord(node)) return;
     for (const parts of [node.content, node.output]) {
-      if (Array.isArray(parts))
+      if (Array.isArray(parts)) {
         for (const part of parts) changed = stripFrom(part, keep) || changed;
+      }
     }
   };
   for (const key of ['tools', 'messages', 'input']) {
     const list = body[key];
-    if (Array.isArray(list))
+    if (Array.isArray(list)) {
       list.forEach((node) => {
         visit(node);
       });
+    }
   }
   return changed;
 }

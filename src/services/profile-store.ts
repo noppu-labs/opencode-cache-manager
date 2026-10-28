@@ -12,6 +12,17 @@ import { isRecord } from '../utils/is-record.ts';
 const STORAGE_KEY = 'learned-models';
 const key = (ref: ModelRef) => `${ref.providerID}/${ref.id}`;
 
+/** The profile a response's resolved `model` / `provider` points at. */
+function profileForIdentity(
+  model: string | undefined,
+  provider: string | undefined
+): CacheProfileId {
+  if (model !== undefined && CLAUDE_MODEL.test(model)) return 'anthropic';
+  if (provider !== undefined && ANTHROPIC_UPSTREAM.test(provider)) return 'anthropic';
+  if (model !== undefined && OPENAI_CACHE_MODEL.test(model)) return 'openai';
+  return 'implicit';
+}
+
 /** Cache profiles learned from the resolved `model` / `provider` of past responses, persisted in plugin storage. */
 export class ProfileStore {
   private learned = new Map<string, CacheProfileId>();
@@ -46,13 +57,7 @@ export class ProfileStore {
     try {
       const { model, provider } = identity ?? {};
       if (!isNonEmptyString(model) && !isNonEmptyString(provider)) return;
-      const profile: CacheProfileId =
-        (model !== undefined && CLAUDE_MODEL.test(model)) ||
-        (provider !== undefined && ANTHROPIC_UPSTREAM.test(provider))
-          ? 'anthropic'
-          : model !== undefined && OPENAI_CACHE_MODEL.test(model)
-            ? 'openai'
-            : 'implicit';
+      const profile = profileForIdentity(model, provider);
       if (this.learned.get(key(ref)) === profile) return;
       this.learned.set(key(ref), profile);
       await this.persist();

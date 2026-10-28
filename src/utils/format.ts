@@ -29,8 +29,8 @@ const trim = (value: number): string => value.toFixed(1).replace(/\.0$/u, '');
 function formatCompactTokens(tokens: number): string {
   if (tokens < THOUSAND) return String(tokens);
   if (tokens < COMPACT_DECIMAL_LIMIT) {
-    const k = trim(tokens / THOUSAND);
-    if (k !== '100') return `${k}k`;
+    const thousands = trim(tokens / THOUSAND);
+    if (thousands !== '100') return `${thousands}k`;
   }
   const rounded = Math.round(tokens / THOUSAND);
   if (tokens < MILLION && rounded < THOUSAND) return `${rounded}k`;

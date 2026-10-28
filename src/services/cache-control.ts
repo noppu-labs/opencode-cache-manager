@@ -27,7 +27,7 @@ const isOneHour = (block: unknown): boolean =>
 
 /** Returns true when any ephemeral breakpoint in the payload carries a 1h TTL. */
 function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
-  const tools = body.tools;
+  const { tools } = body;
   if (Array.isArray(tools)) {
     for (const tool of tools) {
       if (isOneHour(tool)) return true;

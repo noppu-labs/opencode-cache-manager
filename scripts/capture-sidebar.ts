@@ -42,13 +42,8 @@ const FREEZE_FLAGS = [
   '1.2',
 ];
 
-const {
-  CAPTURE_NOW,
-  SCREEN_NAMES,
-  SECTION_HEADER,
-  isScreenName,
-  renderScreen,
-}: typeof import('./capture/screens.tsx') = await import('./capture/screens.tsx');
+const { CAPTURE_NOW, SCREEN_NAMES, SECTION_HEADER, isScreenName, renderScreen } =
+  await import('./capture/screens.tsx');
 
 /** Charm's freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
 function withBoldHeader(svg: string): string {
@@ -92,8 +87,9 @@ function regenerate(): number {
     for (const screen of SCREEN_NAMES) if (!renderSvg(screen, staging)) return 1;
     const images = join(ROOT, 'docs/images');
     mkdirSync(images, { recursive: true });
-    for (const screen of SCREEN_NAMES)
+    for (const screen of SCREEN_NAMES) {
       copyFileSync(join(staging, `${screen}.svg`), join(images, `${screen}.svg`));
+    }
     return 0;
   } finally {
     rmSync(staging, { force: true, recursive: true });

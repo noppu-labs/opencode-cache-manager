@@ -183,8 +183,9 @@ async function renderScreen(name: ScreenName): Promise<string[]> {
     // @opentui/solid attaches its engine to the latest test renderer, so each block renders and is destroyed before the next starts.
     const body = await renderBlock(block);
     if (rows.length > 0) rows.push('');
-    if (block.caption !== undefined)
+    if (block.caption !== undefined) {
       rows.push(textRow([{ fg: CAPTION_COLOR, text: `# ${block.caption}` }]));
+    }
     rows.push(...body);
   }
   return rows;

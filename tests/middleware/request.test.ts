@@ -1,13 +1,11 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import { parseCacheProfiles } from '../../src/config/model-patterns.ts';
-import type { PluginOptions } from '../../src/config/settings.ts';
-import { BUILTIN_DEFAULTS } from '../../src/config/settings.ts';
+import { BUILTIN_DEFAULTS, type PluginOptions } from '../../src/config/settings.ts';
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../../src/constants/anthropic.ts';
 import { PING_PROMPT } from '../../src/constants/keepalive.ts';
 import { createRequestHook, type HttpRequestEvent } from '../../src/middleware/request.ts';
-import type { CacheProfileId, ModelRef } from '../../src/models/cache.ts';
-import type { CacheUsage } from '../../src/models/cache.ts';
+import type { CacheProfileId, ModelRef, CacheUsage } from '../../src/models/cache.ts';
 import type { SkipReason } from '../../src/models/keepalive.ts';
 import { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
 import { PingTracker } from '../../src/services/ping-tracker.ts';
@@ -32,10 +30,10 @@ function harness(
   const store = new SettingsStore(kv, {});
   const pings = new PingTracker();
   const primaryMessages = new Map<string, unknown[]>();
-  const sent: Array<{
+  const sent: {
     sessionID: string;
     info: { requestedTtl: string | null; isPing: boolean; kind: string };
-  }> = [];
+  }[] = [];
   const fake = {
     skipReason: null as SkipReason | null,
     failRequestSent: false,
@@ -108,8 +106,9 @@ describe('createRequestHook TTL rewrite', () => {
     const h = harness();
     await h.store.setSession('ses_a', { mode: '1h' });
     const evt = await h.dispatch(body());
-    for (const cc of collectCacheControls(await parsedBodyOf(evt.request)))
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) {
       expect(cc.ttl).toBe('1h');
+    }
   });
 
   test('leaves the request alone in the default 5m mode', async () => {
@@ -117,8 +116,9 @@ describe('createRequestHook TTL rewrite', () => {
     const request = body();
     const evt = await h.dispatch(request);
     expect(evt.request.headers.get('anthropic-beta')).toBeNull();
-    for (const cc of collectCacheControls(await parsedBodyOf(evt.request)))
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) {
       expect('ttl' in cc).toBe(false);
+    }
   });
 
   test('ignores unrelated providers and models without a sentinel header', async () => {
@@ -175,8 +175,9 @@ describe('createRequestHook TTL rewrite', () => {
     const evt = await h.dispatch(request);
     expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(evt.request.headers.get('anthropic-beta')).toBeNull();
-    for (const cc of collectCacheControls(await parsedBodyOf(evt.request)))
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) {
       expect('ttl' in cc).toBe(false);
+    }
   });
 
   test('picks up a session mode changed after an earlier request', async () => {
@@ -244,8 +245,9 @@ describe('createRequestHook engine reporting', () => {
     });
     const evt = await h.dispatch(request, { providerID: 'some-proxy' });
     expect(evt.request).not.toBe(request);
-    for (const cc of collectCacheControls(await parsedBodyOf(evt.request)))
+    for (const cc of collectCacheControls(await parsedBodyOf(evt.request))) {
       expect(cc.ttl).toBe('1h');
+    }
     expect(h.sent).toEqual([
       { sessionID: 'ses_a', info: { requestedTtl: '1h', isPing: false, kind: 'primary' } },
     ]);

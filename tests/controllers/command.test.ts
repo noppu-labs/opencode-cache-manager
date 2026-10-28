@@ -101,7 +101,7 @@ describe('createCacheManagerCommand', () => {
     expect(data.get(`session/${SESSION}`)).toEqual({
       keepalive: false,
       maxPings: 3,
-      minContextTokens: 20000,
+      minContextTokens: 20_000,
     });
     expect(said[1].text).toContain('3');
     expect(said[2].text).toContain('20000');
@@ -136,7 +136,7 @@ describe('createCacheManagerCommand', () => {
 
     expect(new Map(data)).toEqual(before);
     expect(said).toHaveLength(1);
-    const text = said[0].text;
+    const { text } = said[0];
     expect(text).toContain('hybrid');
     expect(text).toContain('off');
     expect(text).toContain('7');

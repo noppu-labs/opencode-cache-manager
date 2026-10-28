@@ -26,10 +26,10 @@ const snapshot = (
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-type Options = {
+interface Options {
   keepalive?: Record<string, KeepaliveSnapshot>;
   failures?: number;
-};
+}
 
 function setup(options: Options = {}) {
   const getKeepaliveCalls: { sessionID: string }[] = [];
@@ -49,7 +49,7 @@ function setup(options: Options = {}) {
     events: {
       subscribe: (name: string, opts?: { signal?: AbortSignal }) => {
         subscriptions.push({ name, signal: opts?.signal });
-        return (async function* () {
+        return (async function* subscribe() {
           const queue: { data: KeepaliveSnapshot }[] = [];
           let wake: (() => void) | undefined;
           const push = (event: { data: KeepaliveSnapshot }) => {

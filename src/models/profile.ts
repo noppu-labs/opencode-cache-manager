@@ -16,14 +16,14 @@ interface CacheProfile {
   /** Wires this profile can rewrite on; on any other wire the request is only observed (`implicit`). */
   wires: readonly Wire[];
   /** The TTL keepalive should track for a mode; `null` when there is nothing to keep warm. */
-  ttlForMode(mode: CacheTtlMode): Ttl | null;
+  ttlForMode: (mode: CacheTtlMode) => Ttl | null;
   /** Rewrites a parsed body in place for this mode and kind. Returns true if anything changed. */
-  rewrite(body: Record<string, unknown>, ctx: RewriteContext): boolean;
+  rewrite: (body: Record<string, unknown>, ctx: RewriteContext) => boolean;
   /** Extra headers to merge after `rewrite` (Anthropic: the beta flag when a 1h breakpoint is present). */
-  headers?(
+  headers?: (
     body: Record<string, unknown>,
     ctx: { wire: Wire; mode: CacheTtlMode }
-  ): Record<string, string>;
+  ) => Record<string, string>;
   /** Whether keepalive pings are allowed. */
   pings: boolean;
 }

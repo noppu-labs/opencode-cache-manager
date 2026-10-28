@@ -50,7 +50,10 @@ export default Plugin.define({
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
         clearTimeout(handle as ReturnType<typeof setTimeout>);
       },
-      isChild: async (sessionID) => Boolean((await ctx.session.get({ sessionID })).parentID),
+      isChild: async (sessionID) => {
+        const session = await ctx.session.get({ sessionID });
+        return Boolean(session.parentID);
+      },
       now: () => Date.now(),
       onChange: (snapshot: KeepaliveSnapshot) => {
         if (releasesMessages(snapshot, Date.now())) primaryMessages.delete(snapshot.sessionID);

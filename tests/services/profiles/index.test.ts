@@ -10,7 +10,8 @@ describe('profile registry', () => {
     expect(profileFor('anthropic')).toBe(anthropicProfile);
     expect(profileFor('openai')).toBe(openaiProfile);
     expect(profileFor('implicit')).toBe(implicitProfile);
-    for (const id of ['anthropic', 'openai', 'implicit'] as const)
+    for (const id of ['anthropic', 'openai', 'implicit'] as const) {
       expect(profileFor(id).id).toBe(id);
+    }
   });
 });

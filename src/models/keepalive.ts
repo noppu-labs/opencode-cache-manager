@@ -19,6 +19,7 @@ type SkipReason =
 /** OpenCode's request kind for a model call. */
 type RequestKind = 'primary' | 'compaction' | 'title' | 'generate';
 
+// oxlint-disable-next-line typescript/consistent-type-definitions -- the host's RPC event payload must be assignable to Record<string, unknown>, which an interface is not
 type KeepaliveSnapshot = {
   sessionID: string;
   ttl: Ttl | null;

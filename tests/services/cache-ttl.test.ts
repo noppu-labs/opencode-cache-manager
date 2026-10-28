@@ -212,8 +212,9 @@ describe('rewriteAnthropicCacheTtl', () => {
     for (const block of body.system as unknown[]) visit(block);
     for (const message of body.messages as Record<string, unknown>[]) {
       visit(message);
-      if (Array.isArray(message.content))
+      if (Array.isArray(message.content)) {
         for (const block of message.content as unknown[]) visit(block);
+      }
     }
     const firstFiveMin = order.indexOf('5m');
     if (firstFiveMin !== -1) {
@@ -350,7 +351,7 @@ describe('transformHttpRequest', () => {
   });
 
   test('every rebuilt request keeps the original abort signal', async () => {
-    const cases: Array<[Request, '5m' | '1h']> = [];
+    const cases: [Request, '5m' | '1h'][] = [];
     const controllers: AbortController[] = [];
     const build = (init: RequestInit & { url?: string }, mode: '5m' | '1h') => {
       const controller = new AbortController();

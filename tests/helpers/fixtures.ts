@@ -81,17 +81,17 @@ const openaiUsage = {
     total_tokens: 1702,
     reasoning_tokens: 0,
     completion_tokens_details: { reasoning_tokens: 0 },
-    cache_creation_input_tokens: 14845,
+    cache_creation_input_tokens: 14_845,
     prompt_tokens_details: { cache_creation_in_prompt: false },
   },
   omnirouteAutoRead: {
-    prompt_tokens: 16543,
+    prompt_tokens: 16_543,
     completion_tokens: 4,
-    total_tokens: 16547,
+    total_tokens: 16_547,
     reasoning_tokens: 0,
-    prompt_tokens_details: { cached_tokens: 14845 },
+    prompt_tokens_details: { cached_tokens: 14_845 },
     completion_tokens_details: { reasoning_tokens: 0 },
-    cache_read_input_tokens: 14845,
+    cache_read_input_tokens: 14_845,
   },
   lunaWrite: {
     prompt_tokens: 8887,
@@ -114,12 +114,12 @@ const openaiUsage = {
     cost: 0.000122015,
   },
   deepseekRead: {
-    prompt_tokens: 10195,
+    prompt_tokens: 10_195,
     completion_tokens: 3,
-    total_tokens: 10198,
-    cached_tokens: 10112,
+    total_tokens: 10_198,
+    cached_tokens: 10_112,
     reasoning_tokens: 0,
-    prompt_tokens_details: { cached_tokens: 10112 },
+    prompt_tokens_details: { cached_tokens: 10_112 },
     cache_creation_input_tokens: 0,
   },
 };
@@ -131,22 +131,21 @@ function openaiSse(
 ): string {
   const { finishReason = 'stop', model = 'openai/gpt-6-luna', provider = 'OpenAI' } = options;
   const chunk = (value: Record<string, unknown>) => `data: ${JSON.stringify(value)}\n\n`;
-  return (
+  return `${
     chunk({
       model,
       provider,
       choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }],
     }) +
     chunk({ model, provider, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] }) +
-    chunk({ model, provider, choices: [], usage }) +
-    'data: [DONE]\n\n'
-  );
+    chunk({ model, provider, choices: [], usage })
+  }data: [DONE]\n\n`;
 }
 
 /** Anthropic usage with cache reads and a 1h write. */
 const fullUsage = {
   input_tokens: 10,
-  cache_read_input_tokens: 60000,
+  cache_read_input_tokens: 60_000,
   cache_creation_input_tokens: 500,
   cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 500 },
 };
@@ -154,7 +153,7 @@ const fullUsage = {
 /** `fullUsage` as parsed. */
 const fullParsed: CacheUsage = {
   inputTokens: 10,
-  cacheReadTokens: 60000,
+  cacheReadTokens: 60_000,
   cacheWriteTokens: 500,
   write5mTokens: 0,
   write1hTokens: 500,

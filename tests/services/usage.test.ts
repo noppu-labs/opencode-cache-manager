@@ -17,7 +17,7 @@ describe('parseUsageFromJson', () => {
     const usage = parseUsageFromJson({ usage: fullUsage });
     expect(usage).toEqual(fullParsed);
     expect(grantedTtl(usage!)).toBe('1h');
-    expect(contextTokens(usage!)).toBe(60510);
+    expect(contextTokens(usage!)).toBe(60_510);
     expect(hasCacheActivity(usage!)).toBe(true);
   });
 
@@ -76,7 +76,7 @@ describe('parseUsageFromJson', () => {
 describe('parseUsageFromSse', () => {
   test('message_delta overrides defined fields from message_start', () => {
     const usage = parseUsageFromSse(sse(fullUsage))!;
-    expect(usage.cacheReadTokens).toBe(61000);
+    expect(usage.cacheReadTokens).toBe(61_000);
     expect(usage.inputTokens).toBe(10);
     expect(usage.cacheWriteTokens).toBe(500);
     expect(usage.write1hTokens).toBe(500);
@@ -84,8 +84,8 @@ describe('parseUsageFromSse', () => {
   });
 
   test('skips malformed data lines', () => {
-    const text = `event: ping\ndata: {not json\n\n` + sse(fullUsage);
-    expect(parseUsageFromSse(text)?.cacheReadTokens).toBe(61000);
+    const text = `event: ping\ndata: {not json\n\n${sse(fullUsage)}`;
+    expect(parseUsageFromSse(text)?.cacheReadTokens).toBe(61_000);
   });
 
   test('returns undefined without any usage', () => {

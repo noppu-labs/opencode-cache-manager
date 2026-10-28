@@ -60,8 +60,9 @@ function classifyRequest(
 ): Classification | undefined {
   const wire = requestWire(request);
   if (wire === undefined) return undefined;
-  if (wire === 'anthropic-messages' && isAnthropicProvider(ref.providerID))
+  if (wire === 'anthropic-messages' && isAnthropicProvider(ref.providerID)) {
     return { profile: 'anthropic', wire };
+  }
 
   const matches = (regex: RegExp) =>
     regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
@@ -101,8 +102,9 @@ async function classifyRequestWithBody(
 ): Promise<Classification | undefined> {
   const first = classifyRequest(request, ref, deps);
   if (first?.profile !== 'implicit') return first;
-  if (first.wire !== 'anthropic-messages' && !(opts.openaiWires && isOpenAiWire(first.wire)))
+  if (first.wire !== 'anthropic-messages' && !(opts.openaiWires && isOpenAiWire(first.wire))) {
     return first;
+  }
   if (matchProfilePatterns(deps.patterns, ref) !== undefined) return first;
   try {
     const body: unknown = await request.clone().json();

@@ -9,9 +9,11 @@ const SGR_ITALIC = 3;
 const SGR_UNDERLINE = 4;
 const SGR_FOREGROUND = 38;
 const SGR_BACKGROUND = 48;
+/** Position of the alpha channel in `RGBA.toInts()`. */
+const ALPHA_INDEX = 3;
 
 /** The OpenTUI text attributes mapped to SGR; any other attribute bit is dropped from the image. */
-const ATTRIBUTE_CODES: ReadonlyArray<readonly [number, number]> = [
+const ATTRIBUTE_CODES: readonly (readonly [number, number])[] = [
   [TextAttributes.BOLD, SGR_BOLD],
   [TextAttributes.DIM, SGR_DIM],
   [TextAttributes.ITALIC, SGR_ITALIC],
@@ -25,8 +27,8 @@ interface TextPart {
 }
 
 function sgrColor(color: RGBA, layer: typeof SGR_FOREGROUND | typeof SGR_BACKGROUND): string {
-  const [r, g, b, alpha] = color.toInts();
-  return alpha === 0 ? '' : `${ESC}${layer};2;${r};${g};${b}m`;
+  const [red, green, blue, alpha] = color.toInts();
+  return alpha === 0 ? '' : `${ESC}${layer};2;${red};${green};${blue}m`;
 }
 
 function sgrAttributes(attributes: number): string {
@@ -45,8 +47,7 @@ function spanToAnsi(span: CapturedSpan): string {
 
 /** A run of cells the component did not paint: no background and no glyph. */
 function isUnpainted(span: CapturedSpan): boolean {
-  const [, , , alpha] = span.bg.toInts();
-  return alpha === 0 && span.text.trim() === '';
+  return span.bg.toInts()[ALPHA_INDEX] === 0 && span.text.trim() === '';
 }
 
 /** Drops the unpainted rows above and below the component: the test terminal around it. */

@@ -47,7 +47,10 @@ function createRequestHook({
   return async (evt: HttpRequestEvent): Promise<void> => {
     const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
     const anthropicProvider = isAnthropicProvider(ref.providerID);
-    const deps = { learned: (r: ModelRef) => profiles.get(r), patterns: options.cacheProfiles };
+    const deps = {
+      learned: (model: ModelRef) => profiles.get(model),
+      patterns: options.cacheProfiles,
+    };
     const cls = await classifyRequestWithBody(evt.request, ref, deps, {
       openaiWires: options.openaiCompatible,
     });
@@ -61,15 +64,15 @@ function createRequestHook({
     const profileId = profileForRoute(route, options.openaiCompatible);
     if (profileId === undefined) return;
     const profile = profileFor(profileId);
-    const rewrites = route.rewrites;
+    const { rewrites } = route;
     const observed = route.observedWire !== undefined;
 
-    const sessionID = evt.sessionID;
+    const { sessionID } = evt;
     let mode: CacheTtlMode;
     try {
-      mode = (await store.effective(sessionID)).mode;
+      ({ mode } = await store.effective(sessionID));
     } catch {
-      mode = store.global().mode;
+      ({ mode } = store.global());
     }
     const original = evt.request;
     const isPing = observed && pings.isPing(evt.kind, sessionID);

@@ -1,10 +1,11 @@
 import { isCacheProfileId, type ProfilePattern } from '../models/cache.ts';
 import { isRecord } from '../utils/is-record.ts';
 
-const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/u;
+const REGEX_LITERAL = /^\/(?<body>.+)\/(?<flags>[a-z]*)$/u;
 const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/gu;
 
-const substring = (source: string) => new RegExp(source.replaceAll(REGEX_SPECIALS, '\\$&'), 'iu');
+const substring = (source: string) =>
+  new RegExp(source.replaceAll(REGEX_SPECIALS, String.raw`\$&`), 'iu');
 
 function validFlags(flags: string): boolean {
   try {
@@ -18,10 +19,10 @@ function validFlags(flags: string): boolean {
 
 /** `/body/flags` is a regex (an invalid body gives `undefined`); anything else, including bad flags like `/auto/opus`, is a substring. */
 function compile(source: string): RegExp | undefined {
-  const literal = REGEX_LITERAL.exec(source);
-  if (!literal || !validFlags(literal[2])) return substring(source);
+  const literal = REGEX_LITERAL.exec(source)?.groups;
+  if (!literal || !validFlags(literal.flags)) return substring(source);
   try {
-    return new RegExp(literal[1], literal[2]);
+    return new RegExp(literal.body, literal.flags);
   } catch {
     return undefined;
   }

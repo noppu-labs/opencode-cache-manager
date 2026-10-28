@@ -5,8 +5,8 @@ import type {
   ResponseParsers,
 } from '../models/cache.ts';
 
-// oxlint-disable-next-line unicorn/no-useless-undefined -- Promise.resolve() is typed Promise<void>, which does not fit Promise<T | undefined>
-const resolvedUndefined = <T>(): Promise<T | undefined> => Promise.resolve(undefined);
+// oxlint-disable-next-line unicorn/no-useless-undefined -- Promise.resolve() is typed Promise<void>, which does not fit Promise<Value | undefined>
+const resolvedUndefined = <Value>(): Promise<Value | undefined> => Promise.resolve(undefined);
 
 /**
  * Tees the response body so usage, the stop reason and, where `parsers`
@@ -76,9 +76,9 @@ export function observeResponseUsage(
   })();
 
   return {
-    identity: parsed.then((p) => p.identity),
+    identity: parsed.then((result) => result.identity),
     response: passthrough,
-    stopReason: parsed.then((p) => p.stopReason),
-    usage: parsed.then((p) => p.usage),
+    stopReason: parsed.then((result) => result.stopReason),
+    usage: parsed.then((result) => result.usage),
   };
 }

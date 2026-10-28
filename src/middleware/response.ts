@@ -55,10 +55,9 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
       );
       if (!wire) return Promise.resolve();
 
-      const sessionID = evt.sessionID;
-      const kind = evt.kind;
+      const { kind, sessionID } = evt;
       const isPing = pings.isPing(kind, sessionID);
-      const ok = evt.response.ok;
+      const { ok } = evt.response;
       const parsers = PARSERS_BY_WIRE[wire];
       const observed = observeResponseUsage(evt.response, parsers);
       evt.response = observed.response;
@@ -68,8 +67,9 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
         learns &&
         wire === 'anthropic-messages' &&
         REJECTED_REQUEST_STATUSES.includes(evt.response.status)
-      )
+      ) {
         void profiles.forget(ref).catch(() => {});
+      }
       // Learning settles before the engine hears of the response, so a flip to a non-pinging profile cannot leave a ping armed.
       const unmanagedCheck = learns
         ? observed.identity
@@ -82,10 +82,11 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
               if (
                 !sessionTurn ||
                 !(isNonEmptyString(identity?.model) || isNonEmptyString(identity?.provider))
-              )
+              ) {
                 return false;
+              }
               return !(await keepsWarm(evt.request, ref, {
-                learned: (r) => profiles.get(r),
+                learned: (model) => profiles.get(model),
                 patterns: options.cacheProfiles,
               }));
             })
