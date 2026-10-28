@@ -19,7 +19,8 @@ export default Plugin.define({
   id: 'opencode-cache-manager',
   async setup(ctx) {
     const rpc = withLocation(
-      ctx.client.rpc(CacheTtlRpc as any) as unknown as RawCacheTtlRpcClient,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the host types RPC results as unknown; rpc.ts declares the shapes the server handlers return
+      ctx.client.rpc(CacheTtlRpc) as unknown as RawCacheTtlRpcClient,
       (sessionID) =>
         (sessionID === undefined ? undefined : ctx.data.session.get(sessionID)?.location) ??
         ctx.location ??

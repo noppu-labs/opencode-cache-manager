@@ -45,6 +45,7 @@ export default Plugin.define({
     const engine = new KeepaliveEngine({
       now: () => Date.now(),
       setTimer: (fn, ms) => setTimeout(fn, ms),
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
       clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
       settings: (sessionID) => store.effective(sessionID),
       isChild: async (sessionID) => Boolean((await ctx.session.get({ sessionID })).parentID),
@@ -68,6 +69,7 @@ export default Plugin.define({
     };
 
     try {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the host types handler inputs as unknown, while the handlers take the shapes the method schemas validate
       rpcRegistration = await (ctx.rpc.register as any)(
         CacheTtlRpc,
         createRpcHandlers({ store, engine, settingsChanged })

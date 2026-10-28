@@ -83,6 +83,7 @@ export function parseUsageFromSse(text: string): CacheUsage | undefined {
     if (!partial) continue;
 
     merged ??= {};
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `partial` is built by readUsage, so its keys are exactly PartialUsage's
     for (const key of Object.keys(partial) as (keyof PartialUsage)[]) {
       if (partial[key] !== undefined) merged[key] = partial[key];
     }
