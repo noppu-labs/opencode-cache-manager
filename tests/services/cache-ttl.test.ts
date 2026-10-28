@@ -247,7 +247,7 @@ describe('transformHttpRequest', () => {
     expect(out.headers.get('anthropic-beta')).toBe(
       'interleaved-thinking-2025-05-14,extended-cache-ttl-2025-04-11'
     );
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
   });
 
@@ -270,7 +270,7 @@ describe('transformHttpRequest', () => {
       transformOpts()
     );
     expect(out.headers.get('anthropic-beta')).toBeNull();
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect('ttl' in cc).toBe(false);
   });
 
@@ -282,7 +282,7 @@ describe('transformHttpRequest', () => {
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(out.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
   });
 
@@ -294,7 +294,7 @@ describe('transformHttpRequest', () => {
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(out.headers.get('anthropic-beta')).toBeNull();
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect('ttl' in cc).toBe(false);
   });
 
@@ -305,7 +305,7 @@ describe('transformHttpRequest', () => {
       transformOpts()
     );
     expect(out.headers.has(SENTINEL_HEADER)).toBe(false);
-    const body = (await parsedBodyOf(out)) as Record<string, unknown>;
+    const body = await parsedBodyOf(out);
     for (const cc of collectCacheControls(body)) expect(cc.ttl).toBe('1h');
   });
 
@@ -384,7 +384,7 @@ describe('transformHttpRequest', () => {
       const out = await transformHttpRequest(request, mode, transformOpts());
       expect(out).not.toBe(request);
       expect(out.signal.aborted).toBe(false);
-      controllers[i]!.abort();
+      controllers[i].abort();
       expect(out.signal.aborted).toBe(true);
     }
   });

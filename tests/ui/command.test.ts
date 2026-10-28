@@ -193,7 +193,7 @@ describe('createCommandRunner', () => {
 
     expect(t.setSessionCalls).toHaveLength(1);
     expect(t.toasts).toHaveLength(1);
-    expect(t.toasts[0]!.variant).toBe('error');
-    expect(t.toasts[0]!.message).toContain('rpc down');
+    expect(t.toasts[0].variant).toBe('error');
+    expect(t.toasts[0].message).toContain('rpc down');
   });
 });

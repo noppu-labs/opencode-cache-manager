@@ -51,7 +51,7 @@ function packOnce(): string {
   expect(pack.exitCode).toBe(0);
   const tarballs = readdirSync(tmpDir).filter((f) => f.endsWith('.tgz'));
   expect(tarballs).toHaveLength(1);
-  tgzPath = join(tmpDir, tarballs[0]!);
+  tgzPath = join(tmpDir, tarballs[0]);
   return tgzPath;
 }
 
@@ -65,7 +65,7 @@ function extract(): string {
   expect(tar.exitCode).toBe(0);
   // macOS hands out /var/folders/... but Bun.resolveSync dereferences the
   // symlink to /private/var/folders/..., so compare real paths throughout.
-  const dir = realpathSync(join(tmpDir!, 'package'));
+  const dir = realpathSync(join(tmpDir, 'package'));
   expect(existsSync(join(dir, 'package.json'))).toBe(true);
   return dir;
 }
@@ -219,7 +219,7 @@ describe('Host.resolve against the extracted package', () => {
     expect(code).not.toContain('jsx-dev-runtime');
     const allowed = new Set(['@opentui/solid', 'solid-js', 'solid-js/store']);
     for (const match of code.matchAll(/\bfrom\s*["']([^"']+)["']/g)) {
-      expect(allowed.has(match[1]!)).toBe(true);
+      expect(allowed.has(match[1])).toBe(true);
     }
   });
 

@@ -216,7 +216,7 @@ describe('createPicker', () => {
     expect(t.setSessionCalls).toEqual([
       { sessionID: 'ses_1', patch: { minContextTokens: 100_000 } },
     ]);
-    expect(t.toasts[0]!.message).toBe('Session min context set to 100k.');
+    expect(t.toasts[0].message).toBe('Session min context set to 100k.');
   });
 
   test('global:maxPings then Custom with 7 writes the global setting', async () => {

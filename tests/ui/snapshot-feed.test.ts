@@ -196,7 +196,7 @@ describe('createSnapshotFeed', () => {
 
   test('dispose aborts the subscription', () => {
     const t = setup();
-    const sub = t.subscriptions[0]!;
+    const sub = t.subscriptions[0];
     expect(sub.signal?.aborted).toBe(false);
 
     t.feed.dispose();

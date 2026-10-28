@@ -122,7 +122,7 @@ function pagedStorage(pages: string[][]) {
       calls.push(input);
       const index = input.after ? Number(input.after) : 0;
       const next = index + 1 < pages.length ? String(index + 1) : undefined;
-      return { entries: pages[index]!.map((key) => ({ key })), ...(next ? { next } : {}) };
+      return { entries: pages[index].map((key) => ({ key })), ...(next ? { next } : {}) };
     },
     remove: async (key) => {
       removed.push(key);

@@ -121,6 +121,6 @@ describe('renderScreen', () => {
     const rows = await screens.renderScreen('sidebar');
     const bold = rows.filter((row) => row.includes('\u001b[1m'));
     expect(bold).toHaveLength(1);
-    expect(stripAnsi(bold[0]!)).toBe(screens.SECTION_HEADER);
+    expect(stripAnsi(bold[0])).toBe(screens.SECTION_HEADER);
   });
 });

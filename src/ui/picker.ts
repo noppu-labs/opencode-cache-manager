@@ -155,7 +155,7 @@ export function createPicker({
     } else if (field === 'keepalive') {
       patch = { keepalive: selected === 'on' };
     } else {
-      patch = { [field]: selected } as SettingsPatch;
+      patch = { [field]: selected };
     }
 
     const next = patch[field] as Settings[Field];

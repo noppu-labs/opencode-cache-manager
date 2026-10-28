@@ -5,12 +5,7 @@ import { isCacheTtlMode } from '../models/cache.ts';
 function extractRawText(raw: unknown): string {
   if (typeof raw === 'string') return raw;
 
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    'text' in raw &&
-    typeof (raw as { text: unknown }).text === 'string'
-  ) {
+  if (raw && typeof raw === 'object' && 'text' in raw && typeof raw.text === 'string') {
     return (raw as { text: string }).text;
   }
 
