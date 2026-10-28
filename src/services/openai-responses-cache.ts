@@ -5,6 +5,9 @@ type Rec = Record<string, unknown>;
 const isInputText = (part: unknown): part is Rec =>
   isRecord(part) && part.type === 'input_text' && typeof part.text === 'string' && part.text !== '';
 
+const findLastInputText = (parts: unknown[]): Rec | undefined =>
+  parts.findLast((part): part is Rec => isInputText(part));
+
 const isMessageItem = (item: Rec): boolean =>
   item.type === 'message' || (item.type === undefined && typeof item.role === 'string');
 
@@ -18,7 +21,7 @@ export function lastInputTextPart(item: Rec): Rec | undefined {
     item.content = [part];
     return part;
   }
-  return Array.isArray(content) ? content.findLast(isInputText) : undefined;
+  return Array.isArray(content) ? findLastInputText(content) : undefined;
 }
 
 /** The first `input` item of a Responses body. */
@@ -41,7 +44,7 @@ export function toolOutputTextPart(item: Rec): Rec | undefined {
     item.output = [part];
     return part;
   }
-  return Array.isArray(output) ? output.findLast(isInputText) : undefined;
+  return Array.isArray(output) ? findLastInputText(output) : undefined;
 }
 
 /** The last `input_text` part of a message or tool output in the body, skipping items without one (tool calls, assistant output). */

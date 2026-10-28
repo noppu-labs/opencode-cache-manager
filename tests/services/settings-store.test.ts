@@ -180,6 +180,7 @@ describe('sweepDeletedSessions', () => {
     const { kv, data } = memoryKv();
     data.set('session/ses_a', { mode: '1h' });
     await sweepDeletedSessions(kv, async () => {
+      // oxlint-disable-next-line eslint/no-throw-literal, typescript/only-throw-error -- the case under test is a thrown non-object value
       throw 'SessionNotFound';
     });
     expect(data.has('session/ses_a')).toBe(true);

@@ -73,7 +73,9 @@ function harness(config: { options?: Partial<PluginOptions> } = {}) {
   return { hook, pings, observed, fake, learnCalls, forgetCalls, store };
 }
 
-function jsonResponse(body: unknown = { usage: WRITE_1H }, status = 200) {
+const DEFAULT_BODY = { usage: WRITE_1H };
+
+function jsonResponse(body: unknown = DEFAULT_BODY, status = 200) {
   return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },

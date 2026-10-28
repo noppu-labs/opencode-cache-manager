@@ -31,7 +31,9 @@ export default Plugin.define({
       const route = ctx.ui.router.current();
       return route.type === 'session' ? route.sessionID : undefined;
     };
-    const toast: Toast = (message, variant) => ctx.ui.toast.show({ message, variant });
+    const toast: Toast = (message, variant) => {
+      ctx.ui.toast.show({ message, variant });
+    };
 
     const openPicker = createPicker({ dialog: ctx.ui.dialog, rpc, toast, currentSessionID });
     const runCommand = createCommandRunner({ rpc, toast, currentSessionID, openPicker });

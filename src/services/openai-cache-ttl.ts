@@ -71,7 +71,7 @@ export function lastTextPart(message: Rec): Rec | undefined {
     message.content = [part];
     return part;
   }
-  return Array.isArray(content) ? content.findLast(isText) : undefined;
+  return Array.isArray(content) ? content.findLast((part): part is Rec => isText(part)) : undefined;
 }
 
 /**

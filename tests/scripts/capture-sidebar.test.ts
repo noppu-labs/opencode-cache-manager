@@ -36,7 +36,7 @@ describe('frameToAnsi', () => {
         line(span(' ')),
       ])
     );
-    expect(rows.map(stripAnsi)).toEqual(['Cache', '', 'ttl']);
+    expect(rows.map((row) => stripAnsi(row))).toEqual(['Cache', '', 'ttl']);
   });
 
   test('emits bold before the colour so the run keeps its colour', () => {
@@ -78,7 +78,7 @@ describe('renderScreen', () => {
   });
 
   test('the hero shows a warm 1h cache with a ping scheduled', async () => {
-    const rows = (await screens.renderScreen('sidebar')).map(stripAnsi);
+    const rows = (await screens.renderScreen('sidebar')).map((row) => stripAnsi(row));
     expect(rows).toEqual([
       'Cache',
       '• status      warm',
@@ -91,7 +91,7 @@ describe('renderScreen', () => {
   });
 
   test('the states screen captions every other state once', async () => {
-    const rows = (await screens.renderScreen('sidebar-states')).map(stripAnsi);
+    const rows = (await screens.renderScreen('sidebar-states')).map((row) => stripAnsi(row));
     const captions = rows.filter((row) => row.startsWith('# '));
     expect(captions).toHaveLength(screens.SCREENS['sidebar-states'].length);
     expect(new Set(captions).size).toBe(captions.length);

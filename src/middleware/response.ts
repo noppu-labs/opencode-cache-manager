@@ -45,7 +45,7 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
  * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
  */
 export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
-  return async (evt: HttpResponseEvent): Promise<void> => {
+  return (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
       const wire = observedWireFor(
@@ -53,7 +53,7 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
         isAnthropicProvider(ref.providerID),
         options.openaiCompatible
       );
-      if (!wire) return;
+      if (!wire) return Promise.resolve();
 
       const sessionID = evt.sessionID;
       const kind = evt.kind;
@@ -101,5 +101,6 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
     } catch {
       // Observation must never fail the host's response; it passes through unchanged.
     }
+    return Promise.resolve();
   };
 }

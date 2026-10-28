@@ -617,11 +617,11 @@ describe('keepalive wiring', () => {
       const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
       const pings: Array<Record<string, any>> = [];
       host.generate.mockImplementation(async (input: any) => {
-        const body = { ...sampleBody(), model: alias } as Record<string, any>;
-        body.messages = [
-          diverging,
-          { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] },
-        ];
+        const body = {
+          ...sampleBody(),
+          model: alias,
+          messages: [diverging, { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] }],
+        } as Record<string, any>;
         const ping = await roundTrip(
           host,
           proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {

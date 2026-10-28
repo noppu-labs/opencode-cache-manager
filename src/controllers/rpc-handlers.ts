@@ -44,6 +44,7 @@ export function createRpcHandlers({ store, engine, settingsChanged }: RpcHandler
       await store.resetSession(input.sessionID);
       return settingsChanged(input.sessionID);
     },
-    getKeepalive: async (input: { sessionID: string }) => engine.snapshot(input.sessionID),
+    getKeepalive: (input: { sessionID: string }) =>
+      Promise.try(() => engine.snapshot(input.sessionID)),
   };
 }

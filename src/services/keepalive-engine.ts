@@ -347,7 +347,11 @@ export class KeepaliveEngine {
 
     if (s.nextPingAt !== null) {
       const delay = Math.max(0, s.nextPingAt - this.deps.now());
-      s.timer = { handle: this.deps.setTimer(() => this.fire(sessionID, generation), delay) };
+      s.timer = {
+        handle: this.deps.setTimer(() => {
+          this.fire(sessionID, generation);
+        }, delay),
+      };
     }
     this.commit(sessionID, s);
   }

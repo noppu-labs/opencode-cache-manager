@@ -46,8 +46,10 @@ export default Plugin.define({
     const engine = new KeepaliveEngine({
       now: () => Date.now(),
       setTimer: (fn, ms) => setTimeout(fn, ms),
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
-      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      clearTimer: (handle) => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
+        clearTimeout(handle as ReturnType<typeof setTimeout>);
+      },
       settings: (sessionID) => store.effective(sessionID),
       isChild: async (sessionID) => Boolean((await ctx.session.get({ sessionID })).parentID),
       onChange: (snapshot: KeepaliveSnapshot) => {

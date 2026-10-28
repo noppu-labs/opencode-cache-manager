@@ -199,12 +199,13 @@ describe('rewriteAnthropicCacheTtl', () => {
     for (const tool of body.tools as unknown[]) {
       visit(tool);
       const nested = (tool as Record<string, unknown>).tools;
-      if (Array.isArray(nested)) nested.forEach(visit);
+      if (Array.isArray(nested)) for (const block of nested) visit(block);
     }
     for (const block of body.system as unknown[]) visit(block);
     for (const message of body.messages as Record<string, unknown>[]) {
       visit(message);
-      if (Array.isArray(message.content)) (message.content as unknown[]).forEach(visit);
+      if (Array.isArray(message.content))
+        for (const block of message.content as unknown[]) visit(block);
     }
     const firstFiveMin = order.indexOf('5m');
     if (firstFiveMin !== -1) {
