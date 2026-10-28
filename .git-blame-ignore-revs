@@ -1,2 +1,2 @@
-# style: apply oxfmt
-6b79aa2584b55f39ef2f432c0c53a86c621c061a
+# Add oxlint (type-aware) and oxfmt (#15): squash merge containing the oxfmt reformat
+1d330ae544130d8a5b18fea4ebfd4fee302b5fc7
