@@ -195,7 +195,7 @@ class KeepaliveEngine {
       sessionID === undefined
         ? [...this.sessions.keys()]
         : [sessionID].filter((id) => this.sessions.has(id));
-    await Promise.all(ids.map((id) => this.schedule(id)));
+    await Promise.all(ids.map(async (id) => this.schedule(id)));
   }
 
   snapshot(sessionID: string): KeepaliveSnapshot {
@@ -309,9 +309,9 @@ class KeepaliveEngine {
   }
 
   /** Cached once resolved; a failed lookup counts as a child for this computation only and is retried next time. */
-  private isChild(sessionID: string, state: SessionState): Promise<boolean> {
+  private async isChild(sessionID: string, state: SessionState): Promise<boolean> {
     if (!state.child) {
-      const lookup = Promise.resolve().then(() => this.deps.isChild(sessionID));
+      const lookup = Promise.resolve().then(async () => this.deps.isChild(sessionID));
       state.child = lookup;
       lookup.catch(() => {
         if (state.child === lookup) state.child = undefined;

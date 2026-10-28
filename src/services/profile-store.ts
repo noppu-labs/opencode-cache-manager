@@ -76,7 +76,7 @@ export class ProfileStore {
     }
   }
 
-  private persist(): Promise<void> {
+  private async persist(): Promise<void> {
     return this.kv.set(STORAGE_KEY, Object.fromEntries(this.learned));
   }
 }

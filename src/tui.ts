@@ -45,7 +45,7 @@ export default Plugin.define({
           group: 'Provider',
           id: 'cache-manager.open',
           palette: true,
-          run: (input?: string) => runCommand(input),
+          run: async (input?: string) => runCommand(input),
           slash: { arguments: true, name: 'cache-manager' },
           title: 'Cache Manager',
         },

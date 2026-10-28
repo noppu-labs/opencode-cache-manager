@@ -41,7 +41,8 @@ function createRpcHandlers({
   settingsChanged,
 }: RpcHandlerDeps): CacheTtlRpcHandlers {
   return {
-    getKeepalive: (input) => Promise.try(() => engine.snapshot(input.sessionID)),
+    // oxlint-disable-next-line typescript/require-await -- the snapshot is synchronous; async gives the RPC its promise and turns a throw into a rejection
+    getKeepalive: async (input) => engine.snapshot(input.sessionID),
     getSettings: async (input) => ({
       global: store.global(),
       session: isNonEmptyString(input?.sessionID)
