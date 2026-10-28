@@ -11,7 +11,7 @@ import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 const GLOBAL_KEY = 'global';
 const LEGACY_MODE_KEY = 'mode';
 const SESSION_KEY_PREFIX = 'session/';
-const sessionKey = (sessionID: string) => `${SESSION_KEY_PREFIX}${sessionID}`;
+const sessionKey = (sessionID: string): string => `${SESSION_KEY_PREFIX}${sessionID}`;
 
 /** Layered settings: built-in defaults < plugin options < stored global < stored per-session. */
 class SettingsStore {

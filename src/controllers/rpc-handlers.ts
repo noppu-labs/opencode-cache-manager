@@ -1,4 +1,5 @@
-import { sanitizePatch, type SettingsPatch } from '../config/settings.ts';
+import { sanitizePatch, type Settings, type SettingsPatch } from '../config/settings.ts';
+import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import type { KeepaliveEngine } from '../services/keepalive-engine.ts';
 import type { SettingsStore } from '../services/settings-store.ts';
 import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
@@ -16,35 +17,51 @@ function validatePatch(value: unknown): SettingsPatch {
   return patch;
 }
 
-export interface RpcHandlerDeps {
+interface RpcHandlerDeps {
   store: SettingsStore;
   engine: KeepaliveEngine;
   /** Applies a settings change to the keepalive schedule and tells the TUI; resolves to the RPC output. */
   settingsChanged: (sessionID: string | null) => Promise<object>;
 }
 
+interface CacheTtlRpcHandlers {
+  getKeepalive: (input: { sessionID: string }) => Promise<KeepaliveSnapshot>;
+  getSettings: (input: {
+    sessionID?: string;
+  }) => Promise<{ global: Settings; session: SettingsPatch | null }>;
+  resetSession: (input: { sessionID: string }) => Promise<object>;
+  setGlobal: (input: { patch: unknown }) => Promise<object>;
+  setSession: (input: { sessionID: string; patch: unknown }) => Promise<object>;
+}
+
 /** Handlers for the `CacheTtlRpc` contract. */
-export function createRpcHandlers({ store, engine, settingsChanged }: RpcHandlerDeps) {
+function createRpcHandlers({
+  store,
+  engine,
+  settingsChanged,
+}: RpcHandlerDeps): CacheTtlRpcHandlers {
   return {
-    getKeepalive: (input: { sessionID: string }) =>
-      Promise.try(() => engine.snapshot(input.sessionID)),
-    getSettings: async (input: { sessionID?: string }) => ({
+    getKeepalive: (input) => Promise.try(() => engine.snapshot(input.sessionID)),
+    getSettings: async (input) => ({
       global: store.global(),
       session: isNonEmptyString(input?.sessionID)
         ? await store.sessionPatch(input.sessionID)
         : null,
     }),
-    resetSession: async (input: { sessionID: string }) => {
+    resetSession: async (input) => {
       await store.resetSession(input.sessionID);
       return settingsChanged(input.sessionID);
     },
-    setGlobal: async (input: { patch: unknown }) => {
+    setGlobal: async (input) => {
       await store.setGlobal(validatePatch(input.patch));
       return settingsChanged(null);
     },
-    setSession: async (input: { sessionID: string; patch: unknown }) => {
+    setSession: async (input) => {
       await store.setSession(input.sessionID, validatePatch(input.patch));
       return settingsChanged(input.sessionID);
     },
   };
 }
+
+export type { CacheTtlRpcHandlers, RpcHandlerDeps };
+export { createRpcHandlers };

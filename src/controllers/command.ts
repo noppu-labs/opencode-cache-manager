@@ -14,7 +14,7 @@ function describeSettings(settings: Settings): string {
   );
 }
 
-export interface CommandDeps {
+interface CommandDeps {
   store: SettingsStore;
   /** Applies a settings change to the keepalive schedule and tells the TUI. */
   settingsChanged: (sessionID: string | null) => Promise<unknown>;
@@ -22,8 +22,18 @@ export interface CommandDeps {
   say: (sessionID: string, text: string) => Promise<unknown>;
 }
 
+interface CacheManagerCommand {
+  description: string;
+  execute: (input: { sessionID: string; prompt: unknown }) => Promise<void>;
+  name: string;
+}
+
 /** The `/cache-manager` command: typed arguments edit the current session's settings. */
-export function createCacheManagerCommand({ store, settingsChanged, say }: CommandDeps) {
+function createCacheManagerCommand({
+  store,
+  settingsChanged,
+  say,
+}: CommandDeps): CacheManagerCommand {
   return {
     description:
       "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
@@ -71,3 +81,6 @@ export function createCacheManagerCommand({ store, settingsChanged, say }: Comma
     name: 'cache-manager',
   };
 }
+
+export type { CacheManagerCommand, CommandDeps };
+export { createCacheManagerCommand };

@@ -10,7 +10,7 @@ import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 import { isRecord } from '../utils/is-record.ts';
 
 const STORAGE_KEY = 'learned-models';
-const key = (ref: ModelRef) => `${ref.providerID}/${ref.id}`;
+const key = (ref: ModelRef): string => `${ref.providerID}/${ref.id}`;
 
 /** The profile a response's resolved `model` / `provider` points at. */
 function profileForIdentity(

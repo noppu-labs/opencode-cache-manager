@@ -4,7 +4,7 @@ import { isRecord } from '../utils/is-record.ts';
 const REGEX_LITERAL = /^\/(?<body>.+)\/(?<flags>[a-z]*)$/u;
 const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/gu;
 
-const substring = (source: string) =>
+const substring = (source: string): RegExp =>
   new RegExp(source.replaceAll(REGEX_SPECIALS, String.raw`\$&`), 'iu');
 
 function validFlags(flags: string): boolean {

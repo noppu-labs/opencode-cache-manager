@@ -416,7 +416,7 @@ class KeepaliveEngine {
     state.pingPending = true;
     this.commit(sessionID, state);
 
-    const settled = () => {
+    const settled = (): void => {
       state.pingPending = false;
       if (this.disposed) return;
       /*

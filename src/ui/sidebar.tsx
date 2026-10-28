@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/solid */
 import type { Plugin } from '@opencode/plugin/tui';
 import type { RGBA } from '@opentui/core';
-import { createEffect, createSignal, Index, onCleanup, Show } from 'solid-js';
+import { createEffect, createSignal, Index, type JSX, onCleanup, Show } from 'solid-js';
 
 import { SIDEBAR_REFRESH_MS } from '../constants/keepalive.ts';
 import { MS_PER_SECOND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
-import { LABEL_WIDTH, sidebarLines, type Tone } from './sidebar-lines.ts';
+import { LABEL_WIDTH, type SidebarLine, sidebarLines, type Tone } from './sidebar-lines.ts';
 
 /** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
 type SidebarPalette = Readonly<Record<Tone, RGBA>>;
@@ -24,7 +24,7 @@ function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
 function CacheLines(props: {
   palette: () => SidebarPalette;
   snapshot: () => KeepaliveSnapshot | undefined;
-}) {
+}): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => {
     setNow(Date.now());
@@ -33,9 +33,9 @@ function CacheLines(props: {
     clearInterval(timer);
   });
 
-  const lines = () => sidebarLines(props.snapshot(), now());
+  const lines = (): SidebarLine[] => sidebarLines(props.snapshot(), now());
 
-  const toneColor = (tone: Tone) => props.palette()[tone];
+  const toneColor = (tone: Tone): RGBA => props.palette()[tone];
 
   return (
     <box flexDirection="column">
@@ -73,11 +73,11 @@ function CacheSection(props: {
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>;
   load: (sessionID: string) => void;
   refresh: (sessionID: string) => void;
-}) {
-  const snapshot = () => props.snapshots().get(props.sessionID);
-  const palette = () => paletteFromTheme(props.ctx.theme);
+}): JSX.Element {
+  const snapshot = (): KeepaliveSnapshot | undefined => props.snapshots().get(props.sessionID);
+  const palette = (): SidebarPalette => paletteFromTheme(props.ctx.theme);
   // Child sessions are never pinged; before a snapshot exists only the TUI's session data can tell.
-  const child = () => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
+  const child = (): boolean => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
 
   createEffect(() => {
     const { sessionID } = props;
@@ -90,7 +90,7 @@ function CacheSection(props: {
     });
   });
   // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
-  const visible = () => !child() && sidebarLines(snapshot(), 0).length > 0;
+  const visible = (): boolean => !child() && sidebarLines(snapshot(), 0).length > 0;
 
   return (
     <Show when={visible()}>

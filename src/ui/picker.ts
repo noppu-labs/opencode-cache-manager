@@ -120,7 +120,11 @@ interface PickerDeps {
 
 /** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */
 function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
-  const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
+  const write = async (
+    scope: Scope,
+    sessionID: string | undefined,
+    patch: SettingsPatch
+  ): Promise<void> => {
     await (scope === 'session' && sessionID !== undefined
       ? rpc.setSession({ patch, sessionID })
       : rpc.setGlobal({ patch }));

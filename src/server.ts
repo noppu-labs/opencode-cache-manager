@@ -68,7 +68,7 @@ export default Plugin.define({
     });
 
     /** Applies a settings change to the keepalive schedule and tells the TUI. */
-    const settingsChanged = async (sessionID: string | null) => {
+    const settingsChanged = async (sessionID: string | null): Promise<object> => {
       await engine.reevaluate(sessionID ?? undefined);
       await rpcRegistration?.events.emit('settings.updated', { sessionID });
       /*

@@ -64,7 +64,7 @@ function classifyRequest(
     return { profile: 'anthropic', wire };
   }
 
-  const matches = (regex: RegExp) =>
+  const matches = (regex: RegExp): boolean =>
     regex.test(ref.id) || (bodyModel !== undefined && regex.test(bodyModel));
   const profile =
     matchProfilePatterns(deps.patterns, ref) ??
