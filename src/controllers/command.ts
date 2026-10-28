@@ -71,6 +71,9 @@ function createCacheManagerCommand({
           await store.setSession(sessionID, action.patch);
           break;
         }
+        default: {
+          throw new Error(`unknown action: ${String(action satisfies never)}`);
+        }
       }
       await settingsChanged(sessionID);
       await say(

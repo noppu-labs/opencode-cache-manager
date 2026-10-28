@@ -6,7 +6,7 @@ const BREAKPOINT = 'prompt_cache_breakpoint';
 
 function stripFrom(node: unknown, keep: Rec | undefined): boolean {
   if (!isRecord(node) || node === keep || !(BREAKPOINT in node)) return false;
-  delete node[BREAKPOINT];
+  delete node.prompt_cache_breakpoint;
   return true;
 }
 
@@ -25,9 +25,7 @@ export function stripBreakpoints(body: Rec, keep?: Rec): boolean {
   for (const key of ['tools', 'messages', 'input']) {
     const list = body[key];
     if (Array.isArray(list)) {
-      list.forEach((node) => {
-        visit(node);
-      });
+      for (const node of list) visit(node);
     }
   }
   return changed;

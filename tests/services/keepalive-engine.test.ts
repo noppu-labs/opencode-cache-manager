@@ -86,7 +86,31 @@ function harness(
     for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
   };
 
-  const ping = async (sessionID: string): Promise<void> => {
+  const engine = new KeepaliveEngine({
+    now: () => clock,
+    setTimer: (fn, ms) => {
+      const handle = nextHandle++;
+      timers.set(handle, { at: clock + ms, fn });
+      return handle;
+    },
+    clearTimer: (handle) => {
+      timers.delete(handle as number);
+    },
+    ping,
+    settings: async () => {
+      if (settingsGate) await settingsGate();
+      if (settingsFails) throw new Error('settings unavailable');
+      return { ...settings };
+    },
+    isChild: async () => {
+      isChildCalls++;
+      if (isChildFails) throw new Error('lookup failed');
+      return isChildResult;
+    },
+    onChange: (snapshot) => changes.push(snapshot),
+  });
+
+  async function ping(sessionID: string): Promise<void> {
     pings.push({ sessionID, at: clock });
     const behavior: Behavior = queue.shift() ?? { kind: 'respond' };
     engine.requestSent(sessionID, { requestedTtl: requested, isPing: true });
@@ -133,33 +157,13 @@ function harness(
           isPing: true,
           kind: 'generate',
         });
+        return;
+      }
+      default: {
+        throw new Error(`unknown behavior: ${String(behavior satisfies never)}`);
       }
     }
-  };
-
-  const engine = new KeepaliveEngine({
-    now: () => clock,
-    setTimer: (fn, ms) => {
-      const handle = nextHandle++;
-      timers.set(handle, { at: clock + ms, fn });
-      return handle;
-    },
-    clearTimer: (handle) => {
-      timers.delete(handle as number);
-    },
-    ping,
-    settings: async () => {
-      if (settingsGate) await settingsGate();
-      if (settingsFails) throw new Error('settings unavailable');
-      return { ...settings };
-    },
-    isChild: async () => {
-      isChildCalls++;
-      if (isChildFails) throw new Error('lookup failed');
-      return isChildResult;
-    },
-    onChange: (snapshot) => changes.push(snapshot),
-  });
+  }
 
   const runDue = async (stepClock: boolean, target: number) => {
     for (;;) {

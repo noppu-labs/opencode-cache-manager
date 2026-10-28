@@ -541,7 +541,7 @@ describe('keepalive wiring', () => {
       await flush();
 
       const after = createMockCtx({ defaultMode: '1h' });
-      before.store.forEach((value, key) => after.store.set(key, value));
+      for (const [key, value] of before.store) after.store.set(key, value);
       after.cleanup = await (plugin as any).setup(after.ctx);
       open.push(after);
 

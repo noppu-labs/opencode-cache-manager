@@ -67,6 +67,7 @@ function renderSvg(screen: string, dir: string): boolean {
     { cwd: ROOT, stderr: 'inherit', stdout: 'inherit' }
   );
   if (freeze.exitCode !== 0) {
+    // oxlint-disable-next-line eslint/no-console -- CLI script: stderr messages and exit codes are its interface
     console.error(
       `freeze failed for ${screen}; run \`bun scripts/capture-sidebar.ts ${screen}\` to see the error`
     );
@@ -79,6 +80,7 @@ function renderSvg(screen: string, dir: string): boolean {
 /** Renders every screen into a staging directory, then copies them over docs/images/ only if all succeeded. */
 function regenerate(): number {
   if (!isNonEmptyString(Bun.which('freeze'))) {
+    // oxlint-disable-next-line eslint/no-console -- CLI script: stderr messages and exit codes are its interface
     console.error('freeze is not installed: brew install charmbracelet/tap/freeze');
     return 1;
   }
@@ -98,6 +100,7 @@ function regenerate(): number {
 
 async function capture(screen: string | undefined): Promise<number> {
   if (screen === undefined || !isScreenName(screen)) {
+    // oxlint-disable-next-line eslint/no-console -- CLI script: stderr messages and exit codes are its interface
     console.error(`usage: bun scripts/capture-sidebar.ts <${SCREEN_NAMES.join(' | ')}> | --all`);
     return 2;
   }
@@ -110,4 +113,5 @@ async function capture(screen: string | undefined): Promise<number> {
 
 const [argument] = Bun.argv.slice(2);
 // A rendered TUI keeps the event loop alive, and freeze waits for the process to end, so exit explicitly.
+// oxlint-disable-next-line unicorn/no-process-exit -- CLI script: stderr messages and exit codes are its interface
 process.exit(argument === '--all' ? regenerate() : await capture(argument));

@@ -11,7 +11,12 @@ function rawClient() {
       calls.push({ method, input, options });
       return output;
     };
-  const events = { subscribe: () => (async function* subscribe() {})() };
+  const events = {
+    subscribe: () =>
+      (async function* subscribe() {
+        // Yields no events.
+      })(),
+  };
   const rpc = {
     getSettings: record('getSettings', { global: {}, session: null }),
     setGlobal: record('setGlobal'),

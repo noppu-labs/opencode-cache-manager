@@ -44,14 +44,14 @@ function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
 
   if (Array.isArray(body.messages)) {
     const prefixEnd = leadingPrefixEnd(body.messages);
-    body.messages.forEach((message, index) => {
+    for (const [index, message] of body.messages.entries()) {
       const ttl = index < prefixEnd ? prefixTtl : tailTtl;
       changed = applyTtlToBlock(message, ttl) || changed;
       const content = isRecord(message) ? message.content : undefined;
       if (Array.isArray(content)) {
         for (const part of content) changed = applyTtlToBlock(part, ttl) || changed;
       }
-    });
+    }
   }
 
   return changed || hasOneHourCacheControl(body);

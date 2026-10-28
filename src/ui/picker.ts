@@ -37,12 +37,12 @@ interface Choice<Value> {
   description?: string;
 }
 
+const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
+
 const isScope = (value: string | undefined): value is Scope =>
   value === 'session' || value === 'global';
 const isField = (value: string | undefined): value is Field =>
   FIELDS.some((field) => field === value);
-
-const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
 
 const FIELD_INFO: Record<Field, { row: string; label: string }> = {
   keepalive: { label: 'keepalive', row: 'Keepalive' },
