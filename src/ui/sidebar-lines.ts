@@ -1,8 +1,8 @@
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { formatCompactTokens, formatRemaining } from '../utils/format.ts';
 
-export type Tone = 'base' | 'muted' | 'success' | 'warning' | 'error';
-export interface SidebarLine {
+type Tone = 'base' | 'muted' | 'success' | 'warning' | 'error';
+interface SidebarLine {
   text: string;
   tone: Tone;
   bold?: boolean;
@@ -14,9 +14,9 @@ export interface SidebarLine {
 }
 
 /** Width of the label column (bullet/indent plus label), so values line up across rows. */
-export const LABEL_WIDTH = 14;
+const LABEL_WIDTH = 14;
 
-export const SECTION_HEADER = 'Cache';
+const SECTION_HEADER = 'Cache';
 const HEADER: SidebarLine = { text: SECTION_HEADER, tone: 'base', bold: true };
 
 const defaultClock = (ms: number): string =>
@@ -35,7 +35,7 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): Sidebar
 }
 
 /** Lines for the sidebar cache section; an empty array means render nothing. */
-export function sidebarLines(
+function sidebarLines(
   s: KeepaliveSnapshot | undefined,
   now: number,
   formatClock: (ms: number) => string = defaultClock
@@ -132,3 +132,6 @@ export function sidebarLines(
   }
   return lines;
 }
+
+export type { Tone, SidebarLine };
+export { LABEL_WIDTH, SECTION_HEADER, sidebarLines };

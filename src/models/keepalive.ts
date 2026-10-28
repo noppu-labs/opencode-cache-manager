@@ -1,12 +1,12 @@
 import type { Ttl } from './cache.ts';
 
 /** Cache reads and total prompt tokens of one response. */
-export interface CacheReadout {
+interface CacheReadout {
   read: number;
   total: number;
 }
 
-export type SkipReason =
+type SkipReason =
   | 'disabled'
   | 'small-context'
   | 'child'
@@ -17,9 +17,9 @@ export type SkipReason =
   | 'missed';
 
 /** OpenCode's request kind for a model call. */
-export type RequestKind = 'primary' | 'compaction' | 'title' | 'generate';
+type RequestKind = 'primary' | 'compaction' | 'title' | 'generate';
 
-export type KeepaliveSnapshot = {
+type KeepaliveSnapshot = {
   sessionID: string;
   ttl: Ttl | null;
   ttlSource: 'detected' | 'requested' | null;
@@ -35,3 +35,5 @@ export type KeepaliveSnapshot = {
   /** Cache reads and total prompt tokens of the latest non-ping response; null before one arrives. */
   lastCache: CacheReadout | null;
 };
+
+export type { CacheReadout, SkipReason, RequestKind, KeepaliveSnapshot };

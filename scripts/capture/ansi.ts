@@ -11,7 +11,7 @@ const ATTRIBUTE_CODES: ReadonlyArray<readonly [number, number]> = [
   [TextAttributes.UNDERLINE, 4],
 ];
 
-export interface TextPart {
+interface TextPart {
   text: string;
   /** `#rrggbb` */
   fg: string;
@@ -40,7 +40,7 @@ function isUnpainted(span: CapturedSpan): boolean {
 }
 
 /** Drops the unpainted rows above and below the component: the test terminal around it. */
-export function frameToAnsi(frame: CapturedFrame): string[] {
+function frameToAnsi(frame: CapturedFrame): string[] {
   const painted = frame.lines.map((line) => !line.spans.every(isUnpainted));
   const first = painted.indexOf(true);
   if (first === -1) return [];
@@ -50,13 +50,16 @@ export function frameToAnsi(frame: CapturedFrame): string[] {
 }
 
 /** One ANSI row of coloured text. */
-export function textRow(parts: readonly TextPart[]): string {
+function textRow(parts: readonly TextPart[]): string {
   const text = parts.map((part) => `${sgrColor(RGBA.fromHex(part.fg), 38)}${part.text}`).join('');
   return `${text}${RESET}`;
 }
 
 /** The visible text of an ANSI row, with trailing padding removed. */
-export function stripAnsi(row: string): string {
+function stripAnsi(row: string): string {
   // oxlint-disable-next-line eslint/no-control-regex -- matching the ESC byte of SGR sequences is the point
   return row.replaceAll(/\u001B\[[0-9;]*m/gu, '').trimEnd();
 }
+
+export type { TextPart };
+export { frameToAnsi, textRow, stripAnsi };

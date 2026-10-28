@@ -16,7 +16,7 @@ import type {
 } from '../models/keepalive.ts';
 import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
 
-export interface EngineDeps {
+interface EngineDeps {
   now(): number;
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(handle: unknown): void;
@@ -68,7 +68,7 @@ interface SessionState {
   lastEmitted: string;
 }
 
-export class KeepaliveEngine {
+class KeepaliveEngine {
   private readonly sessions = new Map<string, SessionState>();
   private disposed = false;
 
@@ -430,3 +430,6 @@ export class KeepaliveEngine {
     await this.schedule(sessionID);
   }
 }
+
+export type { EngineDeps };
+export { KeepaliveEngine };

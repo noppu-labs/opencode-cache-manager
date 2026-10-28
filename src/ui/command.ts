@@ -8,7 +8,7 @@ const USAGE =
   'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | reset | status]';
 const NO_SESSION = 'Open a session to change session cache settings.';
 
-export interface CommandRunnerDeps {
+interface CommandRunnerDeps {
   rpc: CacheTtlRpcClient;
   toast: Toast;
   currentSessionID: () => string | undefined;
@@ -20,12 +20,7 @@ export interface CommandRunnerDeps {
  * a typed argument is applied to the current session directly. Errors become
  * an error toast.
  */
-export function createCommandRunner({
-  rpc,
-  toast,
-  currentSessionID,
-  openPicker,
-}: CommandRunnerDeps) {
+function createCommandRunner({ rpc, toast, currentSessionID, openPicker }: CommandRunnerDeps) {
   const runTyped = async (input: string): Promise<void> => {
     const action = parseCommandArg(input);
     if (action.type === 'toggle') return openPicker();
@@ -75,3 +70,6 @@ function describeChange(field: keyof Settings, patch: SettingsPatch): string | u
   if (value === undefined) return undefined;
   return `Session ${FIELD_INFO[field].label} set to ${formatValue(field, value)}.`;
 }
+
+export type { CommandRunnerDeps };
+export { createCommandRunner };

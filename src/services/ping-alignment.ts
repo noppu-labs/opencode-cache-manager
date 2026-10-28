@@ -24,7 +24,7 @@ function withoutCacheControl(message: unknown): unknown {
  * and does not pay to cache itself. Returns a new array; the inputs are not
  * mutated.
  */
-export function alignPingMessages(pingMessages: unknown[], primaryMessages: unknown[]): unknown[] {
+function alignPingMessages(pingMessages: unknown[], primaryMessages: unknown[]): unknown[] {
   const shared = Math.max(0, Math.min(pingMessages.length - 1, primaryMessages.length));
   return pingMessages.map((message, i) =>
     i < shared ? primaryMessages[i] : withoutCacheControl(message)
@@ -32,10 +32,10 @@ export function alignPingMessages(pingMessages: unknown[], primaryMessages: unkn
 }
 
 /** The array a ping is aligned on: chat and Messages `messages`, or Responses `input`. */
-export type MessagesKey = 'messages' | 'input';
+type MessagesKey = 'messages' | 'input';
 
 /** Parses a request body's `messages` array, or its Responses `input` array; undefined when neither is present or the body is not JSON. */
-export async function readMessages(
+async function readMessages(
   request: Request
 ): Promise<{ body: Record<string, unknown>; key: MessagesKey; messages: unknown[] } | undefined> {
   try {
@@ -50,7 +50,7 @@ export async function readMessages(
 }
 
 /** The ping request with its history replaced by the stored primary messages, or unchanged. */
-export async function alignPingRequest(
+async function alignPingRequest(
   request: Request,
   primary: unknown[] | undefined
 ): Promise<Request> {
@@ -79,7 +79,10 @@ const DROPS_MESSAGES = new Set<SkipReason>([
 ]);
 
 /** True once no ping can use the session's stored primary messages any more. */
-export function releasesMessages(snapshot: KeepaliveSnapshot, now: number): boolean {
+function releasesMessages(snapshot: KeepaliveSnapshot, now: number): boolean {
   const expired = snapshot.expiresAt !== null && snapshot.expiresAt <= now;
   return expired || (snapshot.skipReason !== null && DROPS_MESSAGES.has(snapshot.skipReason));
 }
+
+export type { MessagesKey };
+export { alignPingMessages, readMessages, alignPingRequest, releasesMessages };

@@ -2,12 +2,12 @@ import type { CacheUsage } from '../../src/models/cache.ts';
 import type { TransformOptions } from '../../src/services/cache-ttl.ts';
 import { anthropicProfile } from '../../src/services/profiles/anthropic.ts';
 
-export function ephemeral(extra: Record<string, unknown> = {}) {
+function ephemeral(extra: Record<string, unknown> = {}) {
   return { type: 'ephemeral', ...extra };
 }
 
 /** A representative Anthropic payload with breakpoints on tools, system and messages. */
-export function sampleBody() {
+function sampleBody() {
   return {
     model: 'claude-sonnet-5-5',
     tools: [
@@ -41,7 +41,7 @@ export function sampleBody() {
 }
 
 /** Collects every cache_control object found anywhere in a payload. */
-export function collectCacheControls(
+function collectCacheControls(
   node: unknown,
   out: Record<string, unknown>[] = []
 ): Record<string, unknown>[] {
@@ -57,7 +57,7 @@ export function collectCacheControls(
   return out;
 }
 
-export function makeRequest(
+function makeRequest(
   body: string | undefined,
   headers: Record<string, string> = {},
   options: { method?: string } = {}
@@ -69,12 +69,12 @@ export function makeRequest(
   });
 }
 
-export function parsedBodyOf(request: Request) {
+function parsedBodyOf(request: Request) {
   return request.clone().json() as Promise<Record<string, unknown>>;
 }
 
 /** Usage objects captured from OpenAI-compatible endpoints (see the plan's "Usage shapes seen on the wire"). */
-export const openaiUsage = {
+const openaiUsage = {
   omnirouteAutoWrite: {
     prompt_tokens: 1698,
     completion_tokens: 4,
@@ -125,7 +125,7 @@ export const openaiUsage = {
 };
 
 /** A streamed Chat Completions response: content chunk, finish chunk, usage-only chunk, `[DONE]`. */
-export function openaiSse(
+function openaiSse(
   usage: unknown,
   options: { finishReason?: string; model?: string; provider?: string } = {}
 ): string {
@@ -144,7 +144,7 @@ export function openaiSse(
 }
 
 /** Anthropic usage with cache reads and a 1h write. */
-export const fullUsage = {
+const fullUsage = {
   input_tokens: 10,
   cache_read_input_tokens: 60000,
   cache_creation_input_tokens: 500,
@@ -152,7 +152,7 @@ export const fullUsage = {
 };
 
 /** `fullUsage` as parsed. */
-export const fullParsed: CacheUsage = {
+const fullParsed: CacheUsage = {
   inputTokens: 10,
   cacheReadTokens: 60000,
   cacheWriteTokens: 500,
@@ -161,7 +161,7 @@ export const fullParsed: CacheUsage = {
 };
 
 /** An Anthropic SSE stream: usage in `message_start`, a cache-read update in `message_delta`. */
-export function sse(usage: unknown): string {
+function sse(usage: unknown): string {
   return (
     `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { usage } })}\n\n` +
     `event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5,"cache_read_input_tokens":61000}}\n\n`
@@ -169,7 +169,7 @@ export function sse(usage: unknown): string {
 }
 
 /** Usage objects captured from OpenRouter's `/responses` endpoint on `openai/gpt-6-luna` (probe notes, "Responses wire"). */
-export const responsesUsage = {
+const responsesUsage = {
   write: {
     input_tokens: 8888,
     input_tokens_details: { cached_tokens: 0, cache_write_tokens: 8885 },
@@ -187,7 +187,7 @@ export const responsesUsage = {
 };
 
 /** A streamed Responses reply: created, a text delta, the output item, then the closing `response.completed` (or `response.incomplete`). */
-export function responsesSse(
+function responsesSse(
   usage: unknown,
   options: { model?: string; status?: string; toolCall?: boolean; event?: string } = {}
 ): string {
@@ -210,7 +210,7 @@ export function responsesSse(
 }
 
 /** `transformHttpRequest` options for a primary request through the anthropic profile, with overrides. */
-export function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
+function transformOpts(overrides: Partial<TransformOptions> = {}): TransformOptions {
   return {
     wire: 'anthropic-messages',
     profile: anthropicProfile,
@@ -220,3 +220,19 @@ export function transformOpts(overrides: Partial<TransformOptions> = {}): Transf
     ...overrides,
   };
 }
+
+export {
+  ephemeral,
+  sampleBody,
+  collectCacheControls,
+  makeRequest,
+  parsedBodyOf,
+  openaiUsage,
+  openaiSse,
+  fullUsage,
+  fullParsed,
+  sse,
+  responsesUsage,
+  responsesSse,
+  transformOpts,
+};

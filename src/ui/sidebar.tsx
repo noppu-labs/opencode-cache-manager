@@ -8,9 +8,9 @@ import type { KeepaliveSnapshot } from '../models/keepalive.ts';
 import { LABEL_WIDTH, sidebarLines, type Tone } from './sidebar-lines.ts';
 
 /** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
-export type SidebarPalette = Readonly<Record<Tone, RGBA>>;
+type SidebarPalette = Readonly<Record<Tone, RGBA>>;
 
-export function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
+function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
   return {
     base: theme.text.base,
     muted: theme.text.muted,
@@ -20,7 +20,7 @@ export function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette
   };
 }
 
-export function CacheLines(props: {
+function CacheLines(props: {
   palette: () => SidebarPalette;
   snapshot: () => KeepaliveSnapshot | undefined;
 }) {
@@ -99,7 +99,7 @@ function CacheSection(props: {
 }
 
 /** Claims the `sidebar.content` slot with the cache section; returns the disposer. */
-export function registerSidebar(
+function registerSidebar(
   ctx: Plugin.Context,
   snapshots: () => ReadonlyMap<string, KeepaliveSnapshot>,
   load: (sessionID: string) => void,
@@ -119,3 +119,6 @@ export function registerSidebar(
     ),
   });
 }
+
+export type { SidebarPalette };
+export { paletteFromTheme, CacheLines, registerSidebar };

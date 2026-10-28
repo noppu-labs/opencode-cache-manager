@@ -1,17 +1,26 @@
 /** Anthropic beta flag that unlocks the 1-hour cache TTL. */
-export const EXTENDED_CACHE_BETA = 'extended-cache-ttl-2025-04-11';
+const EXTENDED_CACHE_BETA = 'extended-cache-ttl-2025-04-11';
 
 /** Internal sentinel header used by model variants to override the active mode. */
-export const SENTINEL_HEADER = 'x-cache-ttl';
+const SENTINEL_HEADER = 'x-cache-ttl';
 
 /** Provider IDs whose requests are always rewritten and observed. */
-export const ANTHROPIC_PROVIDER_IDS: readonly string[] = ['anthropic', 'omniroute-anthropic'];
+const ANTHROPIC_PROVIDER_IDS: readonly string[] = ['anthropic', 'omniroute-anthropic'];
 
 /** Path suffix of the Anthropic Messages endpoint. */
-export const MESSAGES_SUFFIX = '/messages';
+const MESSAGES_SUFFIX = '/messages';
 
 /** Request header carrying Anthropic beta flags. */
-export const BETA_HEADER = 'anthropic-beta';
+const BETA_HEADER = 'anthropic-beta';
 
 /** Response statuses that mean the upstream rejected the request itself, so a learned profile may be wrong. */
-export const REJECTED_REQUEST_STATUSES: readonly number[] = [400, 422];
+const REJECTED_REQUEST_STATUSES: readonly number[] = [400, 422];
+
+export {
+  EXTENDED_CACHE_BETA,
+  SENTINEL_HEADER,
+  ANTHROPIC_PROVIDER_IDS,
+  MESSAGES_SUFFIX,
+  BETA_HEADER,
+  REJECTED_REQUEST_STATUSES,
+};

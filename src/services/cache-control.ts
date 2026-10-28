@@ -1,7 +1,7 @@
 import { isRecord } from '../utils/is-record.ts';
 
 /** Applies a TTL (or removes it, when `undefined`) to a single cache_control block. */
-export function applyTtlToBlock(block: unknown, ttl: '1h' | undefined): boolean {
+function applyTtlToBlock(block: unknown, ttl: '1h' | undefined): boolean {
   if (!isRecord(block)) return false;
   const cc = block.cache_control;
 
@@ -26,7 +26,7 @@ const isOneHour = (block: unknown): boolean =>
   isRecord(block) && isRecord(block.cache_control) && block.cache_control.ttl === '1h';
 
 /** Returns true when any ephemeral breakpoint in the payload carries a 1h TTL. */
-export function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
+function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
   const tools = body.tools;
   if (Array.isArray(tools)) {
     for (const tool of tools) {
@@ -48,3 +48,5 @@ export function hasOneHourCacheControl(body: Record<string, unknown>): boolean {
 
   return false;
 }
+
+export { applyTtlToBlock, hasOneHourCacheControl };

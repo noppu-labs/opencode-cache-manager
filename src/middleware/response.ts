@@ -18,7 +18,7 @@ import { ANTHROPIC_PARSERS } from '../services/usage.ts';
 import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
-export interface HttpResponseEvent {
+interface HttpResponseEvent {
   readonly sessionID: string;
   readonly model: ModelRef;
   readonly kind: RequestKind;
@@ -26,7 +26,7 @@ export interface HttpResponseEvent {
   response: Response;
 }
 
-export interface ResponseHookDeps {
+interface ResponseHookDeps {
   engine: KeepaliveEngine;
   pings: PingTracker;
   options: PluginOptions;
@@ -44,7 +44,7 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
  * profile from the model a response reports. A Messages request a non-Anthropic provider rejects (400 or 422) drops
  * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
  */
-export function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
+function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
   return (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { providerID: evt.model.providerID, id: evt.model.id };
@@ -104,3 +104,6 @@ export function createResponseHook({ engine, pings, options, profiles }: Respons
     return Promise.resolve();
   };
 }
+
+export type { HttpResponseEvent, ResponseHookDeps };
+export { createResponseHook };

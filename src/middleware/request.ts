@@ -18,14 +18,14 @@ import { profileFor } from '../services/profiles/index.ts';
 import type { SettingsStore } from '../services/settings-store.ts';
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
-export interface HttpRequestEvent {
+interface HttpRequestEvent {
   readonly sessionID: string;
   readonly model: ModelRef;
   readonly kind: RequestKind;
   request: Request;
 }
 
-export interface RequestHookDeps {
+interface RequestHookDeps {
   store: SettingsStore;
   engine: KeepaliveEngine;
   pings: PingTracker;
@@ -36,7 +36,7 @@ export interface RequestHookDeps {
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
-export function createRequestHook({
+function createRequestHook({
   store,
   engine,
   pings,
@@ -117,3 +117,6 @@ export function createRequestHook({
     }
   };
 }
+
+export type { HttpRequestEvent, RequestHookDeps };
+export { createRequestHook };

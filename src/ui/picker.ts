@@ -36,9 +36,9 @@ const isScope = (value: string | undefined): value is Scope =>
 const isField = (value: string | undefined): value is Field =>
   FIELDS.some((field) => field === value);
 
-export const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
+const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
 
-export const FIELD_INFO: Record<Field, { row: string; label: string }> = {
+const FIELD_INFO: Record<Field, { row: string; label: string }> = {
   mode: { row: 'TTL mode', label: 'cache TTL' },
   keepalive: { row: 'Keepalive', label: 'keepalive' },
   maxPings: { row: 'Pings per idle', label: 'pings per idle' },
@@ -48,9 +48,9 @@ export const FIELD_INFO: Record<Field, { row: string; label: string }> = {
 const PING_CHOICES = [0, 1, 3, 5, 10];
 const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
 
-export type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
+type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 
-export function formatValue(field: Field, value: Settings[Field]): string {
+function formatValue(field: Field, value: Settings[Field]): string {
   if (field === 'keepalive') return value === true ? 'on' : 'off';
   if (field === 'minContextTokens' && typeof value === 'number') return formatTokens(value);
   return String(value);
@@ -98,7 +98,7 @@ function fieldChoices(field: Field): Choice<string | number>[] {
   }
 }
 
-export interface PickerDeps {
+interface PickerDeps {
   dialog: Plugin.Context['ui']['dialog'];
   rpc: CacheTtlRpcClient;
   toast: Toast;
@@ -106,12 +106,7 @@ export interface PickerDeps {
 }
 
 /** The Cache Manager picker: Session and Global sections, one sub-dialog per setting. */
-export function createPicker({
-  dialog,
-  rpc,
-  toast,
-  currentSessionID,
-}: PickerDeps): () => Promise<void> {
+function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () => Promise<void> {
   const write = async (scope: Scope, sessionID: string | undefined, patch: SettingsPatch) => {
     if (scope === 'session' && sessionID !== undefined) {
       await rpc.setSession({ sessionID, patch });
@@ -207,3 +202,6 @@ export function createPicker({
     await editField(scope, field, sessionID, scope === 'session' ? effective : global);
   };
 }
+
+export type { Toast, PickerDeps };
+export { FIELDS, FIELD_INFO, formatValue, createPicker };

@@ -31,7 +31,7 @@ function textField(value: unknown): string | undefined {
 }
 
 /** What a `/cache-manager` argument asks for. */
-export type CommandAction =
+type CommandAction =
   | { type: 'toggle' }
   | { type: 'status' }
   | { type: 'reset' }
@@ -49,7 +49,7 @@ function parseTokenCount(text: string | undefined): number | undefined {
  * Parses a slash-command argument into an action. Accepts a raw string, a
  * `PromptInput.Prompt`-shaped object, or an array of `{ text }` parts.
  */
-export function parseCommandArg(raw: unknown): CommandAction {
+function parseCommandArg(raw: unknown): CommandAction {
   const text = extractRawText(raw).trim().toLowerCase();
   if (text === '' || text === 'toggle') return { type: 'toggle' };
   if (text === 'status') return { type: 'status' };
@@ -74,3 +74,6 @@ export function parseCommandArg(raw: unknown): CommandAction {
   }
   return { type: 'invalid' };
 }
+
+export type { CommandAction };
+export { parseCommandArg };

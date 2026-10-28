@@ -79,7 +79,7 @@ const keepaliveSnapshotSchema = {
 
 const emptyOutput = { type: 'object', additionalProperties: false } as const;
 
-export const CacheTtlRpc = {
+const CacheTtlRpc = {
   id: 'opencode-cache-manager',
   methods: {
     getSettings: {
@@ -151,11 +151,11 @@ export const CacheTtlRpc = {
   },
 } as const;
 
-export type RpcLocation = { directory: string };
-export type RpcCallOptions = { location?: RpcLocation };
+type RpcLocation = { directory: string };
+type RpcCallOptions = { location?: RpcLocation };
 
 /** Loose client shape mirroring the `@opencode/client` RPC client for this contract. */
-export type RawCacheTtlRpcClient = {
+type RawCacheTtlRpcClient = {
   [M in Exclude<keyof CacheTtlRpcClient, 'events'>]: (
     input: Parameters<CacheTtlRpcClient[M]>[0],
     options?: RpcCallOptions
@@ -163,7 +163,7 @@ export type RawCacheTtlRpcClient = {
 } & Pick<CacheTtlRpcClient, 'events'>;
 
 /** The RPC client the TUI uses; each call already targets the right location. */
-export type CacheTtlRpcClient = {
+type CacheTtlRpcClient = {
   getSettings(input: { sessionID?: string }): Promise<{
     global: Settings;
     session: SettingsPatch | null;
@@ -179,3 +179,6 @@ export type CacheTtlRpcClient = {
     ): AsyncIterable<{ data: KeepaliveSnapshot }>;
   };
 };
+
+export type { RpcLocation, RpcCallOptions, RawCacheTtlRpcClient, CacheTtlRpcClient };
+export { CacheTtlRpc };

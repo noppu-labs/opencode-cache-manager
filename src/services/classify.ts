@@ -13,22 +13,22 @@ import { matchProfilePatterns } from './model-patterns.ts';
 import { profileFor } from './profiles/index.ts';
 
 /** True for the provider IDs whose requests are always rewritten and observed. */
-export function isAnthropicProvider(providerID: string): boolean {
+function isAnthropicProvider(providerID: string): boolean {
   return ANTHROPIC_PROVIDER_IDS.includes(providerID);
 }
 
 /** True for a POST whose path ends in `/messages`, on any host (direct or proxied). */
-export function isAnthropicMessagesRequest(request: Request): boolean {
+function isAnthropicMessagesRequest(request: Request): boolean {
   return isPostToPathSuffix(request, MESSAGES_SUFFIX);
 }
 
-export interface ClassifyDeps {
+interface ClassifyDeps {
   patterns: readonly ProfilePattern[];
   learned?: (ref: ModelRef) => CacheProfileId | undefined;
 }
 
 /** The wire of an outgoing request, or `undefined` when it is not an Anthropic Messages, chat completions or Responses call. */
-export function requestWire(request: Request): Wire | undefined {
+function requestWire(request: Request): Wire | undefined {
   if (isAnthropicMessagesRequest(request)) return 'anthropic-messages';
   if (isPostToPathSuffix(request, CHAT_COMPLETIONS_SUFFIX)) return 'openai-chat';
   return isPostToPathSuffix(request, RESPONSES_SUFFIX) ? 'openai-responses' : undefined;
@@ -39,7 +39,7 @@ function isOpenAiWire(wire: Wire | undefined): wire is 'openai-chat' | 'openai-r
   return wire === 'openai-chat' || wire === 'openai-responses';
 }
 
-export interface Classification {
+interface Classification {
   wire: Wire;
   profile: CacheProfileId;
 }
@@ -52,7 +52,7 @@ export interface Classification {
  * A learned `openai` only counts when the request's own model matches the OpenAI regex: a router alias can
  * send its next turn to a model that answers `prompt_cache_*` with a 400.
  */
-export function classifyRequest(
+function classifyRequest(
   request: Request,
   ref: ModelRef,
   deps: ClassifyDeps,
@@ -93,7 +93,7 @@ function learnedProfile(
  * matched, so a pattern, an Anthropic provider ID, a Claude or GPT ID or a learned `anthropic` never
  * costs a parse.
  */
-export async function classifyRequestWithBody(
+async function classifyRequestWithBody(
   request: Request,
   ref: ModelRef,
   deps: ClassifyDeps,
@@ -113,14 +113,14 @@ export async function classifyRequestWithBody(
   }
 }
 
-export interface RouteInput {
+interface RouteInput {
   cls: Classification | undefined;
   anthropicProvider: boolean;
   hasSentinel: boolean;
   openaiCompatible: boolean;
 }
 
-export interface Route {
+interface Route {
   /** The request body or headers are rewritten. */
   rewrites: boolean;
   /** The wire the request classified to, or `undefined` when it is not a known wire. */
@@ -136,7 +136,7 @@ export interface Route {
 }
 
 /** The wire whose response is observed, or `undefined` to leave it alone. With the option off, the OpenAI wires behave as before the option existed. */
-export function observedWireFor(
+function observedWireFor(
   wire: Wire | undefined,
   anthropicProvider: boolean,
   openaiCompatible: boolean
@@ -146,7 +146,7 @@ export function observedWireFor(
 }
 
 /** Decides, from one classification, what both HTTP hooks do with a request: rewrite it, observe it, and on which wire. */
-export function routeRequest({
+function routeRequest({
   cls,
   anthropicProvider,
   hasSentinel,
@@ -174,10 +174,7 @@ export function routeRequest({
  * before profiles existed, so an `openai` model never gets fields it was not opted into. A profile that
  * cannot handle the request's wire (Claude on `/responses`) falls back to `implicit`: observed only.
  */
-export function profileForRoute(
-  route: Route,
-  openaiCompatible: boolean
-): CacheProfileId | undefined {
+function profileForRoute(route: Route, openaiCompatible: boolean): CacheProfileId | undefined {
   if (!route.rewrites && route.observedWire === undefined) return undefined;
   if (route.wire === 'anthropic-messages') {
     const id = route.profile ?? 'implicit';
@@ -190,11 +187,7 @@ export function profileForRoute(
 }
 
 /** True when `request`, classified as the Messages-wire request hook does (body included), goes through a profile that pings. */
-export async function keepsWarm(
-  request: Request,
-  ref: ModelRef,
-  deps: ClassifyDeps
-): Promise<boolean> {
+async function keepsWarm(request: Request, ref: ModelRef, deps: ClassifyDeps): Promise<boolean> {
   const cls = await classifyRequestWithBody(request, ref, deps, { openaiWires: false });
   if (cls === undefined) return false;
   const profile = profileFor(cls.profile);
@@ -202,7 +195,7 @@ export async function keepsWarm(
 }
 
 /** True when breakpoints are injected into the request: a managed Claude-profile `openai-chat` primary or compaction request that is not a ping. */
-export function shouldInject(route: Route, kind: RequestKind, isPing: boolean): boolean {
+function shouldInject(route: Route, kind: RequestKind, isPing: boolean): boolean {
   return (
     route.managed &&
     route.profile === 'anthropic' &&
@@ -211,3 +204,17 @@ export function shouldInject(route: Route, kind: RequestKind, isPing: boolean): 
     (kind === 'primary' || kind === 'compaction')
   );
 }
+
+export type { ClassifyDeps, Classification, RouteInput, Route };
+export {
+  isAnthropicProvider,
+  isAnthropicMessagesRequest,
+  requestWire,
+  classifyRequest,
+  classifyRequestWithBody,
+  observedWireFor,
+  routeRequest,
+  profileForRoute,
+  keepsWarm,
+  shouldInject,
+};

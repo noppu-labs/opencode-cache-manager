@@ -6,10 +6,8 @@ import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
 import { CacheLines, type SidebarPalette } from '../../src/ui/sidebar.tsx';
 import { frameToAnsi, textRow } from './ansi.ts';
 
-export { SECTION_HEADER } from '../../src/ui/sidebar-lines.ts';
-
 /** 14:00 UTC; the script pins Date.now and TZ to it so the clock times in the images are stable. */
-export const CAPTURE_NOW = Date.UTC(2026, 9, 23, 14, 0, 0);
+const CAPTURE_NOW = Date.UTC(2026, 9, 23, 14, 0, 0);
 
 const MINUTE = 60_000;
 const COLUMNS = 40;
@@ -151,13 +149,13 @@ const STATES: readonly Block[] = [
   },
 ];
 
-export const SCREENS = { 'sidebar': HERO, 'sidebar-states': STATES } as const;
-export type ScreenName = keyof typeof SCREENS;
-export const SCREEN_NAMES: ScreenName[] = Object.keys(SCREENS).filter((name): name is ScreenName =>
+const SCREENS = { 'sidebar': HERO, 'sidebar-states': STATES } as const;
+type ScreenName = keyof typeof SCREENS;
+const SCREEN_NAMES: ScreenName[] = Object.keys(SCREENS).filter((name): name is ScreenName =>
   isScreenName(name)
 );
 
-export function isScreenName(name: string): name is ScreenName {
+function isScreenName(name: string): name is ScreenName {
   return name in SCREENS;
 }
 
@@ -178,7 +176,7 @@ async function renderBlock(block: Block): Promise<string[]> {
 }
 
 /** Renders the screen's blocks top to bottom, one blank row apart, as ANSI rows. */
-export async function renderScreen(name: ScreenName): Promise<string[]> {
+async function renderScreen(name: ScreenName): Promise<string[]> {
   const rows: string[] = [];
   for (const block of SCREENS[name]) {
     // @opentui/solid attaches its engine to the latest test renderer, so each block renders and is destroyed before the next starts.
@@ -190,3 +188,7 @@ export async function renderScreen(name: ScreenName): Promise<string[]> {
   }
   return rows;
 }
+
+export type { ScreenName };
+export { CAPTURE_NOW, SCREENS, SCREEN_NAMES, isScreenName, renderScreen };
+export { SECTION_HEADER } from '../../src/ui/sidebar-lines.ts';

@@ -3,7 +3,7 @@ import { isRecord } from '../utils/is-record.ts';
 import { parseCacheProfiles } from './model-patterns.ts';
 
 /** Effective plugin settings after layering built-in defaults, options, global and session. */
-export interface Settings {
+interface Settings {
   mode: CacheTtlMode;
   keepalive: boolean;
   maxPings: number;
@@ -11,9 +11,9 @@ export interface Settings {
 }
 
 /** A layer that overrides some settings and leaves the rest to lower layers. */
-export type SettingsPatch = Partial<Settings>;
+type SettingsPatch = Partial<Settings>;
 
-export const BUILTIN_DEFAULTS: Settings = {
+const BUILTIN_DEFAULTS: Settings = {
   mode: '5m',
   keepalive: true,
   maxPings: 5,
@@ -21,7 +21,7 @@ export const BUILTIN_DEFAULTS: Settings = {
 };
 
 /** Keeps only the valid fields of `value`; anything else is dropped. */
-export function sanitizePatch(value: unknown): SettingsPatch {
+function sanitizePatch(value: unknown): SettingsPatch {
   if (!isRecord(value)) return {};
   const patch: SettingsPatch = {};
   if (isCacheTtlMode(value.mode)) patch.mode = value.mode;
@@ -40,7 +40,7 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 /** Reads the plugin options (`defaultMode`, `keepalive.*`) as a settings layer. */
-export function settingsFromOptions(options: unknown): SettingsPatch {
+function settingsFromOptions(options: unknown): SettingsPatch {
   if (!isRecord(options)) return {};
   const keepalive = isRecord(options.keepalive) ? options.keepalive : {};
   return sanitizePatch({
@@ -52,13 +52,13 @@ export function settingsFromOptions(options: unknown): SettingsPatch {
 }
 
 /** Server-only plugin options for OpenAI-compatible endpoints; not part of the layered settings. */
-export interface PluginOptions {
+interface PluginOptions {
   openaiCompatible: boolean;
   cacheProfiles: ProfilePattern[];
 }
 
 /** Reads `openaiCompatible` (default `true`) and `cacheProfiles`; invalid values fall back to the defaults. */
-export function pluginOptions(options: unknown): PluginOptions {
+function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
     openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
@@ -67,7 +67,7 @@ export function pluginOptions(options: unknown): PluginOptions {
 }
 
 /** Applies each layer over the built-in defaults; later layers win. */
-export function mergeSettings(...layers: SettingsPatch[]): Settings {
+function mergeSettings(...layers: SettingsPatch[]): Settings {
   const merged: Settings = { ...BUILTIN_DEFAULTS };
   for (const layer of layers) {
     if (layer.mode !== undefined) merged.mode = layer.mode;
@@ -77,3 +77,6 @@ export function mergeSettings(...layers: SettingsPatch[]): Settings {
   }
   return merged;
 }
+
+export type { Settings, SettingsPatch, PluginOptions };
+export { BUILTIN_DEFAULTS, sanitizePatch, settingsFromOptions, pluginOptions, mergeSettings };

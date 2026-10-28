@@ -2,7 +2,7 @@ import type { CacheProfileId, CacheTtlMode, Ttl, Wire } from './cache.ts';
 import type { RequestKind } from './keepalive.ts';
 
 /** What a profile needs to know about a request to rewrite it. */
-export interface RewriteContext {
+interface RewriteContext {
   wire: Wire;
   mode: CacheTtlMode;
   kind: RequestKind;
@@ -11,7 +11,7 @@ export interface RewriteContext {
 }
 
 /** One provider's way of controlling its prompt cache: mode to TTL, request rewriting, keepalive. */
-export interface CacheProfile {
+interface CacheProfile {
   id: CacheProfileId;
   /** Wires this profile can rewrite on; on any other wire the request is only observed (`implicit`). */
   wires: readonly Wire[];
@@ -27,3 +27,5 @@ export interface CacheProfile {
   /** Whether keepalive pings are allowed. */
   pings: boolean;
 }
+
+export type { RewriteContext, CacheProfile };
