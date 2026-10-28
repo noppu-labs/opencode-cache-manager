@@ -4,5 +4,11 @@
   "categories": { "correctness": "error" },
   "env": { "builtin": true },
   "options": { "typeAware": true },
+  "overrides": [
+    {
+      "files": ["tests/**"],
+      "rules": { "typescript/await-thenable": "off" }
+    }
+  ],
   "ignorePatterns": ["src/ui/sidebar.compiled.js", ".gitnexus/**", ".codegraph/**"]
 }

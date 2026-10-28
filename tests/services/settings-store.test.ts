@@ -234,6 +234,8 @@ describe('sweepDeletedSessions', () => {
       },
       remove: async () => {},
     };
-    expect(sweepDeletedSessions(storage, async () => ({}))).rejects.toThrow('scan unsupported');
+    await expect(sweepDeletedSessions(storage, async () => ({}))).rejects.toThrow(
+      'scan unsupported'
+    );
   });
 });

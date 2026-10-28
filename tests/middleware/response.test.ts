@@ -313,7 +313,7 @@ describe('createResponseHook ping handling', () => {
     const { hook, observed, fake } = harness();
     fake.fail = true;
 
-    expect(hook(event())).resolves.toBeUndefined();
+    await expect(hook(event())).resolves.toBeUndefined();
     await flush();
     expect(observed).toHaveLength(1);
   });

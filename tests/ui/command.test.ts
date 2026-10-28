@@ -189,7 +189,7 @@ describe('createCommandRunner', () => {
       },
     });
 
-    expect(t.run('1h')).resolves.toBeUndefined();
+    await expect(t.run('1h')).resolves.toBeUndefined();
 
     expect(t.setSessionCalls).toHaveLength(1);
     expect(t.toasts).toHaveLength(1);

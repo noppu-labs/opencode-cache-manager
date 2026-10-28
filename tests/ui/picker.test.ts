@@ -307,7 +307,7 @@ describe('createPicker', () => {
       },
     });
 
-    expect(t.picker()).rejects.toThrow('rpc down');
+    await expect(t.picker()).rejects.toThrow('rpc down');
     expect(t.toasts).toHaveLength(0);
   });
 });
