@@ -21,9 +21,11 @@ import {
   transformOpts,
 } from '../helpers/fixtures.ts';
 
-// ---------------------------------------------------------------------------
-// ttlForMode / resolveActiveMode
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * ttlForMode / resolveActiveMode
+ * ---------------------------------------------------------------------------
+ */
 
 describe('ttlForMode', () => {
   test('hybrid pings at 5m, matching its message breakpoints', () => {
@@ -49,9 +51,11 @@ describe('resolveActiveMode', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// betaTokens
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * betaTokens
+ * ---------------------------------------------------------------------------
+ */
 
 describe('betaTokens', () => {
   test('splits, trims and drops empty tokens', () => {
@@ -61,9 +65,11 @@ describe('betaTokens', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// mergeBetaHeader
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * mergeBetaHeader
+ * ---------------------------------------------------------------------------
+ */
 
 describe('mergeBetaHeader', () => {
   test('returns null when nothing to include', () => {
@@ -104,9 +110,11 @@ describe('mergeBetaHeader', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// rewriteAnthropicCacheTtl
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * rewriteAnthropicCacheTtl
+ * ---------------------------------------------------------------------------
+ */
 
 describe('rewriteAnthropicCacheTtl', () => {
   test('1h mode sets ttl on every ephemeral block across tools, system and messages', () => {
@@ -160,7 +168,7 @@ describe('rewriteAnthropicCacheTtl', () => {
     expect(changed).toBe(true);
 
     const tools = body.tools as Record<string, unknown>[];
-    // tool_a and the namespace's nested_a flipped to 1h.
+    // Both tool_a and the namespace's nested_a flipped to 1h.
     expect((tools[0].cache_control as Record<string, unknown>).ttl).toBe('1h');
     const namespace = tools[2] as { tools: { cache_control?: Record<string, unknown> }[] };
     expect(namespace.tools[0].cache_control?.ttl).toBe('1h');
@@ -234,9 +242,11 @@ describe('rewriteAnthropicCacheTtl', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// transformHttpRequest
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * transformHttpRequest
+ * ---------------------------------------------------------------------------
+ */
 
 describe('transformHttpRequest', () => {
   test('1h fallback rewrites body and appends the extended beta header', async () => {

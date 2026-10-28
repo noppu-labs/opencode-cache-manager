@@ -16,16 +16,20 @@ const manifest = JSON.parse(readFileSync(join(CWD, 'package.json'), 'utf8')) as 
   files?: string[];
 };
 
-// Pack once into a temp dir. `npm pack` from the repo packs the `files`
-// whitelist, so what it emits is what `npm publish` would upload. Nothing
-// is published.
+/*
+ * Pack once into a temp dir. `npm pack` from the repo packs the `files`
+ * whitelist, so what it emits is what `npm publish` would upload. Nothing
+ * is published.
+ */
 let tmpDir: string | undefined;
 let tgzPath: string | undefined;
 
 function packOnce(): string {
   if (tgzPath !== undefined) return tgzPath;
-  // CI packs the real artifact once in the release workflow and points the
-  // suite at it, so the suite verifies the exact tarball that ships.
+  /*
+   * CI packs the real artifact once in the release workflow and points the
+   * suite at it, so the suite verifies the exact tarball that ships.
+   */
   const override = process.env.CACHE_MANAGER_TEST_TARBALL;
   if (override !== undefined && override !== '') {
     if (!existsSync(override)) throw new Error(`CACHE_MANAGER_TEST_TARBALL missing: ${override}`);
@@ -33,8 +37,10 @@ function packOnce(): string {
     return tgzPath;
   }
   tmpDir = mkdtempSync(join(tmpdir(), 'cache-manager-pkg-'));
-  // `npm pack --ignore-scripts` skips `prepack`, so build the compiled
-  // sidebar here, the way CI's `npm publish` would have.
+  /*
+   * `npm pack --ignore-scripts` skips `prepack`, so build the compiled
+   * sidebar here, the way CI's `npm publish` would have.
+   */
   const build = Bun.spawnSync({
     cmd: ['bun', 'run', 'build'],
     cwd: CWD,
@@ -63,8 +69,10 @@ function extract(): string {
     stderr: 'pipe',
   });
   expect(tar.exitCode).toBe(0);
-  // macOS hands out /var/folders/... but Bun.resolveSync dereferences the
-  // symlink to /private/var/folders/..., so compare real paths throughout.
+  /*
+   * On macOS the temp dir is /var/folders/..., but Bun.resolveSync dereferences the
+   * symlink to /private/var/folders/..., so compare real paths throughout.
+   */
   const dir = realpathSync(join(tmpDir, 'package'));
   expect(existsSync(join(dir, 'package.json'))).toBe(true);
   return dir;
@@ -93,9 +101,11 @@ afterAll(() => {
 describe('npm package manifest', () => {
   test('publishes under the scoped name, MIT, public access', () => {
     expect(manifest.name).toBe('@noppu-labs/opencode-cache-manager');
-    // Release-time consistency (tag == vX.Y.Z of package.json) is enforced by
-    // the release workflow's gate; here the version only needs to be
-    // well-formed.
+    /*
+     * Release-time consistency (tag == vX.Y.Z of package.json) is enforced by
+     * the release workflow's gate; here the version only needs to be
+     * well-formed.
+     */
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/u);
     expect(manifest.license).toBe('MIT');
     expect(manifest.publishConfig?.access).toBe('public');
@@ -111,8 +121,10 @@ describe('npm package manifest', () => {
     expect(peers?.['@opencode/plugin']).toBe('>=2.0.22 <3');
   });
 
-  // npm skips optional peers, and the OpenCode installer does not provide
-  // these to a plugin's install dir, so the sidebar import fails without them.
+  /*
+   * Optional peers are skipped by npm, and the OpenCode installer does not provide
+   * these to a plugin's install dir, so the sidebar import fails without them.
+   */
   test('requires the packages the sidebar imports at runtime as peers', () => {
     const pkg = JSON.parse(readFileSync(join(CWD, 'package.json'), 'utf8')) as {
       peerDependencies?: Record<string, string>;
@@ -157,10 +169,12 @@ describe('npm package tarball', () => {
 });
 
 describe('Host.resolve against the extracted package', () => {
-  // This replays @opencode/plugin/dist/host.js: entry(["server", ""]) /
-  // entry(["tui"]) / entry(["rpc"]) through Bun.resolveSync(specifier,
-  // directory) -- the exact resolution the OpenCode runtime performs for a
-  // configured npm plugin.
+  /*
+   * This replays @opencode/plugin/dist/host.js: entry(["server", ""]) /
+   * entry(["tui"]) / entry(["rpc"]) through Bun.resolveSync(specifier,
+   * directory) -- the exact resolution the OpenCode runtime performs for a
+   * configured npm plugin.
+   */
   test('resolves server, tui and rpc entrypoints', () => {
     const dir = extract();
     const name = manifest.name;
@@ -180,8 +194,10 @@ describe('Host.resolve against the extracted package', () => {
     expect(bare.endsWith('src/server.ts')).toBe(true);
   });
 
-  // tsconfig.json does not ship, so the extracted tree has no jsxImportSource
-  // to inherit; without a per-file pragma Bun falls back to React JSX.
+  /*
+   * The package does not ship tsconfig.json, so the extracted tree has no jsxImportSource
+   * to inherit; without a per-file pragma Bun falls back to React JSX.
+   */
   test('shipped .tsx files compile against the OpenTUI Solid JSX runtime', () => {
     const dir = extract();
     const tsx = sourceFiles().filter((f) => f.endsWith('.tsx'));
@@ -201,17 +217,21 @@ describe('Host.resolve against the extracted package', () => {
   });
 
   test('shipped sources are byte-identical to the tested sources', () => {
-    // Loadability of these exact files is covered by the main suite (it
-    // imports them from the repo). What the tarball must additionally
-    // guarantee is that what ships is what was tested -- byte for byte.
+    /*
+     * Loadability of these exact files is covered by the main suite (it
+     * imports them from the repo). What the tarball must additionally
+     * guarantee is that what ships is what was tested -- byte for byte.
+     */
     const dir = extract();
     for (const file of sourceFiles()) {
       expect(readFileSync(join(dir, file))).toEqual(readFileSync(join(CWD, file)));
     }
   });
 
-  // The host skips the Solid transform under node_modules, so an npm
-  // install renders the sidebar from this file; see scripts/build-sidebar.ts.
+  /*
+   * The host skips the Solid transform under node_modules, so an npm
+   * install renders the sidebar from this file; see scripts/build-sidebar.ts.
+   */
   test('ships a Solid-compiled sidebar that imports only the host runtime', () => {
     const dir = extract();
     const code = readFileSync(join(dir, COMPILED_SIDEBAR), 'utf8');

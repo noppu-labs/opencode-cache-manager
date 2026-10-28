@@ -55,10 +55,12 @@ export default Plugin.define({
 
     const feed = createSnapshotFeed(ctx.storage, rpc);
 
-    // The sidebar is Solid JSX loaded lazily so a failure there cannot take the
-    // command or picker down. The host only runs the Solid transform outside
-    // node_modules, so an npm install loads the copy compiled at pack time.
-    // Both specifiers stay literal: the host finds imports to rewrite by scanning for them.
+    /*
+     * The sidebar is Solid JSX loaded lazily so a failure there cannot take the
+     * command or picker down. The host only runs the Solid transform outside
+     * node_modules, so an npm install loads the copy compiled at pack time.
+     * Both specifiers stay literal: the host finds imports to rewrite by scanning for them.
+     */
     let disposeSidebar: (() => void) | undefined;
     try {
       const { registerSidebar } = isInsideNodeModules(import.meta.url)

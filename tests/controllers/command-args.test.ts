@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { parseCommandArg } from '../../src/controllers/command-args.ts';
 
-// ---------------------------------------------------------------------------
-// parseCommandArg
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * parseCommandArg
+ * ---------------------------------------------------------------------------
+ */
 
 describe('parseCommandArg', () => {
   test('parses mode arguments case-insensitively', () => {

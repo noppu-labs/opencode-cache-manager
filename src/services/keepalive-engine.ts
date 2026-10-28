@@ -409,8 +409,10 @@ class KeepaliveEngine {
     const settled = () => {
       s.pingPending = false;
       if (this.disposed) return;
-      // Resolved without a response seen, or rejected: unless a response (or a
-      // newer real request) already settled this ping, it failed.
+      /*
+       * Resolved without a response seen, or rejected: unless a response (or a
+       * newer real request) already settled this ping, it failed.
+       */
       if (s.inflight === inflight) {
         s.inflight = null;
         s.deferred = false;

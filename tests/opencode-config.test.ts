@@ -13,9 +13,11 @@ import {
   transformOpts,
 } from './helpers/fixtures.ts';
 
-// ---------------------------------------------------------------------------
-// docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * docs/examples/*.jsonc: every example parses and every -1h variant rewrites to 1h
+ * ---------------------------------------------------------------------------
+ */
 
 const EXAMPLES_DIR = fileURLToPath(new URL('../docs/examples/', import.meta.url));
 

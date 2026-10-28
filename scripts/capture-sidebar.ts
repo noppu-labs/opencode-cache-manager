@@ -11,12 +11,16 @@ import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
 import { isNonEmptyString } from '../src/utils/is-non-empty-string.ts';
 
-// Clock times in the section come from toLocaleTimeString, so pin the zone
-// before any Date is formatted.
+/*
+ * Clock times in the section come from toLocaleTimeString, so pin the zone
+ * before any Date is formatted.
+ */
 process.env.TZ = 'UTC';
 
-// The Solid transform must be registered before any module with JSX loads, so
-// the screens are imported dynamically below.
+/*
+ * The Solid transform must be registered before any module with JSX loads, so
+ * the screens are imported dynamically below.
+ */
 ensureSolidTransformPlugin();
 
 const ROOT = join(import.meta.dir, '..');
@@ -46,7 +50,7 @@ const {
   renderScreen,
 }: typeof import('./capture/screens.tsx') = await import('./capture/screens.tsx');
 
-/** freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
+/** Charm's freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
 function withBoldHeader(svg: string): string {
   return svg.replaceAll(
     `>${SECTION_HEADER}</tspan>`,

@@ -2,17 +2,21 @@ import { describe, expect, mock, test } from 'bun:test';
 
 import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
-// `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
-// `solid-js` peer that is only present in the live TUI host. `define` is an
-// identity helper, so stub it here (before importing the TUI entrypoint) to keep
-// the test harness dependency-free.
+/*
+ * `@opencode/plugin/tui` re-exports from `solid.js`, which imports the optional
+ * `solid-js` peer that is only present in the live TUI host. `define` is an
+ * identity helper, so stub it here (before importing the TUI entrypoint) to keep
+ * the test harness dependency-free.
+ */
 await mock.module('@opencode/plugin/tui', () => ({
   Plugin: { define: (plugin: unknown) => plugin },
 }));
-// Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
-// node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
-// Bun shares module mocks across test files, so the rest of the module stays
-// real for tests/scripts/capture-sidebar.test.ts, which renders the component.
+/*
+ * Stub `registerSidebar` to capture what `tui.ts` hands it. The repo is not under
+ * node_modules, so `tui.ts` imports the `.tsx` rather than the compiled copy.
+ * Bun shares module mocks across test files, so the rest of the module stays
+ * real for tests/scripts/capture-sidebar.test.ts, which renders the component.
+ */
 ensureSolidTransformPlugin();
 const { CacheLines, paletteFromTheme } = await import('../src/ui/sidebar.tsx');
 type SidebarCall = {

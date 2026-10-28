@@ -527,7 +527,7 @@ describe('keepalive engine: ping outcomes', () => {
     await h.advance(50 * MIN);
     expect(h.engine.snapshot('s1')).toMatchObject({ lastPing: 'hit', pingsUsed: 2 });
 
-    // third ping misses: read 1 000 of an 80 100-token context
+    // Third ping misses: read 1 000 of an 80 100-token context
     h.queue.push({ kind: 'respond', usage: miss });
     await h.advance(50 * MIN);
     expect(h.pings).toHaveLength(3);
@@ -608,7 +608,7 @@ describe('keepalive engine: ping outcomes', () => {
     expect(h.pings.map((p) => p.at)).toEqual([4 * MIN, 4 * MIN + RETRY_DELAY_MS]);
     expect(h.engine.snapshot('s1')).toMatchObject({ lastPing: 'hit', pingsUsed: 2 });
 
-    // fresh run: 240s ping fails, 270s retry fails, next retry (300s) is past 285s
+    // Fresh run: 240s ping fails, 270s retry fails, next retry (300s) is past 285s
     const g = harness();
     await g.request('s1', write5m, '5m');
     g.queue.push({ kind: 'reject' }, { kind: 'reject' }, { kind: 'reject' });
@@ -796,8 +796,10 @@ describe('keepalive engine: races and lifecycle', () => {
 
 describe('keepalive engine: review fixes', () => {
   test('a failed real request does not extend expiry', async () => {
-    // maxPings 1: the single allowed ping may fire at 4m (scheduled from the
-    // confirmed t=0 request); nothing may be sent later than expiry - margin.
+    /*
+     * With maxPings 1, the single allowed ping may fire at 4m (scheduled from the
+     * confirmed t=0 request); nothing may be sent later than expiry - margin.
+     */
     const h = harness({ settings: { maxPings: 1 } });
     await h.request('s1', write5m, '5m');
     expect(h.engine.snapshot('s1')).toMatchObject({ lastRequestAt: 0, expiresAt: 5 * MIN });

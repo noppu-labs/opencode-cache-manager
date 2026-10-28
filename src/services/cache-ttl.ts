@@ -76,8 +76,10 @@ function rewriteAnthropicCacheTtl(body: Record<string, unknown>, mode: CacheTtlM
     }
   }
 
-  // In hybrid mode the message tail stays at the 5m default so that the 1h
-  // prefix breakpoints remain ahead of any 5m breakpoint.
+  /*
+   * In hybrid mode the message tail stays at the 5m default so that the 1h
+   * prefix breakpoints remain ahead of any 5m breakpoint.
+   */
   const messageTtl: '1h' | undefined = mode === '1h' ? '1h' : undefined;
 
   if (Array.isArray(body.messages)) {

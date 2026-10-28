@@ -37,8 +37,10 @@ export default Plugin.define({
     const profiles = new ProfileStore(ctx.storage);
     await profiles.load();
 
-    // Referenced from inside its own handlers so they can emit the update
-    // event; declared before the `await` to avoid a temporal-dead-zone hazard.
+    /*
+     * Referenced from inside its own handlers so they can emit the update
+     * event; declared before the `await` to avoid a temporal-dead-zone hazard.
+     */
     let rpcRegistration: RpcRegistration<typeof CacheTtlRpc> | undefined;
     const pings = new PingTracker();
     const primaryMessages = new Map<string, unknown[]>();
@@ -66,8 +68,10 @@ export default Plugin.define({
     const settingsChanged = async (sessionID: string | null) => {
       await engine.reevaluate(sessionID ?? undefined);
       await rpcRegistration?.events.emit('settings.updated', { sessionID });
-      // RPC output schemas are `object`; returning undefined would fail host
-      // output validation (rpc.invalid_output). Handlers return an empty object.
+      /*
+       * RPC output schemas are `object`; returning undefined would fail host
+       * output validation (rpc.invalid_output). Handlers return an empty object.
+       */
       return {};
     };
 

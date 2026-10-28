@@ -35,8 +35,10 @@ function sgrAttributes(attributes: number): string {
     .join('');
 }
 
-// Attributes go before colours: freeze starts a new text run at each SGR code
-// and only the last one before the text keeps the colour.
+/*
+ * Attributes go before colours: freeze starts a new text run at each SGR code
+ * and only the last one before the text keeps the colour.
+ */
 function spanToAnsi(span: CapturedSpan): string {
   return `${RESET}${sgrAttributes(span.attributes)}${sgrColor(span.fg, SGR_FOREGROUND)}${sgrColor(span.bg, SGR_BACKGROUND)}${span.text}`;
 }

@@ -75,8 +75,10 @@ function createRequestHook({
     const isPing = observed && pings.isPing(evt.kind, sessionID);
     const keptWarm = observed && profile.pings;
 
-    // Alignment runs before the TTL rewrite so the copied primary messages
-    // take the ping's own mode and beta header, keeping 1h ahead of 5m.
+    /*
+     * Alignment runs before the TTL rewrite so the copied primary messages
+     * take the ping's own mode and beta header, keeping 1h ahead of 5m.
+     */
     let request = original;
     if (isPing && keptWarm) {
       try {

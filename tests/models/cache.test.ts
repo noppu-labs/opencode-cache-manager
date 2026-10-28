@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { isCacheProfileId, isCacheTtlMode } from '../../src/models/cache.ts';
 
-// ---------------------------------------------------------------------------
-// isCacheTtlMode
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * isCacheTtlMode
+ * ---------------------------------------------------------------------------
+ */
 
 describe('isCacheTtlMode', () => {
   test('accepts the three valid modes', () => {
