@@ -13,7 +13,7 @@ function leadingPrefixEnd(messages: unknown[]): number {
   return index === -1 ? messages.length : index;
 }
 
-const marked = (node: unknown) =>
+const marked = (node: unknown): boolean =>
   isRecord(node) && node.cache_control !== undefined && node.cache_control !== null;
 
 /** Returns true when `cache_control` appears on any tool, message or content part. */
@@ -44,14 +44,14 @@ function rewriteOpenAiCacheTtl(body: Rec, mode: CacheTtlMode): boolean {
 
   if (Array.isArray(body.messages)) {
     const prefixEnd = leadingPrefixEnd(body.messages);
-    body.messages.forEach((message, index) => {
+    for (const [index, message] of body.messages.entries()) {
       const ttl = index < prefixEnd ? prefixTtl : tailTtl;
       changed = applyTtlToBlock(message, ttl) || changed;
       const content = isRecord(message) ? message.content : undefined;
       if (Array.isArray(content)) {
         for (const part of content) changed = applyTtlToBlock(part, ttl) || changed;
       }
-    });
+    }
   }
 
   return changed || hasOneHourCacheControl(body);

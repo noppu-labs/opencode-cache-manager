@@ -190,7 +190,10 @@ describe('sidebarLines', () => {
 
   test('uses the injected clock for HH:MM', () => {
     const seen: number[] = [];
-    sidebarLines(snap({ nextPingAt: NOW + 3 * MIN }), NOW, (ms) => (seen.push(ms), '09:05'));
+    sidebarLines(snap({ nextPingAt: NOW + 3 * MIN }), NOW, (ms) => {
+      seen.push(ms);
+      return '09:05';
+    });
     expect(seen).toEqual([NOW + 4 * MIN, NOW + 3 * MIN]);
   });
 

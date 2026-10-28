@@ -44,7 +44,7 @@ function setup(options: Options = {}) {
         failures--;
         throw new Error('rpc down');
       }
-      return options.keepalive?.[input.sessionID] as KeepaliveSnapshot;
+      return (options.keepalive ?? {})[input.sessionID];
     },
     events: {
       subscribe: (name: string, opts?: { signal?: AbortSignal }) => {

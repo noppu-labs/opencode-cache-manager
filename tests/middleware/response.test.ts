@@ -386,7 +386,9 @@ describe('createResponseHook on openai-chat', () => {
     const reported: unknown[] = [];
     const throwing = createResponseHook({
       engine: {
-        responseObserved: async (_: string, info: unknown) => void reported.push(info),
+        responseObserved: async (_: string, info: unknown) => {
+          reported.push(info);
+        },
       } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
       options: { openaiCompatible: true, cacheProfiles: [] },

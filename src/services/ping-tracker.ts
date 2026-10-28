@@ -8,12 +8,12 @@ export class PingTracker {
    */
   private readonly responses = new Map<string, Promise<void>>();
 
-  isPing(kind: string, sessionID: string): boolean {
+  public isPing(kind: string, sessionID: string): boolean {
     return kind === 'generate' && (this.inFlight.get(sessionID) ?? 0) > 0;
   }
 
   /** Runs `generate` as a ping and settles once its response has been reported. */
-  async send(sessionID: string, generate: () => Promise<unknown>): Promise<void> {
+  public async send(sessionID: string, generate: () => Promise<unknown>): Promise<void> {
     this.inFlight.set(sessionID, (this.inFlight.get(sessionID) ?? 0) + 1);
     try {
       await generate();
@@ -30,7 +30,7 @@ export class PingTracker {
   }
 
   /** Records the promise that settles once a ping's response has been reported. */
-  responded(sessionID: string, reported: Promise<void>): void {
+  public responded(sessionID: string, reported: Promise<void>): void {
     this.responses.set(sessionID, reported);
   }
 }

@@ -10,7 +10,7 @@ import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 import { isRecord } from '../utils/is-record.ts';
 
 const STORAGE_KEY = 'learned-models';
-const key = (ref: ModelRef) => `${ref.providerID}/${ref.id}`;
+const key = (ref: ModelRef): string => `${ref.providerID}/${ref.id}`;
 
 /** The profile a response's resolved `model` / `provider` points at. */
 function profileForIdentity(
@@ -27,9 +27,9 @@ function profileForIdentity(
 export class ProfileStore {
   private learned = new Map<string, CacheProfileId>();
 
-  constructor(private readonly kv: KV) {}
+  public constructor(private readonly kv: KV) {}
 
-  async load(): Promise<void> {
+  public async load(): Promise<void> {
     this.learned = new Map();
     let stored: unknown;
     try {
@@ -44,7 +44,7 @@ export class ProfileStore {
     }
   }
 
-  get(ref: ModelRef): CacheProfileId | undefined {
+  public get(ref: ModelRef): CacheProfileId | undefined {
     return this.learned.get(key(ref));
   }
 
@@ -53,7 +53,10 @@ export class ProfileStore {
    * A learned `openai` never widens classification (see `classifyRequest`), but storing it still replaces a stale
    * `anthropic` entry for an alias that a router now answers with GPT.
    */
-  async learnFromResponse(ref: ModelRef, identity: ResponseIdentity | undefined): Promise<void> {
+  public async learnFromResponse(
+    ref: ModelRef,
+    identity: ResponseIdentity | undefined
+  ): Promise<void> {
     try {
       const { model, provider } = identity ?? {};
       if (!isNonEmptyString(model) && !isNonEmptyString(provider)) return;
@@ -67,7 +70,7 @@ export class ProfileStore {
   }
 
   /** Drops the learned entry for `ref`, so classification falls back to name and patterns. Never rejects. */
-  async forget(ref: ModelRef): Promise<void> {
+  public async forget(ref: ModelRef): Promise<void> {
     try {
       if (!this.learned.delete(key(ref))) return;
       await this.persist();
@@ -76,7 +79,7 @@ export class ProfileStore {
     }
   }
 
-  private persist(): Promise<void> {
+  private async persist(): Promise<void> {
     return this.kv.set(STORAGE_KEY, Object.fromEntries(this.learned));
   }
 }

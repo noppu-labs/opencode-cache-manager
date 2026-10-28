@@ -5,8 +5,8 @@ import type {
   ResponseParsers,
 } from '../models/cache.ts';
 
-// oxlint-disable-next-line unicorn/no-useless-undefined -- Promise.resolve() is typed Promise<void>, which does not fit Promise<Value | undefined>
-const resolvedUndefined = <Value>(): Promise<Value | undefined> => Promise.resolve(undefined);
+// oxlint-disable-next-line unicorn/no-useless-undefined, typescript/require-await -- an empty body would type as Promise<void>; async only wraps the value in the promise the callers expect
+const resolvedUndefined = async <Value>(): Promise<Value | undefined> => undefined;
 
 /**
  * Tees the response body so usage, the stop reason and, where `parsers`

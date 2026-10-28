@@ -33,6 +33,15 @@ interface PingInFlight {
   contextBefore: number | null;
 }
 
+interface ResponseInfo {
+  usage: CacheUsage | undefined;
+  ok: boolean;
+  isPing: boolean;
+  kind: RequestKind;
+  stopReason?: string;
+  unmanaged?: boolean;
+}
+
 interface SessionState {
   ttl: Ttl | null;
   ttlSource: 'detected' | 'requested' | null;
@@ -72,10 +81,10 @@ class KeepaliveEngine {
   private readonly sessions = new Map<string, SessionState>();
   private disposed = false;
 
-  constructor(private readonly deps: EngineDeps) {}
+  public constructor(private readonly deps: EngineDeps) {}
 
   /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
-  requestSent(
+  public requestSent(
     sessionID: string,
     info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }
   ): void {
@@ -119,17 +128,7 @@ class KeepaliveEngine {
   }
 
   /** `unmanaged` on a primary or compaction response stops keeping the session warm until the next request sets a TTL. */
-  async responseObserved(
-    sessionID: string,
-    info: {
-      usage: CacheUsage | undefined;
-      ok: boolean;
-      isPing: boolean;
-      kind: RequestKind;
-      stopReason?: string;
-      unmanaged?: boolean;
-    }
-  ): Promise<void> {
+  public async responseObserved(sessionID: string, info: ResponseInfo): Promise<void> {
     if (this.disposed) return;
     const state = this.state(sessionID);
     if (
@@ -141,36 +140,74 @@ class KeepaliveEngine {
     }
 
     if (info.isPing) {
-      const { inflight } = state;
-      if (!inflight) return;
-      state.inflight = null;
-      if (!info.ok || !info.usage) {
-        await this.failPing(sessionID, state);
-        return;
-      }
-      const { usage } = info;
-      const before = inflight.contextBefore ?? contextTokens(usage);
-      const hit = usage.cacheReadTokens >= HIT_RATIO * before;
-      // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
-      if (hit) {
-        state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
-        state.confirmedAt = state.lastRequestAt;
-      }
-      state.lastPing = hit ? 'hit' : 'miss';
-      state.missed = !hit;
-      state.retryAt = null;
-      this.commit(sessionID, state);
-      await this.schedule(sessionID);
+      await this.pingObserved(sessionID, state, info);
       return;
     }
 
-    if (!info.ok) {
+    if (info.ok) {
+      this.recordResponse(state, info);
+    } else {
       // The request did not reach the cache, so the expiry goes back to the last confirmed request.
       state.lastRequestAt = state.confirmedAt;
-      this.commit(sessionID, state);
-      await this.schedule(sessionID);
+    }
+    this.commit(sessionID, state);
+    await this.schedule(sessionID);
+  }
+
+  public async reevaluate(sessionID?: string): Promise<void> {
+    if (this.disposed) return;
+    const ids =
+      sessionID === undefined
+        ? [...this.sessions.keys()]
+        : [sessionID].filter((id) => this.sessions.has(id));
+    await Promise.all(ids.map(async (id) => this.schedule(id)));
+  }
+
+  public snapshot(sessionID: string): KeepaliveSnapshot {
+    const state = this.sessions.get(sessionID);
+    return state
+      ? this.toSnapshot(sessionID, state)
+      : this.toSnapshot(sessionID, this.newState(sessionID));
+  }
+
+  public dispose(): void {
+    this.disposed = true;
+    for (const state of this.sessions.values()) {
+      this.cancelTimer(state);
+      state.generation++;
+      state.inflight = null;
+    }
+  }
+
+  private async pingObserved(
+    sessionID: string,
+    state: SessionState,
+    info: ResponseInfo
+  ): Promise<void> {
+    const { inflight } = state;
+    if (!inflight) return;
+    state.inflight = null;
+    if (!info.ok || !info.usage) {
+      await this.failPing(sessionID, state);
       return;
     }
+    const { usage } = info;
+    const before = inflight.contextBefore ?? contextTokens(usage);
+    const hit = usage.cacheReadTokens >= HIT_RATIO * before;
+    // A miss did not refresh the whole prefix, so the expiry stays anchored where it was.
+    if (hit) {
+      state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
+      state.confirmedAt = state.lastRequestAt;
+    }
+    state.lastPing = hit ? 'hit' : 'miss';
+    state.missed = !hit;
+    state.retryAt = null;
+    this.commit(sessionID, state);
+    await this.schedule(sessionID);
+  }
+
+  /** Records a successful non-ping response: the expiry anchor, the cache readout and the learned TTL. */
+  private recordResponse(state: SessionState, info: ResponseInfo): void {
     if (state.requestSentAt !== null) {
       state.confirmedAt = state.requestSentAt;
       state.lastRequestAt = state.requestSentAt;
@@ -185,33 +222,6 @@ class KeepaliveEngine {
       this.learn(state, info.usage);
     }
     if (info.kind === 'primary' && info.stopReason === 'tool_use') state.busy = true;
-    this.commit(sessionID, state);
-    await this.schedule(sessionID);
-  }
-
-  async reevaluate(sessionID?: string): Promise<void> {
-    if (this.disposed) return;
-    const ids =
-      sessionID === undefined
-        ? [...this.sessions.keys()]
-        : [sessionID].filter((id) => this.sessions.has(id));
-    await Promise.all(ids.map((id) => this.schedule(id)));
-  }
-
-  snapshot(sessionID: string): KeepaliveSnapshot {
-    const state = this.sessions.get(sessionID);
-    return state
-      ? this.toSnapshot(sessionID, state)
-      : this.toSnapshot(sessionID, this.newState(sessionID));
-  }
-
-  dispose(): void {
-    this.disposed = true;
-    for (const state of this.sessions.values()) {
-      this.cancelTimer(state);
-      state.generation++;
-      state.inflight = null;
-    }
   }
 
   private state(sessionID: string): SessionState {
@@ -309,9 +319,9 @@ class KeepaliveEngine {
   }
 
   /** Cached once resolved; a failed lookup counts as a child for this computation only and is retried next time. */
-  private isChild(sessionID: string, state: SessionState): Promise<boolean> {
+  private async isChild(sessionID: string, state: SessionState): Promise<boolean> {
     if (!state.child) {
-      const lookup = Promise.resolve().then(() => this.deps.isChild(sessionID));
+      const lookup = Promise.resolve().then(async () => this.deps.isChild(sessionID));
       state.child = lookup;
       lookup.catch(() => {
         if (state.child === lookup) state.child = undefined;
@@ -416,7 +426,7 @@ class KeepaliveEngine {
     state.pingPending = true;
     this.commit(sessionID, state);
 
-    const settled = () => {
+    const settled = (): void => {
       state.pingPending = false;
       if (this.disposed) return;
       /*

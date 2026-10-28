@@ -32,6 +32,7 @@ function sgrColor(color: RGBA, layer: typeof SGR_FOREGROUND | typeof SGR_BACKGRO
 }
 
 function sgrAttributes(attributes: number): string {
+  // oxlint-disable-next-line eslint/no-bitwise -- reads the attribute bit flags of a captured frame
   return ATTRIBUTE_CODES.filter(([bit]) => (attributes & bit) !== 0)
     .map(([, code]) => `${ESC}${code}m`)
     .join('');

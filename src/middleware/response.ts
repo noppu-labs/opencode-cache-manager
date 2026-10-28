@@ -45,7 +45,8 @@ const PARSERS_BY_WIRE: Record<Wire, ResponseParsers> = {
  * the learned entry, so a stale `anthropic` cannot keep sending a rewrite the upstream rejects.
  */
 function createResponseHook({ engine, pings, options, profiles }: ResponseHookDeps) {
-  return (evt: HttpResponseEvent): Promise<void> => {
+  // oxlint-disable-next-line typescript/require-await -- observation runs in the background; the host only needs a promise that never rejects
+  return async (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
       const wire = observedWireFor(
@@ -53,7 +54,7 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
         isAnthropicProvider(ref.providerID),
         options.openaiCompatible
       );
-      if (!wire) return Promise.resolve();
+      if (!wire) return;
 
       const { kind, sessionID } = evt;
       const isPing = pings.isPing(kind, sessionID);
@@ -94,7 +95,7 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
         : Promise.resolve(false);
 
       const reported = Promise.all([observed.usage, observed.stopReason, unmanagedCheck])
-        .then(([usage, stopReason, unmanaged]) =>
+        .then(async ([usage, stopReason, unmanaged]) =>
           engine.responseObserved(sessionID, { isPing, kind, ok, stopReason, unmanaged, usage })
         )
         .catch(() => {});
@@ -102,7 +103,6 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
     } catch {
       // Observation must never fail the host's response; it passes through unchanged.
     }
-    return Promise.resolve();
   };
 }
 

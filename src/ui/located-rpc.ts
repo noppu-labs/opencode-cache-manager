@@ -20,10 +20,10 @@ export function withLocation(
   };
   return {
     events: rpc.events,
-    getKeepalive: (input) => rpc.getKeepalive(input, options(input.sessionID)),
-    getSettings: (input) => rpc.getSettings(input, options(input.sessionID)),
-    resetSession: (input) => rpc.resetSession(input, options(input.sessionID)),
-    setGlobal: (input) => rpc.setGlobal(input, options()),
-    setSession: (input) => rpc.setSession(input, options(input.sessionID)),
+    getKeepalive: async (input) => rpc.getKeepalive(input, options(input.sessionID)),
+    getSettings: async (input) => rpc.getSettings(input, options(input.sessionID)),
+    resetSession: async (input) => rpc.resetSession(input, options(input.sessionID)),
+    setGlobal: async (input) => rpc.setGlobal(input, options()),
+    setSession: async (input) => rpc.setSession(input, options(input.sessionID)),
   };
 }
