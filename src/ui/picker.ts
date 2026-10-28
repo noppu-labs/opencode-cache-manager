@@ -51,7 +51,7 @@ const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
 export type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 
 export function formatValue(field: Field, value: Settings[Field]): string {
-  if (field === 'keepalive') return value ? 'on' : 'off';
+  if (field === 'keepalive') return value === true ? 'on' : 'off';
   if (field === 'minContextTokens' && typeof value === 'number') return formatTokens(value);
   return String(value);
 }

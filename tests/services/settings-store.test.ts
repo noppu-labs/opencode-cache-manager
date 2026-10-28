@@ -120,9 +120,12 @@ function pagedStorage(pages: string[][]) {
   const storage: ScannableKV = {
     scan: async (input) => {
       calls.push(input);
-      const index = input.after ? Number(input.after) : 0;
+      const index = input.after === undefined ? 0 : Number(input.after);
       const next = index + 1 < pages.length ? String(index + 1) : undefined;
-      return { entries: pages[index].map((key) => ({ key })), ...(next ? { next } : {}) };
+      return {
+        entries: pages[index].map((key) => ({ key })),
+        ...(next === undefined ? {} : { next }),
+      };
     },
     remove: async (key) => {
       removed.push(key);

@@ -13,7 +13,8 @@ export function leadingPrefixEnd(messages: unknown[]): number {
   return index === -1 ? messages.length : index;
 }
 
-const marked = (node: unknown) => isRecord(node) && node.cache_control != null;
+const marked = (node: unknown) =>
+  isRecord(node) && node.cache_control !== undefined && node.cache_control !== null;
 
 /** Returns true when `cache_control` appears on any tool, message or content part. */
 export function hasCacheControl(body: Rec): boolean {

@@ -19,7 +19,12 @@ function extractRawText(raw: unknown): string {
 }
 
 function textField(value: unknown): string | undefined {
-  if (value && typeof value === 'object' && 'text' in value && typeof value.text === 'string') {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'text' in value &&
+    typeof value.text === 'string'
+  ) {
     return value.text;
   }
   return undefined;

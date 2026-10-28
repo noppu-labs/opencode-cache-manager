@@ -142,7 +142,7 @@ function createTuiCtx(options: TuiMockOptions = {}): TuiMock {
               listeners.add(push);
               opts?.signal?.addEventListener('abort', () => wake?.());
               try {
-                while (!opts?.signal?.aborted) {
+                while (opts?.signal?.aborted !== true) {
                   if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
                   while (queue.length > 0) yield queue.shift();
                 }

@@ -1,6 +1,7 @@
 import { sanitizePatch, type SettingsPatch } from '../config/settings.ts';
 import type { KeepaliveEngine } from '../services/keepalive-engine.ts';
 import type { SettingsStore } from '../services/settings-store.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** Rejects a patch carrying any invalid or unknown field instead of silently dropping it. */
 function validatePatch(value: unknown): SettingsPatch {
@@ -27,7 +28,9 @@ export function createRpcHandlers({ store, engine, settingsChanged }: RpcHandler
   return {
     getSettings: async (input: { sessionID?: string }) => ({
       global: store.global(),
-      session: input?.sessionID ? await store.sessionPatch(input.sessionID) : null,
+      session: isNonEmptyString(input?.sessionID)
+        ? await store.sessionPatch(input.sessionID)
+        : null,
     }),
     setGlobal: async (input: { patch: unknown }) => {
       await store.setGlobal(validatePatch(input.patch));

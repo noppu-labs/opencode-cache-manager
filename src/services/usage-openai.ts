@@ -41,12 +41,13 @@ function readFinishReason(body: unknown): string | undefined {
 
 function readIdentity(body: unknown): ResponseIdentity | undefined {
   if (!isRecord(body)) return undefined;
-  const model = typeof body.model === 'string' && body.model ? body.model : undefined;
-  const provider = typeof body.provider === 'string' && body.provider ? body.provider : undefined;
-  if (!model && !provider) return undefined;
+  const model = typeof body.model === 'string' && body.model !== '' ? body.model : undefined;
+  const provider =
+    typeof body.provider === 'string' && body.provider !== '' ? body.provider : undefined;
+  if (model === undefined && provider === undefined) return undefined;
   const out: ResponseIdentity = {};
-  if (model) out.model = model;
-  if (provider) out.provider = provider;
+  if (model !== undefined) out.model = model;
+  if (provider !== undefined) out.provider = provider;
   return out;
 }
 

@@ -27,7 +27,7 @@ function packOnce(): string {
   // CI packs the real artifact once in the release workflow and points the
   // suite at it, so the suite verifies the exact tarball that ships.
   const override = process.env.CACHE_MANAGER_TEST_TARBALL;
-  if (override) {
+  if (override !== undefined && override !== '') {
     if (!existsSync(override)) throw new Error(`CACHE_MANAGER_TEST_TARBALL missing: ${override}`);
     tgzPath = override;
     return tgzPath;
@@ -56,7 +56,7 @@ function packOnce(): string {
 }
 
 function extract(): string {
-  if (!tmpDir) tmpDir = mkdtempSync(join(tmpdir(), 'cache-manager-pkg-x-'));
+  tmpDir ??= mkdtempSync(join(tmpdir(), 'cache-manager-pkg-x-'));
   const tar = Bun.spawnSync({
     cmd: ['tar', '-xzf', packOnce(), '-C', tmpDir],
     stdout: 'pipe',
@@ -87,7 +87,7 @@ const SHIP_FILES = [
 ].toSorted();
 
 afterAll(() => {
-  if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  if (tmpDir !== undefined) rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('npm package manifest', () => {

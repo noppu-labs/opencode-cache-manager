@@ -6,6 +6,7 @@ import {
 } from '../config/settings.ts';
 import { isCacheTtlMode } from '../models/cache.ts';
 import type { KV, ScannableKV } from '../models/storage.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 const GLOBAL_KEY = 'global';
 const LEGACY_MODE_KEY = 'mode';
@@ -77,7 +78,10 @@ export async function sweepDeletedSessions(
 ): Promise<void> {
   let after: string | undefined;
   do {
-    const page = await storage.scan({ prefix: SESSION_KEY_PREFIX, ...(after ? { after } : {}) });
+    const page = await storage.scan({
+      prefix: SESSION_KEY_PREFIX,
+      ...(isNonEmptyString(after) ? { after } : {}),
+    });
     for (const entry of page.entries) {
       const sessionID = entry.key.startsWith(SESSION_KEY_PREFIX)
         ? entry.key.slice(SESSION_KEY_PREFIX.length)
@@ -89,5 +93,5 @@ export async function sweepDeletedSessions(
       }
     }
     after = page.next;
-  } while (after);
+  } while (isNonEmptyString(after));
 }

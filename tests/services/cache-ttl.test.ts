@@ -190,7 +190,7 @@ describe('rewriteAnthropicCacheTtl', () => {
     // 1h breakpoint after a 5m breakpoint.
     const order: string[] = [];
     const visit = (block: unknown) => {
-      if (!block || typeof block !== 'object') return;
+      if (typeof block !== 'object' || block === null) return;
       const cc = (block as Record<string, unknown>).cache_control as
         | Record<string, unknown>
         | undefined;
