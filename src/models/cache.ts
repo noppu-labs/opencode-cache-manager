@@ -1,5 +1,6 @@
 /**
- * Anthropic prompt-cache TTL modes.
+ * Prompt-cache TTL modes, named after Claude's TTLs. The `openai` profile maps
+ * them onto GPT-5.6+'s 30m automatic cache and 12h breakpoints.
  *
  * - `"5m"`     — default 5-minute ephemeral caching (no `ttl`, no extended beta).
  * - `"1h"`     — 1-hour ephemeral caching on every breakpoint.
