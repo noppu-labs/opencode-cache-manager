@@ -15,7 +15,7 @@ import {
   responsesBody,
   wire,
 } from '../../helpers/arbitraries.ts';
-import { breakpoints } from '../../helpers/properties.ts';
+import { breakpoints, withoutKey } from '../../helpers/properties.ts';
 
 type Rec = Record<string, unknown>;
 
@@ -239,6 +239,37 @@ describe('openai profile rewrite properties', () => {
       fc.property(request(kind), ({ body, ctx }) => {
         expectReturnMatchesChange(body, ctx);
       })
+    );
+  });
+
+  test('a second rewrite of a non-ping OpenAI request reports no change', () => {
+    fc.assert(
+      fc.property(request(kind), ({ body: input, ctx }) => {
+        const body = structuredClone(input);
+        openaiProfile.rewrite(body, ctx);
+        const once = structuredClone(body);
+        expect(openaiProfile.rewrite(body, ctx)).toBe(false);
+        expect(body).toEqual(once);
+      })
+    );
+  });
+
+  test('injecting into a body without breakpoints reports a change', () => {
+    fc.assert(
+      fc.property(
+        request(fc.constantFrom<RequestKind>('primary', 'compaction'))
+          .map(({ body, ctx }) => ({
+            body: withoutKey(body, 'prompt_cache_breakpoint') as Rec,
+            ctx,
+          }))
+          .filter(({ body, ctx }) => ctx.mode !== '5m' && expectedTarget(body, ctx) !== undefined),
+        ({ body: input, ctx }) => {
+          const body = structuredClone(input);
+          expect(openaiProfile.rewrite(body, ctx)).toBe(true);
+          expect(body).not.toEqual(input);
+          expect(breakpoints(body)).toEqual([{ mode: 'explicit', ttl: '12h' }]);
+        }
+      )
     );
   });
 });
