@@ -129,7 +129,7 @@ describe('openai profile rewrite properties', () => {
         anyBody,
         fc.record({ inject: fc.boolean(), isPing: fc.boolean(), kind, mode, wire }),
         (input, ctx) => {
-          openaiProfile.rewrite(structuredClone(input), ctx);
+          expect(() => openaiProfile.rewrite(structuredClone(input), ctx)).not.toThrow();
         }
       )
     );

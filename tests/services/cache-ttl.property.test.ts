@@ -30,7 +30,7 @@ describe('rewriteAnthropicCacheTtl properties', () => {
   test('never throws on any JSON object body', () => {
     fc.assert(
       fc.property(fc.oneof(messagesBody, looseBody), mode, (input, m) => {
-        rewriteAnthropicCacheTtl(structuredClone(input), m);
+        expect(() => rewriteAnthropicCacheTtl(structuredClone(input), m)).not.toThrow();
       })
     );
   });

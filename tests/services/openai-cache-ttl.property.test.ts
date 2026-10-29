@@ -20,7 +20,7 @@ describe('rewriteOpenAiCacheTtl properties', () => {
   test('never throws on any JSON object body', () => {
     fc.assert(
       fc.property(fc.oneof(messagesBody, looseBody), mode, (input, m) => {
-        rewriteOpenAiCacheTtl(structuredClone(input), m);
+        expect(() => rewriteOpenAiCacheTtl(structuredClone(input), m)).not.toThrow();
       })
     );
   });
