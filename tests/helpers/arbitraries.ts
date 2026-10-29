@@ -150,12 +150,31 @@ const sentinel = fc.option(fc.constantFrom('5m', '1h', 'hybrid', ' 1H ', 'HYBRID
   nil: undefined,
 });
 
-/** SSE text: `data:` lines carrying `event`, `[DONE]`, non-JSON data and `event:` lines. */
+const POSITIVE_INFINITY_MARKER = '"@+infinity@"';
+const NEGATIVE_INFINITY_MARKER = '"@-infinity@"';
+
+/**
+ * `JSON.stringify` writes NaN and ±Infinity as `null`, which hides them from a parser. This writes
+ * ±Infinity as the raw literals `1e999` and `-1e999`, which `JSON.parse` reads back as ±Infinity.
+ */
+const stringifyKeepingInfinity = (value: unknown): string =>
+  JSON.stringify(value, (_key, child: unknown) => {
+    if (child === Number.POSITIVE_INFINITY) return '@+infinity@';
+    if (child === Number.NEGATIVE_INFINITY) return '@-infinity@';
+    return child;
+  })
+    .replaceAll(POSITIVE_INFINITY_MARKER, '1e999')
+    .replaceAll(NEGATIVE_INFINITY_MARKER, '-1e999');
+
+/**
+ * SSE text: `data:` lines carrying `event` (with ±Infinity as raw `1e999` literals), `[DONE]`,
+ * non-JSON data and `event:` lines.
+ */
 const sseText = (event: fc.Arbitrary<unknown>): fc.Arbitrary<string> =>
   fc
     .array(
       fc.oneof(
-        event.map((value) => `data: ${JSON.stringify(value)}`),
+        event.map((value) => `data: ${stringifyKeepingInfinity(value)}`),
         fc.constant('data: [DONE]'),
         text.map((value) => `data: ${value}`),
         text.map((value) => `event: ${value}`)
@@ -165,7 +184,11 @@ const sseText = (event: fc.Arbitrary<unknown>): fc.Arbitrary<string> =>
     .map((lines) => lines.map((line) => `${line}\n\n`).join(''));
 
 /** A number field as a provider might send it, or junk: any double (NaN and ±Infinity included) or JSON. */
-const numberish: fc.Arbitrary<unknown> = fc.oneof(fc.double(), fc.jsonValue());
+const numberish: fc.Arbitrary<unknown> = fc.oneof(
+  fc.double(),
+  fc.constantFrom(Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY),
+  fc.jsonValue()
+);
 
 /**
  * Like `numberish`, but finite numbers stay within a plausible token count. The OpenAI parsers

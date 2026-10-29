@@ -6,30 +6,41 @@ import { RESPONSES_PARSERS } from '../../src/services/usage-responses.ts';
 import { sseText, tokenish } from '../helpers/arbitraries.ts';
 import { expectFiniteUsage } from '../helpers/properties.ts';
 
+const junkDetails = fc.oneof(
+  fc.jsonValue(),
+  fc.record({ cache_write_tokens: tokenish, cached_tokens: tokenish }, { requiredKeys: [] })
+);
+
 const junkResponse = fc.record(
   {
     output: fc.jsonValue(),
     status: fc.jsonValue(),
     usage: fc.record(
-      {
-        input_tokens: tokenish,
-        input_tokens_details: fc.oneof(
-          fc.jsonValue(),
-          fc.record({ cache_write_tokens: tokenish, cached_tokens: tokenish }, { requiredKeys: [] })
-        ),
-      },
+      { input_tokens: tokenish, input_tokens_details: junkDetails },
       { requiredKeys: [] }
     ),
   },
   { requiredKeys: [] }
 );
 
+/** A terminal event whose usage always carries `input_tokens`, so non-finite counts reach the parser. */
+const terminalEvent = fc.record({
+  response: fc.record({
+    usage: fc.record({ input_tokens: tokenish, input_tokens_details: junkDetails }),
+  }),
+  type: fc.constantFrom('response.completed', 'response.incomplete'),
+});
+
 const event = fc.oneof(
-  fc.jsonValue(),
-  fc.record({
-    response: junkResponse,
-    type: fc.constantFrom('response.completed', 'response.incomplete', 'response.created'),
-  })
+  { arbitrary: fc.jsonValue(), weight: 1 },
+  {
+    arbitrary: fc.record({
+      response: junkResponse,
+      type: fc.constantFrom('response.completed', 'response.incomplete', 'response.created'),
+    }),
+    weight: 2,
+  },
+  { arbitrary: terminalEvent, weight: 3 }
 );
 
 const known = fc
