@@ -31,5 +31,14 @@ published from GitHub Actions with npm provenance. After installing, check them 
 npm audit signatures
 ```
 
-Each GitHub release also carries `checksums-sha256.txt` with the SHA-256 checksums of the
-published tarballs.
+Each [GitHub release](https://github.com/noppu-labs/opencode-cache-manager/releases) also ships
+the published tarball with a GitHub
+[build provenance attestation](https://github.com/noppu-labs/opencode-cache-manager/attestations)
+that proves CI built it from the tagged commit:
+
+```sh
+gh attestation verify noppu-labs-opencode-cache-manager-<version>.tgz --repo noppu-labs/opencode-cache-manager
+```
+
+The Sigstore bundle (`<tarball>.intoto.jsonl`) and `checksums-sha256.txt` are attached next to
+it.

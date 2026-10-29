@@ -91,4 +91,4 @@ bun scripts/capture-sidebar.ts --all
 
 ## Releases
 
-Releases are cut by pushing a `v*` tag. `.github/workflows/release.yml` tests, packs, publishes both npm names (`@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`) through npm OIDC trusted publishing, and opens a GitHub Release. No npm token is stored anywhere, and nothing is published by hand.
+Releases are cut by pushing a `v*` tag. `.github/workflows/release.yml` tests, packs, publishes both npm names (`@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`) through npm OIDC trusted publishing, and opens a GitHub Release with the tarball, its build provenance attestation and checksums. No npm token is stored anywhere, and nothing is published by hand.
