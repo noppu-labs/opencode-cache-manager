@@ -74,6 +74,16 @@ describe('parseCommandArg', () => {
     expect(parseCommandArg('min')).toEqual({ type: 'invalid' });
   });
 
+  test('rejects min counts too large to represent', () => {
+    expect(parseCommandArg(`min ${'9'.repeat(400)}`)).toEqual({ type: 'invalid' });
+    expect(parseCommandArg(`min 5${'0'.repeat(307)}k`)).toEqual({ type: 'invalid' });
+    expect(parseCommandArg('min 9007199254740992')).toEqual({ type: 'invalid' });
+    expect(parseCommandArg('min 9007199254740k')).toEqual({
+      type: 'set',
+      patch: { minContextTokens: 9_007_199_254_740_000 },
+    });
+  });
+
   test('unknown input is invalid', () => {
     expect(parseCommandArg('banana')).toEqual({ type: 'invalid' });
     expect(parseCommandArg('5')).toEqual({ type: 'invalid' });
