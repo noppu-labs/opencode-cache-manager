@@ -167,6 +167,16 @@ const sseText = (event: fc.Arbitrary<unknown>): fc.Arbitrary<string> =>
 /** A number field as a provider might send it, or junk: any double (NaN and ±Infinity included) or JSON. */
 const numberish: fc.Arbitrary<unknown> = fc.oneof(fc.double(), fc.jsonValue());
 
+/**
+ * Like `numberish`, but finite numbers stay within a plausible token count. The OpenAI parsers
+ * subtract counts, and hugely negative inputs near `Number.MAX_VALUE` overflow to `Infinity`.
+ */
+const tokenish: fc.Arbitrary<unknown> = fc.oneof(
+  fc.integer({ max: 1e9, min: -1e9 }),
+  fc.constantFrom(Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY),
+  fc.jsonValue().filter((value) => typeof value !== 'number')
+);
+
 export {
   anyBody,
   betaHeader,
@@ -179,5 +189,6 @@ export {
   responsesBody,
   sentinel,
   sseText,
+  tokenish,
   wire,
 };
