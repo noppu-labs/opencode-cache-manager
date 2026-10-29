@@ -7,6 +7,7 @@ OpenCode V2 plugin that manages the prompt cache of Claude and OpenAI GPT-5.6+: 
 ```sh
 bun install
 bun test             # all tests in tests/
+bun run fuzz          # property tests only, FC_NUM_RUNS times each (default 1000)
 bun run typecheck    # tsc -p . (noEmit, strict), covers src/, tests/ and scripts/ with Bun types
 bun run build        # compiles src/ui/sidebar.tsx to src/ui/sidebar.compiled.js (also runs on prepack)
 bun run lint         # oxlint, all five categories (correctness, suspicious, pedantic, style, restriction), type-aware
@@ -102,13 +103,13 @@ scripts/
     ├── ansi.ts                # CapturedFrame -> truecolor ANSI rows
     └── screens.tsx            # sample snapshots and the screen list
 docs/examples/                 # sample opencode.jsonc provider configs: anthropic, openrouter, openai-compatible, openai
-tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts)
+tests/                         # mirrors src/ (tests/services/usage.test.ts tests src/services/usage.ts); *.property.test.ts are fast-check properties
 ```
 
 Other top-level files:
 
 - `tests/server.test.ts`, `tests/tui.test.ts` - integration suites that run each entry's `setup` against a mock host.
-- `tests/helpers/` - shared test fixtures (sample Anthropic and OpenAI bodies and usage, SSE builders, request builders, in-memory storage).
+- `tests/helpers/` - shared test fixtures (sample Anthropic and OpenAI bodies and usage, SSE builders, request builders, in-memory storage), plus `tests/helpers/arbitraries.ts` (fast-check generators), `tests/helpers/properties.ts` (shared walkers and assertions) and `tests/helpers/fc-setup.ts` (applies `FC_NUM_RUNS`; preloaded by `bunfig.toml`).
 - `tests/opencode-config.test.ts` - checks that every `docs/examples/*.jsonc` parses and that each of its `-1h` variants rewrites to 1h (to a 12h breakpoint on the Responses example).
 - `tests/package-smoke.test.ts` - runs `npm pack` and resolves `<name>/server|tui|rpc` against the tarball the way OpenCode does.
 - `docs/examples/` - sample provider configs with `-1h` model variants and commented plugin options, one per endpoint kind: `opencode.anthropic.jsonc`, `opencode.openrouter.jsonc`, `opencode.openai-compatible.jsonc`, `opencode.openai.jsonc` (not shipped). Add new examples there; the config test picks up every `.jsonc` file.
@@ -123,6 +124,7 @@ Where new code goes:
 - `utils/` is for small pure helpers with no domain knowledge. Don't duplicate a helper; move it here.
 - Anything rendered in the TUI goes in `ui/`. Keep formatting pure (`sidebar-lines.ts`) and separate from Solid components.
 - Each source file with logic gets a unit test file at the matching path under `tests/`; files that only declare types, constants or schemas (`models/keepalive.ts`, `models/storage.ts`, `constants/`, `rpc.ts`) need none, and `ui/sidebar.tsx` can only run inside the TUI host, so its logic lives in `sidebar-lines.ts`. Split test files by area rather than growing one large file.
+- A rewrite, parser or input check with a rule that holds for every input gets a property in `tests/<path>/<module>.property.test.ts`; reuse the generators in `tests/helpers/arbitraries.ts`.
 - Test behaviour in the unit test of the module that owns it. `tests/server.test.ts` and `tests/tui.test.ts` only check what needs the plugin host: registration, setup-time option and storage reads, events emitted, keepalive round trips through both hooks and the engine, and cleanup.
 - A local checkout is loaded by symlinking `src/` (not the repo root) into `~/.config/opencode/plugins/`: OpenCode resolves a plugin directory by file path, not through `package.json` `exports`.
 - No `dist/` and no `@types/`. The only build output is `src/ui/sidebar.compiled.js`; keep any further compile step out unless it solves the same problem (code the host will not transform under `node_modules`).
