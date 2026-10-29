@@ -185,6 +185,40 @@ describe('openai profile rewrite properties', () => {
     );
   });
 
+  test('changes nothing but the breakpoint, the explicit option and the target string-to-part conversion', () => {
+    fc.assert(
+      fc.property(request(kind), ({ body: input, ctx }) => {
+        const body = structuredClone(input);
+        openaiProfile.rewrite(body, ctx);
+
+        const expected = structuredClone(input);
+        const target =
+          ctx.kind === 'primary' || ctx.kind === 'compaction'
+            ? expectedTarget(input, ctx)
+            : undefined;
+        if (target && ctx.mode !== '5m') {
+          const item: unknown = items(expected[target.list])[target.index];
+          if (isRecord(item) && typeof item[target.field] === 'string') {
+            item[target.field] = [
+              {
+                text: item[target.field],
+                type: ctx.wire === 'openai-chat' ? 'text' : 'input_text',
+              },
+            ];
+          }
+        }
+
+        const strip = (value: unknown): unknown => {
+          const stripped = withoutKey(value, 'prompt_cache_breakpoint');
+          return ctx.kind === 'title' || ctx.kind === 'generate'
+            ? withoutKey(stripped, 'prompt_cache_options')
+            : stripped;
+        };
+        expect(strip(body)).toEqual(strip(expected));
+      })
+    );
+  });
+
   test('is idempotent', () => {
     fc.assert(
       fc.property(request(kind), ({ body: input, ctx }) => {
