@@ -99,4 +99,39 @@ bun scripts/capture-sidebar.ts --all
 
 ## Releases
 
-Releases are cut by pushing a `v*` tag. `.github/workflows/release.yml` tests, packs, publishes both npm names (`@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`) through npm OIDC trusted publishing, and opens a GitHub Release with the tarball, its build provenance attestation and checksums. No npm token is stored anywhere, and nothing is published by hand.
+Releases are tagged by `.github/workflows/release.yml`; nobody runs `git tag` by hand.
+
+1. A pull request into `main` bumps `version` in `package.json`. Merging it is the decision to release.
+2. Every push to `main` triggers `release.yml`. That run reads the version from the pushed commit and stops after that check if `vX.Y.Z` already exists, so pushes that don't bump the version release nothing. Otherwise it runs the `quality` and `build` jobs against the merge commit as a pre-check. The `tag` job then creates the annotated tag `vX.Y.Z` on that commit and dispatches `release.yml` at the tag. This run publishes nothing.
+3. The dispatched run at the tag is the one that publishes. Provenance records `refs/tags/vX.Y.Z`.
+
+If the pre-check fails, no tag exists. Fix the problem in another pull request; the next push to `main` with the same version tries again.
+
+Every release publishes to the npm `latest` tag, including a version like `X.Y.Z-rc.N`.
+
+### Retries
+
+- In the run started by the push to `main`, use "Re-run failed jobs". "Re-run all jobs" re-reads the version, sees that the tag already exists, and stops green without dispatching.
+- In the publishing run at the tag, either "Re-run failed jobs" or a new dispatch works. Always pass `--ref` at the tag so provenance records the tag:
+
+  ```sh
+  gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z
+  ```
+
+- If the `tag` job failed after it created the tag, "Re-run failed jobs" runs it again. When the tag is on the same commit and has no release and no active run, the job dispatches the publishing run again. If the tag is on another commit, the job fails and nothing is dispatched.
+
+If the `tag` job could not create the tag, push it by hand. The tag push starts the publishing run:
+
+```sh
+git tag -s vX.Y.Z <sha> -m vX.Y.Z && git push origin vX.Y.Z
+```
+
+Tags created by the workflow are annotated and unsigned.
+
+### Repository rulesets
+
+The workflow cannot protect itself, so two rulesets live in the repository settings. `main` requires a pull request with a review and the CI check. `release tags` covers `refs/tags/v*` and blocks update, deletion and non-fast-forward, so a release tag never moves or disappears. It does not restrict creation: a repository ruleset cannot list the GitHub Actions app as a bypass actor, and the `tag` job creates tags with `GITHUB_TOKEN`. A hand-pushed tag still has to point at a commit on `main` and match the `package.json` version, or `build` stops it before anything is published.
+
+### What a release publishes
+
+`release.yml` tests, packs, publishes both npm names (`@noppu-labs/opencode-cache-manager` and `opencode-cache-manager`) through npm OIDC trusted publishing, and opens a GitHub Release with the tarball, its build provenance attestation and checksums. No npm token is stored anywhere, and nothing is published by hand.

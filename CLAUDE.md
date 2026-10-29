@@ -138,7 +138,7 @@ Where new code goes:
 - On the Messages wire only `ANTHROPIC_PROVIDER_IDS` are trusted as Claude; any other provider is classified by model, and a non-Claude model is never rewritten or pinged.
 - `learnFromResponse` keeps learning `implicit` for a model whose response names a non-matching identity, so a stale `openai` entry cannot survive (a wrong `openai` classification is a 400 on the user's turn).
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
-- Releases are tag-driven (`v*`) through `.github/workflows/release.yml` with npm OIDC trusted publishing. Do not publish by hand.
+- Releases go through `.github/workflows/release.yml` with npm OIDC trusted publishing. A push to `main` whose `package.json` version has no `v*` tag yet is pre-checked, tagged, and published from a run dispatched at the tag. Do not tag or publish by hand.
 - The release workflow and the package smoke test pack with `--ignore-scripts`, so they run `bun run build` explicitly. Keep that if the pack command changes.
 - Run `bun run fmt:check`, `bun run lint`, `bun test` and `bun run typecheck` before calling work done.
 
