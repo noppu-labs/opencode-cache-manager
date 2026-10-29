@@ -132,6 +132,7 @@
     {
       "files": ["tests/**"],
       "rules": {
+        "import/no-named-as-default-member": "off",
         "typescript/await-thenable": "off",
         "typescript/no-unsafe-type-assertion": "off",
         "unicorn/consistent-function-scoping": "off",

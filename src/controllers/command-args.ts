@@ -39,11 +39,12 @@ type CommandAction =
   | { type: 'set'; patch: SettingsPatch }
   | { type: 'invalid' };
 
-/** Parses `50000` or `50k` into a token count; `undefined` when malformed. */
+/** Parses `50000` or `50k` into a token count; `undefined` when malformed or too large to represent exactly. */
 function parseTokenCount(text: string | undefined): number | undefined {
   const groups = /^(?<count>\d+)(?<unit>k?)$/u.exec(text ?? '')?.groups;
   if (!groups) return undefined;
-  return Number(groups.count) * (groups.unit ? THOUSAND : 1);
+  const count = Number(groups.count) * (groups.unit ? THOUSAND : 1);
+  return Number.isSafeInteger(count) ? count : undefined;
 }
 
 /**

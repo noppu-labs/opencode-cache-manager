@@ -34,6 +34,14 @@ bun test            # all suites in tests/
 
 `bun test` includes a package smoke test: it runs `npm pack`, replays the entrypoint resolution OpenCode performs for an npm plugin (`Bun.resolveSync("<name>/server" | "<name>/tui" | "<name>/rpc")` against the extracted tarball) and checks the shipped files are byte-identical to the tested sources, including the compiled sidebar matching a fresh build.
 
+## Property tests and fuzzing
+
+The request rewrites, response parsers and user-input parsing also have [fast-check](https://fast-check.dev) property tests, in `*.property.test.ts` files next to each module's tests. Shared generators are in `tests/helpers/arbitraries.ts` and shared walkers and assertions in `tests/helpers/properties.ts`.
+
+`bun test` runs every property 100 times. `bun run fuzz` runs only the property tests, 1,000 times each (`FC_NUM_RUNS` overrides the count; `tests/helpers/fc-setup.ts` applies it, preloaded through `bunfig.toml`). The `fuzz` workflow runs 1,000 on every pull request and push to `main`, and 10,000 every Monday.
+
+A failure prints a seed, a path and the smallest failing input. Reproduce it by passing `{ seed, path }` as the second argument to that `fc.assert`. If it is a real bug, fix it and add the input as an example-based test in the module's normal test file.
+
 ## Layout
 
 ```
