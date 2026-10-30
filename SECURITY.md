@@ -34,7 +34,9 @@ npm audit signatures
 Each [GitHub release](https://github.com/noppu-labs/opencode-cache-manager/releases) also ships
 the published tarball with a GitHub
 [build provenance attestation](https://github.com/noppu-labs/opencode-cache-manager/attestations)
-that proves CI built it from the tagged commit:
+that proves CI built it from the tagged commit. `release.yml` creates the tag after checking the
+commit on `main` and publishes from a run at that tag, so the attestation and npm provenance record
+`refs/tags/v<version>`:
 
 ```sh
 gh attestation verify noppu-labs-opencode-cache-manager-<version>.tgz --repo noppu-labs/opencode-cache-manager

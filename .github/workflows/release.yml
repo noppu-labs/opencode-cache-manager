@@ -1,9 +1,17 @@
 name: release
 
-# Pushing a `v*` tag tests and packs the ship set, then publishes it to npm
+# Three entry points. Every push to `main` reads the version from
+# package.json and stops there if `v<version>` already exists. Otherwise it
+# checks the commit (`quality`, `build`), then `tag` creates `v<version>` and
+# dispatches this workflow at it; nothing is published in that run.
+#
+# A pushed `v*` tag tests and packs the ship set, then publishes it to npm
 # via OIDC trusted publishing -- no npm token is stored anywhere -- under
 # both package names, then creates a GitHub Release. Manual dispatch
-# retries an existing tag without moving it. Re-runs are idempotent:
+# retries an existing tag without moving it; always dispatch at the tag so
+# provenance records it:
+#   gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z
+# Re-runs are idempotent:
 # name@version pairs already on npm are skipped (no 409s on re-tagged or
 # re-dispatched releases), and an existing GitHub Release only gets its
 # checksum asset refreshed.
@@ -16,12 +24,20 @@ name: release
 #       - opencode-cache-manager (owned by the publishing user)
 #   - Actions → General → "Workflow permissions" allows id-token writes
 #     (required for OIDC publishing and npm --provenance).
-#   - A repository ruleset protecting `v*` tags ( restricting
-#     tag creation/update/deletion to maintainers), since whoever controls
-#     a tagged commit controls these guards.
+#   - `main` is protected: a pull request with a required review and the
+#     required CI check.
+#   - A tag ruleset on `refs/tags/v*` blocks update and deletion, so a
+#     release tag never moves or disappears. Creation stays open because a
+#     repository ruleset cannot list the GitHub Actions app as a bypass
+#     actor, and the `tag` job creates tags with GITHUB_TOKEN. A hand-made
+#     tag still has to pass the gates below.
+# A workflow can never be its own root of trust: whoever can merge to
+# `main` or push a `v*` tag controls these guards, so the protection must
+# live outside the repo (see "Releases" in docs/CONTRIBUTING.md).
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -34,8 +50,44 @@ on:
 permissions: {}
 
 jobs:
+  # On a push to main: is package.json's version untagged? Reads through the
+  # API, so no repository code runs here.
+  pending:
+    name: pending version
+    if: github.event_name == 'push' && github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      due: ${{ steps.check.outputs.due }}
+    steps:
+      - name: Find an untagged package.json version
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(gh api "repos/$GITHUB_REPOSITORY/contents/package.json?ref=$GITHUB_SHA" --jq .content | base64 -d | jq -r .version)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version '$version' is not semver"
+            exit 1
+          fi
+          tag="v$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>/dev/null; then
+            echo "$tag already exists; nothing to release."
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          fi
+
   quality:
     name: test and typecheck
+    needs: pending
+    # Tag push and dispatch skip `pending`; a push to main runs only when a release is due.
+    if: ${{ !cancelled() && (needs.pending.result == 'skipped' || needs.pending.outputs.due == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -43,6 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || needs.pending.outputs.tag && github.sha || github.ref }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -52,7 +105,8 @@ jobs:
       - run: bun test tests/
 
   build:
-    needs: quality
+    needs: [pending, quality]
+    if: ${{ !cancelled() && needs.quality.result == 'success' }}
     name: pack and verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -66,16 +120,36 @@ jobs:
         with:
           # History for the tag ancestry check.
           fetch-depth: 0
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || needs.pending.outputs.tag && github.sha || github.ref }}
           persist-credentials: false
 
       - name: Verify tag (gate)
+        if: ${{ !needs.pending.outputs.tag }}
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           [ "$(git rev-parse "refs/tags/$RELEASE_TAG^{}")" = "$(git rev-parse HEAD)" ]
           git merge-base --is-ancestor HEAD origin/main
+          pkg_version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
+          if [ "$RELEASE_TAG" != "v$pkg_version" ]; then
+            echo "Tag $RELEASE_TAG is not v + package.json version $pkg_version"
+            exit 1
+          fi
+
+      # Push to main: the tag does not exist yet, so check the commit and version instead.
+      - name: Verify untagged main commit (gate)
+        if: ${{ needs.pending.outputs.tag }}
+        env:
+          RELEASE_TAG: ${{ needs.pending.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]
+          git merge-base --is-ancestor HEAD origin/main
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "$RELEASE_TAG already exists"
+            exit 1
+          fi
           pkg_version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
           if [ "$RELEASE_TAG" != "v$pkg_version" ]; then
             echo "Tag $RELEASE_TAG is not v + package.json version $pkg_version"
@@ -91,7 +165,7 @@ jobs:
       - name: Read tag metadata
         id: meta
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || needs.pending.outputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
@@ -126,8 +200,54 @@ jobs:
           path: artifacts/
           if-no-files-found: error
 
+  # Tags the pre-checked commit and starts the publishing run at the tag, so
+  # provenance records refs/tags/v<version>. A GITHUB_TOKEN dispatch starts a
+  # run; a GITHUB_TOKEN tag push would not.
+  tag:
+    name: tag and dispatch release
+    needs: [pending, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.pending.outputs.due == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Create v<version> and dispatch release.yml at it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.pending.outputs.tag }}
+        run: |
+          set -euo pipefail
+          repo="repos/$GITHUB_REPOSITORY"
+          if gh api "$repo/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            tagged=$(gh api "$repo/commits/$TAG" --jq .sha)
+            if [ "$tagged" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG already points at $tagged, not $GITHUB_SHA"
+              exit 1
+            fi
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$TAG is already released."
+              exit 0
+            fi
+            active=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch "$TAG" --event workflow_dispatch \
+              --json status --jq '[.[] | select(.status != "completed")] | length')
+            if [ "$active" != "0" ]; then
+              echo "A release run for $TAG is already in progress."
+              exit 0
+            fi
+          else
+            object=$(gh api "$repo/git/tags" -f tag="$TAG" -f message="$TAG" \
+              -f object="$GITHUB_SHA" -f type=commit --jq .sha)
+            gh api "$repo/git/refs" -f ref="refs/tags/$TAG" -f sha="$object" --silent
+          fi
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" -f tag="$TAG"
+          echo "Dispatched release.yml at $TAG."
+
   publish:
     needs: build
+    # The push to main only pre-checks; the run it dispatches at the tag publishes.
+    if: ${{ !cancelled() && needs.build.result == 'success' && !(github.event_name == 'push' && github.ref_type == 'branch') }}
     name: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
