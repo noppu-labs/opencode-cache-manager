@@ -27,6 +27,16 @@ const OPTION_INFO: Record<CacheTtlMode, { title: string; description: string }> 
 
 const CUSTOM = 'custom';
 
+/** Labels of the picker dialog, shared with the image capture. */
+const PICKER_TITLE = 'Cache Manager';
+const PICKER_PLACEHOLDER = 'Select a setting';
+const RESET_SESSION_VALUE = 'session:reset';
+const RESET_SESSION_OPTION = {
+  category: 'Session',
+  title: 'Reset session to global',
+  value: RESET_SESSION_VALUE,
+};
+
 const onOff = (value: boolean): string => (value ? 'on' : 'off');
 
 type Field = keyof Settings;
@@ -195,20 +205,17 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
     const options = [
       ...(sessionID === undefined
         ? []
-        : [
-            ...settingsOptions('session', effective, session),
-            { category: 'Session', title: 'Reset session to global', value: 'session:reset' },
-          ]),
+        : [...settingsOptions('session', effective, session), RESET_SESSION_OPTION]),
       ...settingsOptions('global', global, null),
     ];
     const choice = await dialog.select<string>({
       options,
-      placeholder: 'Select a setting',
-      title: 'Cache Manager',
+      placeholder: PICKER_PLACEHOLDER,
+      title: PICKER_TITLE,
     });
     if (choice === undefined) return;
 
-    if (choice === 'session:reset') {
+    if (choice === RESET_SESSION_VALUE) {
       if (sessionID === undefined) return;
       await rpc.resetSession({ sessionID });
       toast('Session cache settings reset to global.', 'success');
@@ -221,4 +228,13 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
 }
 
 export type { Toast, PickerDeps };
-export { FIELDS, FIELD_INFO, formatValue, createPicker };
+export {
+  FIELDS,
+  FIELD_INFO,
+  PICKER_PLACEHOLDER,
+  PICKER_TITLE,
+  RESET_SESSION_OPTION,
+  formatValue,
+  createPicker,
+  settingsOptions,
+};
