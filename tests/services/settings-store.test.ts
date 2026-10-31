@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { BUILTIN_DEFAULTS } from '../../src/config/settings.ts';
 import type { KV, ScannableKV } from '../../src/models/storage.ts';
+import { LEDGER_KEY_PREFIX } from '../../src/services/ledger-store.ts';
 import { SettingsStore, sweepDeletedSessions } from '../../src/services/settings-store.ts';
 import { memoryKv } from '../helpers/memory-kv.ts';
 
@@ -212,6 +213,24 @@ describe('sweepDeletedSessions', () => {
     const { storage, calls } = pagedStorage([[]]);
     await sweepDeletedSessions(storage, async () => ({}));
     expect(calls).toEqual([{ prefix: 'session/' }]);
+  });
+
+  test('sweeps the keys under a given prefix', async () => {
+    const { kv, data } = memoryKv();
+    data.set('ledger/ses_gone', {});
+    data.set('ledger/ses_live', {});
+    data.set('session/ses_gone', {});
+    await sweepDeletedSessions(
+      kv,
+      async (id) => {
+        if (id === 'ses_gone') throw notFound({ _tag: 'SessionNotFoundError' });
+        return { id };
+      },
+      LEDGER_KEY_PREFIX
+    );
+    expect(data.has('ledger/ses_gone')).toBe(false);
+    expect(data.has('ledger/ses_live')).toBe(true);
+    expect(data.has('session/ses_gone')).toBe(true);
   });
 
   test('follows pagination until there is no next cursor', async () => {

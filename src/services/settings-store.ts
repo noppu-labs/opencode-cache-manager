@@ -71,21 +71,20 @@ function isSessionNotFound(error: unknown): boolean {
   return [_tag, name].some((tag) => typeof tag === 'string' && /SessionNotFound/u.test(tag));
 }
 
-/** Drops stored settings for sessions that were deleted while the plugin was not running. */
+/** Drops stored entries under `prefix` for sessions that were deleted while the plugin was not running. */
 async function sweepDeletedSessions(
   storage: ScannableKV,
-  getSession: (sessionID: string) => Promise<unknown>
+  getSession: (sessionID: string) => Promise<unknown>,
+  prefix: string = SESSION_KEY_PREFIX
 ): Promise<void> {
   let after: string | undefined;
   do {
     const page = await storage.scan({
-      prefix: SESSION_KEY_PREFIX,
+      prefix,
       ...(isNonEmptyString(after) ? { after } : {}),
     });
     for (const entry of page.entries) {
-      const sessionID = entry.key.startsWith(SESSION_KEY_PREFIX)
-        ? entry.key.slice(SESSION_KEY_PREFIX.length)
-        : entry.key;
+      const sessionID = entry.key.startsWith(prefix) ? entry.key.slice(prefix.length) : entry.key;
       try {
         await getSession(sessionID);
       } catch (error) {
@@ -96,4 +95,4 @@ async function sweepDeletedSessions(
   } while (isNonEmptyString(after));
 }
 
-export { SettingsStore, sweepDeletedSessions };
+export { SESSION_KEY_PREFIX, SettingsStore, sweepDeletedSessions };
