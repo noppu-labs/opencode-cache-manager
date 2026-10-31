@@ -24,4 +24,23 @@ const EMPTY_TOTALS: LedgerTotals = Object.freeze({
   version: 1,
 });
 
-export { READ_MULTIPLIER, OUTPUT_MULTIPLIER, WRITE_MULTIPLIER, DEFAULT_WRITE_TTLS, EMPTY_TOTALS };
+const MODELS_DEV_URL = 'https://models.dev/api.json';
+const MODELS_DEV_MAX_AGE_MS = 86_400_000;
+/** Wait after a failed models.dev fetch before trying again. */
+const MODELS_DEV_RETRY_MS = 900_000;
+const MODELS_DEV_STORAGE_KEY = 'models-dev';
+/** Vendors whose own listing wins over resellers. */
+const MODELS_DEV_VENDORS: readonly string[] = ['anthropic', 'openai'];
+
+export {
+  READ_MULTIPLIER,
+  OUTPUT_MULTIPLIER,
+  WRITE_MULTIPLIER,
+  DEFAULT_WRITE_TTLS,
+  EMPTY_TOTALS,
+  MODELS_DEV_URL,
+  MODELS_DEV_MAX_AGE_MS,
+  MODELS_DEV_RETRY_MS,
+  MODELS_DEV_STORAGE_KEY,
+  MODELS_DEV_VENDORS,
+};
