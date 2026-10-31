@@ -3,6 +3,7 @@ import type { RpcHandlers, RpcRegistration } from '@opencode/plugin/promise/rpc'
 
 import { pluginOptions, settingsFromOptions } from './config/settings.ts';
 import { PING_PROMPT } from './constants/keepalive.ts';
+import { MODELS_DEV_FETCH_TIMEOUT_MS } from './constants/savings.ts';
 import { createCacheManagerCommand } from './controllers/command.ts';
 import { createRpcHandlers } from './controllers/rpc-handlers.ts';
 import { createRequestHook } from './middleware/request.ts';
@@ -10,10 +11,15 @@ import { createResponseHook } from './middleware/response.ts';
 import type { KeepaliveSnapshot } from './models/keepalive.ts';
 import { CacheTtlRpc } from './rpc.ts';
 import { KeepaliveEngine } from './services/keepalive-engine.ts';
+import { LEDGER_KEY_PREFIX, LedgerStore } from './services/ledger-store.ts';
+import { PriceBook, toCatalogModels } from './services/model-prices.ts';
+import { ModelsDevPrices } from './services/models-dev.ts';
 import { releasesMessages } from './services/ping-alignment.ts';
 import { PingTracker } from './services/ping-tracker.ts';
 import { ProfileStore } from './services/profile-store.ts';
+import { SavingsLedger } from './services/savings-ledger.ts';
 import { SettingsStore, sweepDeletedSessions } from './services/settings-store.ts';
+import { fetchJson } from './utils/fetch-json.ts';
 
 /**
  * Server entrypoint for the prompt-cache plugin.
@@ -26,7 +32,8 @@ import { SettingsStore, sweepDeletedSessions } from './services/settings-store.t
  *
  * It also observes Anthropic responses and keeps each session's prompt cache
  * warm with transient pings (see `services/keepalive-engine.ts`), publishing
- * per-session state through `getKeepalive` and the `keepalive.updated` event.
+ * per-session state through `getKeepalive` and the `keepalive.updated` event,
+ * with what the pings cost and saved (see `services/savings-ledger.ts`).
  */
 export default Plugin.define({
   id: 'opencode-cache-manager',
@@ -44,6 +51,33 @@ export default Plugin.define({
     let rpcRegistration: RpcRegistration<typeof CacheTtlRpc> | undefined;
     const pings = new PingTracker();
     const primaryMessages = new Map<string, unknown[]>();
+
+    const modelsDev = options.modelsDevPrices
+      ? new ModelsDevPrices({
+          fetchJson: async (url) => fetchJson(url, MODELS_DEV_FETCH_TIMEOUT_MS),
+          kv: ctx.storage,
+          now: () => Date.now(),
+        })
+      : undefined;
+    const prices = new PriceBook({
+      listModels: async () => {
+        const { data } = await ctx.model.list();
+        return toCatalogModels(data);
+      },
+      ...(modelsDev
+        ? { fallback: async (names: readonly string[]) => modelsDev.match(names) }
+        : {}),
+    });
+    void prices.prefetch();
+    // Bound once the engine exists: the ledger is built first, since the engine takes it as a dep.
+    const ledgerChanged: { refresh?: (sessionID: string) => void } = {};
+    const savings = new SavingsLedger({
+      onChange: (sessionID) => {
+        ledgerChanged.refresh?.(sessionID);
+      },
+      prices,
+      store: new LedgerStore(ctx.storage),
+    });
 
     const engine = new KeepaliveEngine({
       clearTimer: (handle) => {
@@ -63,9 +97,13 @@ export default Plugin.define({
       },
       ping: async (sessionID) =>
         pings.send(sessionID, async () => ctx.session.generate({ prompt: PING_PROMPT, sessionID })),
+      savings,
       setTimer: (fn, ms) => setTimeout(fn, ms),
       settings: async (sessionID) => store.effective(sessionID),
     });
+    ledgerChanged.refresh = (sessionID) => {
+      engine.refresh(sessionID);
+    };
 
     /** Applies a settings change to the keepalive schedule and tells the TUI. */
     const settingsChanged = async (sessionID: string | null): Promise<object> => {
@@ -107,9 +145,10 @@ export default Plugin.define({
       createResponseHook({ engine, options, pings, profiles })
     );
 
-    void sweepDeletedSessions(ctx.storage, async (sessionID) =>
-      ctx.session.get({ sessionID })
-    ).catch(() => {});
+    const getSession = async (sessionID: string): Promise<unknown> =>
+      ctx.session.get({ sessionID });
+    void sweepDeletedSessions(ctx.storage, getSession).catch(() => {});
+    void sweepDeletedSessions(ctx.storage, getSession, LEDGER_KEY_PREFIX).catch(() => {});
 
     return () => {
       engine.dispose();

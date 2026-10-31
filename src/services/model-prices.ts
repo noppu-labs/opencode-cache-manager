@@ -1,5 +1,6 @@
 import type { ModelRef } from '../models/cache';
 import type { ModelPrice } from '../models/savings';
+import { isRecord } from '../utils/is-record.ts';
 
 interface CatalogCost {
   tier?: { type: 'context'; size: number };
@@ -67,6 +68,53 @@ function fallbackNames(id: string, reportedModel: string | undefined): string[] 
     (name): name is string => name !== undefined && name !== ''
   );
   return [...new Set(names)];
+}
+
+function toCatalogCost(value: unknown): CatalogCost | undefined {
+  if (!isRecord(value) || !isRecord(value.cache)) {
+    return undefined;
+  }
+  const { cache, input, output, tier } = value;
+  const { read, write } = cache;
+  if (
+    typeof input !== 'number' ||
+    typeof output !== 'number' ||
+    typeof read !== 'number' ||
+    typeof write !== 'number'
+  ) {
+    return undefined;
+  }
+  const entry: CatalogCost = { cache: { read, write }, input, output };
+  if (tier === undefined) {
+    return entry;
+  }
+  if (!isRecord(tier) || tier.type !== 'context' || typeof tier.size !== 'number') {
+    return undefined;
+  }
+  return { ...entry, tier: { size: tier.size, type: 'context' } };
+}
+
+/** The catalog part of `ctx.model.list()` data; models and cost entries of another shape are skipped. */
+function toCatalogModels(data: unknown): CatalogModel[] {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  const models: CatalogModel[] = [];
+  for (const info of data) {
+    if (
+      !isRecord(info) ||
+      typeof info.id !== 'string' ||
+      typeof info.providerID !== 'string' ||
+      !Array.isArray(info.cost)
+    ) {
+      continue;
+    }
+    const cost = info.cost
+      .map((entry) => toCatalogCost(entry))
+      .filter((entry): entry is CatalogCost => entry !== undefined);
+    models.push({ cost, id: info.id, providerID: info.providerID });
+  }
+  return models;
 }
 
 const refKey = (ref: ModelRef): string => `${ref.providerID}\u0000${ref.id}`;
@@ -161,4 +209,4 @@ class PriceBook {
 }
 
 export type { CatalogCost, CatalogModel, PriceBookDeps };
-export { PriceBook, selectTier };
+export { PriceBook, selectTier, toCatalogModels };

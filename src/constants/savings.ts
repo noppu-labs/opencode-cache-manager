@@ -29,6 +29,8 @@ const MODELS_DEV_MAX_AGE_MS = 86_400_000;
 /** Wait after a failed models.dev fetch before trying again. */
 const MODELS_DEV_RETRY_MS = 900_000;
 const MODELS_DEV_STORAGE_KEY = 'models-dev';
+/** A models.dev fetch that takes longer is aborted, so a hung request cannot stall price lookups. */
+const MODELS_DEV_FETCH_TIMEOUT_MS = 10_000;
 /** Vendors whose own listing wins over resellers. */
 const MODELS_DEV_VENDORS: readonly string[] = ['anthropic', 'openai'];
 
@@ -42,5 +44,6 @@ export {
   MODELS_DEV_MAX_AGE_MS,
   MODELS_DEV_RETRY_MS,
   MODELS_DEV_STORAGE_KEY,
+  MODELS_DEV_FETCH_TIMEOUT_MS,
   MODELS_DEV_VENDORS,
 };

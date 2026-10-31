@@ -4,6 +4,7 @@ import type { ModelPrice } from '../../src/models/savings';
 import {
   PriceBook,
   selectTier,
+  toCatalogModels,
   type CatalogCost,
   type CatalogModel,
 } from '../../src/services/model-prices';
@@ -238,5 +239,53 @@ describe('PriceBook.lookup', () => {
   test('prefetch never rejects', async () => {
     const book = new PriceBook({ listModels: () => Promise.reject(new Error('down')) });
     await book.prefetch();
+  });
+});
+
+describe('toCatalogModels', () => {
+  const info = (overrides: Record<string, unknown> = {}) => ({
+    id: 'claude-x',
+    modelID: 'claude-x-20260101',
+    providerID: 'anthropic',
+    name: 'Claude X',
+    enabled: true,
+    cost: [cost(3), cost(6, 200_000)],
+    ...overrides,
+  });
+
+  test('keeps the id, provider ID and cost entries of each model', () => {
+    expect(toCatalogModels([info()])).toEqual([
+      { id: 'claude-x', providerID: 'anthropic', cost: [cost(3), cost(6, 200_000)] },
+    ]);
+  });
+
+  test('skips models without a string id, provider ID or a cost array', () => {
+    const models = [
+      info({ id: 1 }),
+      info({ providerID: undefined }),
+      info({ cost: 'free' }),
+      null,
+      'claude-x',
+      info({ id: 'claude-y' }),
+    ];
+    expect(toCatalogModels(models).map((entry) => entry.id)).toEqual(['claude-y']);
+  });
+
+  test('drops cost entries that do not have the catalog shape', () => {
+    const malformed = [
+      { input: '3', output: 15, cache: { read: 0.3, write: 3.75 } },
+      { input: 3, output: 15 },
+      { input: 3, output: 15, cache: { read: 0.3 } },
+      { input: 3, output: 15, cache: { read: 0.3, write: 3.75 }, tier: { type: 'other', size: 1 } },
+      { input: 3, output: 15, cache: { read: 0.3, write: 3.75 }, tier: { type: 'context' } },
+      7,
+    ];
+    const [entry] = toCatalogModels([info({ cost: [...malformed, cost(4, 100_000)] })]);
+    expect(entry?.cost).toEqual([cost(4, 100_000)]);
+  });
+
+  test('a list that is not an array maps to no models', () => {
+    expect(toCatalogModels(undefined)).toEqual([]);
+    expect(toCatalogModels({ data: [info()] })).toEqual([]);
   });
 });

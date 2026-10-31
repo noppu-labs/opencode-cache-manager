@@ -29,11 +29,19 @@ interface MockCtx {
   emits: { name: string; data: unknown }[];
   generate: ReturnType<typeof mock>;
   sessionGet: ReturnType<typeof mock>;
+  listModels: ReturnType<typeof mock>;
   cleanup?: () => unknown;
 }
 
-function createMockCtx(options: Record<string, unknown> = {}): MockCtx {
-  const store = new Map<string, unknown>();
+interface HostSeed {
+  /** Plugin storage contents; pass another host's store to simulate a restart. */
+  store?: Map<string, unknown>;
+  /** What `ctx.model.list()` returns as `data`. */
+  models?: unknown[];
+}
+
+function createMockCtx(options: Record<string, unknown> = {}, seed: HostSeed = {}): MockCtx {
+  const store = seed.store ?? new Map<string, unknown>();
   const synthetic: MockCtx['synthetic'] = [];
   let commandDef: any;
   let httpHook: any;
@@ -42,9 +50,11 @@ function createMockCtx(options: Record<string, unknown> = {}): MockCtx {
   const emits: MockCtx['emits'] = [];
   const generate = mock(async (_input: unknown) => ({}));
   const sessionGet = mock(async (input: { sessionID: string }) => ({ id: input.sessionID }));
+  const listModels = mock(async (): Promise<{ data: unknown[] }> => ({ data: seed.models ?? [] }));
 
   const ctx = {
     options,
+    model: { list: listModels },
     storage: {
       get: async (key: string) => store.get(key),
       set: async (key: string, value: unknown) => {
@@ -103,11 +113,12 @@ function createMockCtx(options: Record<string, unknown> = {}): MockCtx {
     emits,
     generate,
     sessionGet,
+    listModels,
   };
 }
 
-async function setup(overrides: Record<string, unknown> = {}) {
-  const host = createMockCtx(overrides);
+async function setup(overrides: Record<string, unknown> = {}, seed: HostSeed = {}) {
+  const host = createMockCtx(overrides, seed);
   host.cleanup = await (plugin as any).setup(host.ctx);
   return host;
 }
@@ -185,8 +196,8 @@ describe('keepalive wiring', () => {
     jest.useRealTimers();
   });
 
-  async function start(options: Record<string, unknown> = {}) {
-    const host = await setup(options);
+  async function start(options: Record<string, unknown> = {}, seed: HostSeed = {}) {
+    const host = await setup(options, seed);
     open.push(host);
     return host;
   }
@@ -1038,7 +1049,134 @@ describe('keepalive wiring', () => {
     expect(lastSnapshot(host)).toMatchObject({ ttl: '1h', contextTokens: 60_010 });
   });
 
+  describe('savings ledger', () => {
+    const SONNET_COST = { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } };
+    const catalogModel = (cost: unknown[]) => ({
+      id: 'claude-sonnet-5-5',
+      modelID: 'claude-sonnet-5-5',
+      providerID: 'anthropic',
+      name: 'Claude Sonnet 5.5',
+      enabled: true,
+      cost,
+    });
+    const PRICED = [catalogModel([SONNET_COST])];
+    const UNPRICED = [catalogModel([])];
+    const FIFTEEN_MIN = 900_000;
+
+    /** Primary at T0, a hit ping at +50m, then a return at +65m, past the unpinged expiry. */
+    async function rescuedStretch(host: MockCtx) {
+      pingingGenerate(host);
+      await roundTrip(host);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      jest.advanceTimersByTime(FIFTEEN_MIN);
+      await roundTrip(host, { usage: READ_HIT });
+      await flush();
+    }
+
+    test('a rescued stretch on a priced model reaches the emitted snapshot', async () => {
+      const host = await start({}, { models: PRICED });
+      await rescuedStretch(host);
+
+      expect(lastSnapshot(host).savings).toMatchObject({ pings: 1, priced: true, rescues: 1 });
+      expect(host.store.get('ledger/ses_a')).toMatchObject({ pings: 1, rescues: 1 });
+    });
+
+    test('totals reload after a restart and a return right after it adds no rescue', async () => {
+      const first = await start({}, { models: PRICED });
+      await rescuedStretch(first);
+      await first.cleanup?.();
+
+      const second = await start({}, { models: PRICED, store: first.store });
+      await roundTrip(second, { usage: READ_HIT });
+      await second.rpc().getKeepalive({ sessionID: 'ses_a' });
+      await flush();
+
+      const snapshot = await second.rpc().getKeepalive({ sessionID: 'ses_a' });
+      expect(snapshot.savings).toMatchObject({ pings: 1, priced: true, rescues: 1 });
+      expect(lastSnapshot(second).savings).toMatchObject({ rescues: 1 });
+    });
+
+    const MODELS_DEV_BODY = {
+      anthropic: {
+        models: {
+          'claude-sonnet-5-5': {
+            cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
+          },
+        },
+      },
+    };
+
+    test('models.dev is never fetched when modelsDevPrices is off', async () => {
+      const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(MODELS_DEV_BODY));
+      try {
+        const host = await start({}, { models: UNPRICED });
+        await rescuedStretch(host);
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(lastSnapshot(host).savings).toMatchObject({ priced: false, rescues: 1 });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    test('with modelsDevPrices on, an unpriced catalog model is priced from one models.dev fetch', async () => {
+      const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(MODELS_DEV_BODY));
+      try {
+        const host = await start({ modelsDevPrices: true }, { models: UNPRICED });
+        await rescuedStretch(host);
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://models.dev/api.json');
+        expect(lastSnapshot(host).savings).toMatchObject({ priced: true, rescues: 1 });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    test('the catalog is fetched at setup', async () => {
+      const host = await start({}, { models: PRICED });
+      expect(host.listModels).toHaveBeenCalledTimes(1);
+    });
+
+    test('a catalog that never loads does not hold up the hooks', async () => {
+      const host = createMockCtx({}, { models: PRICED });
+      host.listModels.mockImplementation(async () => new Promise(() => {}));
+      host.cleanup = await (plugin as any).setup(host.ctx);
+      open.push(host);
+
+      await rescuedStretch(host);
+      await roundTrip(host, { usage: READ_HIT });
+      await flush();
+
+      expect(host.generate).toHaveBeenCalledTimes(1);
+      expect(lastSnapshot(host)).toMatchObject({
+        lastPing: null,
+        lastRequestAt: T0 + FIFTY_MIN + FIFTEEN_MIN,
+      });
+    });
+  });
+
   describe('startup sweep', () => {
+    test('removes stored ledger totals for sessions that no longer exist', async () => {
+      const host = createMockCtx();
+      host.store.set('ledger/ses_gone', { version: 1, pings: 1 });
+      host.store.set('ledger/ses_live', { version: 1, pings: 1 });
+      host.sessionGet.mockImplementation(async (input: any) => {
+        if (input.sessionID === 'ses_gone') {
+          throw Object.assign(new Error('Session not found'), { _tag: 'SessionNotFoundError' });
+        }
+        return { id: input.sessionID };
+      });
+      host.cleanup = await (plugin as any).setup(host.ctx);
+      open.push(host);
+      await flush();
+
+      expect(host.store.has('ledger/ses_gone')).toBe(false);
+      expect(host.store.has('ledger/ses_live')).toBe(true);
+    });
+
     test('removes stored settings for sessions that no longer exist', async () => {
       const host = createMockCtx();
       host.store.set('session/ses_gone', { mode: '1h' });
