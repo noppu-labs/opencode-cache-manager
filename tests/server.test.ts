@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from
 
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../src/constants/anthropic.ts';
 import { PING_PROMPT } from '../src/constants/keepalive.ts';
+import type { SavingsReadout } from '../src/models/savings.ts';
 import { CacheTtlRpc } from '../src/rpc.ts';
 import plugin from '../src/server.ts';
 import {
@@ -822,6 +823,29 @@ describe('keepalive wiring', () => {
     expect((CacheTtlRpc.events['keepalive.updated'].schema as any).required).toContain(
       'minContextTokens'
     );
+  });
+
+  test('the keepalive snapshot schema requires showSavings and a nullable savings readout', () => {
+    const schema = CacheTtlRpc.methods.getKeepalive.output as any;
+    expect(schema.required).toEqual(expect.arrayContaining(['showSavings', 'savings']));
+    expect(schema.properties.showSavings).toEqual({ type: 'boolean' });
+    const [readout, empty] = schema.properties.savings.oneOf;
+    expect(empty).toEqual({ type: 'null' });
+    expect(readout.additionalProperties).toBe(false);
+    const fields = {
+      avoidedTokens: true,
+      netUsd: true,
+      pings: true,
+      priced: true,
+      rescues: true,
+      returnRatio: true,
+      stretchUsd: true,
+    } satisfies Record<keyof SavingsReadout, true>;
+    const keys = Object.keys(fields);
+    expect(readout.required).toHaveLength(keys.length);
+    expect(readout.required).toEqual(expect.arrayContaining(keys));
+    expect(Object.keys(readout.properties)).toHaveLength(keys.length);
+    expect(Object.keys(readout.properties)).toEqual(expect.arrayContaining(keys));
   });
 
   test('RPC getKeepalive returns the current snapshot', async () => {

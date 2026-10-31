@@ -24,6 +24,21 @@ const nullableString = (values: readonly string[]) =>
   ({ enum: [...values, null], type: ['string', 'null'] }) as const;
 const nullableNumber = { type: ['number', 'null'] } as const;
 
+const savingsReadoutSchema = {
+  additionalProperties: false,
+  properties: {
+    avoidedTokens: { minimum: 0, type: 'number' },
+    netUsd: nullableNumber,
+    pings: { minimum: 0, type: 'integer' },
+    priced: { type: 'boolean' },
+    rescues: { minimum: 0, type: 'integer' },
+    returnRatio: nullableNumber,
+    stretchUsd: nullableNumber,
+  },
+  required: ['priced', 'pings', 'rescues', 'avoidedTokens', 'netUsd', 'returnRatio', 'stretchUsd'],
+  type: 'object',
+} as const;
+
 const keepaliveSnapshotSchema = {
   additionalProperties: false,
   properties: {
@@ -46,7 +61,9 @@ const keepaliveSnapshotSchema = {
     minContextTokens: { minimum: 0, type: 'integer' },
     nextPingAt: nullableNumber,
     pingsUsed: { minimum: 0, type: 'integer' },
+    savings: { oneOf: [savingsReadoutSchema, { type: 'null' }] },
     sessionID: { type: 'string' },
+    showSavings: { type: 'boolean' },
     skipReason: nullableString([
       'disabled',
       'small-context',
@@ -74,6 +91,8 @@ const keepaliveSnapshotSchema = {
     'skipReason',
     'contextTokens',
     'lastCache',
+    'showSavings',
+    'savings',
   ],
   type: 'object',
 } as const;

@@ -7,11 +7,13 @@ import {
   RETRY_DELAY_MS,
   TTL_MS,
 } from '../../src/constants/keepalive.ts';
-import type { CacheUsage, Ttl } from '../../src/models/cache.ts';
+import type { CacheUsage, ModelRef, Ttl } from '../../src/models/cache.ts';
 import type { KeepaliveSnapshot, RequestKind } from '../../src/models/keepalive.ts';
+import type { SavingsReadout } from '../../src/models/savings.ts';
 import { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
 
 const MIN = 60_000;
+const MODEL: ModelRef = { providerID: 'anthropic', id: 'claude-sonnet-5-5' };
 
 const write1h: CacheUsage = {
   inputTokens: 100,
@@ -62,6 +64,35 @@ const miss: CacheUsage = {
   write1hTokens: 79_000,
 };
 
+/** Records every ledger call; `readout` returns whatever the test sets. */
+function fakeLedger() {
+  const calls: [string, ...unknown[]][] = [];
+  const readoutCalls: string[] = [];
+  let value: SavingsReadout | null = null;
+  return {
+    calls,
+    readoutCalls,
+    setReadout(next: SavingsReadout | null) {
+      value = next;
+    },
+    deps: {
+      stretchStarted: (sessionID: string) => {
+        calls.push(['stretchStarted', sessionID]);
+      },
+      pingCharged: async (...args: unknown[]) => {
+        calls.push(['pingCharged', ...args]);
+      },
+      stretchRescued: async (...args: unknown[]) => {
+        calls.push(['stretchRescued', ...args]);
+      },
+      readout: (sessionID: string) => {
+        readoutCalls.push(sessionID);
+        return value;
+      },
+    },
+  };
+}
+
 type Behavior =
   | { kind: 'respond'; usage?: CacheUsage; ok?: boolean }
   | { kind: 'reject' }
@@ -87,6 +118,7 @@ function harness(
   let settingsGate: (() => Promise<void>) | undefined;
   let settingsFails = false;
   const requested = options.requestedTtl ?? '1h';
+  const ledger = fakeLedger();
 
   const flush = async () => {
     for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -114,6 +146,7 @@ function harness(
       return isChildResult;
     },
     onChange: (snapshot) => changes.push(snapshot),
+    savings: ledger.deps,
   });
 
   async function ping(sessionID: string): Promise<void> {
@@ -186,6 +219,7 @@ function harness(
 
   return {
     engine,
+    ledger,
     settings,
     pings,
     changes,
@@ -230,9 +264,16 @@ function harness(
       sessionID: string,
       usage: CacheUsage | undefined,
       ttl: Ttl | null = requested,
-      extra: { kind?: RequestKind; stopReason?: string } = {}
+      extra: { kind?: RequestKind; stopReason?: string; split?: boolean; model?: ModelRef } = {}
     ) {
-      engine.requestSent(sessionID, { requestedTtl: ttl, isPing: false, kind: extra.kind });
+      const model = extra.model ?? MODEL;
+      engine.requestSent(sessionID, {
+        requestedTtl: ttl,
+        isPing: false,
+        kind: extra.kind,
+        split: extra.split,
+        model,
+      });
       await flush();
       await engine.responseObserved(sessionID, {
         usage,
@@ -240,6 +281,7 @@ function harness(
         isPing: false,
         kind: extra.kind ?? 'primary',
         stopReason: extra.stopReason,
+        model,
       });
       await flush();
     },
@@ -1265,5 +1307,300 @@ describe('keepalive engine: requested TTL without a write breakdown', () => {
     await h.request('s1', write1h, '1h');
     await h.request('s1', readOnly, '5m');
     expect(h.engine.snapshot('s1')).toMatchObject({ ttl: '1h', ttlSource: 'detected' });
+  });
+});
+
+describe('keepalive engine: savings', () => {
+  type H = ReturnType<typeof harness>;
+  const callsOf = (h: H, name: string) => h.ledger.calls.filter(([call]) => call === name);
+  const rescues = (h: H) => callsOf(h, 'stretchRescued');
+  const priced = (ref: ModelRef = MODEL) => ({ ref, reportedModel: undefined });
+  const hybridWrite: CacheUsage = {
+    inputTokens: 100,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 80_000,
+    outputTokens: 0,
+    write5mTokens: 60_000,
+    write1hTokens: 20_000,
+  };
+
+  /** A 5m session at t=0 (context 80_100, original expiry 5m) with a hit ping at 4m. */
+  async function pingedStretch(options: Parameters<typeof harness>[0] = {}) {
+    const h = harness({ requestedTtl: '5m', ...options });
+    await h.request('s1', write5m);
+    await h.advance(4 * MIN);
+    expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+    return h;
+  }
+
+  describe('rescued stretches', () => {
+    test('a warm return after the original expiry counts its cache reads at the stretch TTL', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 80_000, '5m', 80_100]]);
+    });
+
+    test('a return before the original expiry is no rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(MIN / 2);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a cold return is no rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      await h.request('s1', miss);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a return on a different model is no rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      await h.request('s1', write5m, '5m', {
+        model: { providerID: 'anthropic', id: 'claude-opus-5-5' },
+      });
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a stretch whose only ping missed is no rescue', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'respond', usage: miss });
+      await h.advance(4 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('miss');
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a stretch whose pings all failed is no rescue', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'reject' }, { kind: 'reject' });
+      await h.advance(7 * MIN);
+      expect(h.pings).toHaveLength(2);
+      expect(h.engine.snapshot('s1').lastPing).toBe('failed');
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a hit ping of an earlier stretch does not carry over', async () => {
+      const h = await pingedStretch();
+      await h.advance(MIN / 2);
+      await h.request('s1', pureRead, '5m', { kind: 'title' });
+      // After the original expiry, before the next ping.
+      await h.advance(MIN);
+      expect(h.pings).toHaveLength(1);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a return that fails is no rescue, and neither is the request after it', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      h.engine.requestSent('s1', { requestedTtl: '5m', isPing: false, model: MODEL });
+      await h.engine.responseObserved('s1', {
+        usage: undefined,
+        ok: false,
+        isPing: false,
+        kind: 'primary',
+        model: MODEL,
+      });
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a return overtaken by a second request before its response is no rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      h.engine.requestSent('s1', { requestedTtl: '5m', isPing: false, model: MODEL });
+      h.engine.requestSent('s1', { requestedTtl: '5m', isPing: false, model: MODEL });
+      for (let i = 0; i < 2; i++) {
+        await h.engine.responseObserved('s1', {
+          usage: pureRead,
+          ok: true,
+          isPing: false,
+          kind: 'primary',
+          model: MODEL,
+        });
+      }
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a compaction can be the return', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead, '5m', { kind: 'compaction' });
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 80_000, '5m', 80_100]]);
+    });
+
+    test('after a restart the first return is no rescue', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.advance(7 * MIN);
+      await h.request('s1', pureRead);
+      expect(h.ledger.calls).toEqual([]);
+    });
+  });
+
+  describe('split caches', () => {
+    test('Claude hybrid subtracts the latest non-zero 1h write', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', hybridWrite, '5m', { split: true });
+      await h.advance(MIN);
+      // No 1h write on this turn: the prefix stays at 20_000.
+      await h.request('s1', pureRead, '5m', { split: true });
+      await h.advance(4 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead, '5m', { split: true });
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
+    });
+
+    test('Claude hybrid without any 1h write seen is no rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead, '5m', { split: true });
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a split stretch stays split when the return is not', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m, '5m', { split: true });
+      await h.advance(7 * MIN);
+      await h.request('s1', pureRead, '5m', { split: false });
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('OpenAI hybrid subtracts the context of the first primary response', async () => {
+      const h = harness({ requestedTtl: '30m', settings: { minContextTokens: 0 } });
+      const first: CacheUsage = {
+        ...writeNoBreakdown,
+        inputTokens: 1000,
+        cacheWriteTokens: 30_000,
+      };
+      await h.request('s1', first, '30m', { split: true });
+      await h.advance(MIN);
+      await h.request('s1', writeNoBreakdown, '30m', { split: true });
+      await h.advance(25 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(14 * MIN);
+      await h.request('s1', hit, '30m', { split: true });
+      expect(rescues(h)).toEqual([
+        ['stretchRescued', 's1', priced(), 80_100 - 31_000, '30m', 80_200],
+      ]);
+    });
+  });
+
+  describe('ping cost', () => {
+    test('a hit and a miss ping are both charged at the stretch TTL', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'respond', usage: hit }, { kind: 'respond', usage: miss });
+      await h.advance(8 * MIN);
+      expect(callsOf(h, 'pingCharged')).toEqual([
+        ['pingCharged', 's1', priced(), hit, '5m'],
+        ['pingCharged', 's1', priced(), miss, '5m'],
+      ]);
+    });
+
+    test('a failed ping without usage is not charged', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'reject' }, { kind: 'notok-then-reject' });
+      await h.advance(5 * MIN);
+      expect(h.pings).toHaveLength(2);
+      expect(callsOf(h, 'pingCharged')).toEqual([]);
+    });
+
+    test('a ping answered after a real request is still charged, but its hit does not count', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'hold' });
+      await h.advance(4 * MIN);
+      await h.request('s1', pureRead);
+      h.held.shift()?.();
+      await h.flush();
+      expect(callsOf(h, 'pingCharged')).toEqual([['pingCharged', 's1', priced(), hit, '5m']]);
+      await h.advance(MIN + MIN / 2);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a real request after a charged ping starts a new stretch, in event order', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', write5m);
+      await h.request('s1', pureRead);
+      expect(callsOf(h, 'stretchStarted')).toEqual([]);
+      await h.advance(4 * MIN);
+      await h.request('s1', pureRead);
+      await h.request('s1', pureRead);
+      expect(h.ledger.calls.map(([call]) => call)).toEqual(['pingCharged', 'stretchStarted']);
+    });
+
+    test('child and implicit sessions make no ledger calls and load no ledger', async () => {
+      const h = harness({ child: true });
+      await h.request('s1', write1h);
+      await h.advance(60 * MIN);
+      await h.request('s1', pureRead);
+      await h.request('s2', write1h, null);
+      await h.request('s2', pureRead, null);
+      expect(h.pings).toHaveLength(0);
+      expect(h.ledger.calls).toEqual([]);
+      expect(h.ledger.readoutCalls).toEqual([]);
+      expect(h.engine.snapshot('s1').savings).toBeNull();
+    });
+  });
+
+  describe('snapshot', () => {
+    const readout: SavingsReadout = {
+      priced: true,
+      pings: 2,
+      rescues: 1,
+      avoidedTokens: 80_000,
+      netUsd: 0.12,
+      returnRatio: 4,
+      stretchUsd: 0.01,
+    };
+
+    test('showSavings follows the savings setting', async () => {
+      const on = harness();
+      await on.request('s1', write1h);
+      expect(on.engine.snapshot('s1').showSavings).toBe(true);
+      const off = harness({ settings: { savings: false } });
+      await off.request('s1', write1h);
+      expect(off.engine.snapshot('s1').showSavings).toBe(false);
+    });
+
+    test('savings is the ledger readout of a managed session', async () => {
+      const h = harness();
+      await h.request('s1', write1h);
+      expect(h.engine.snapshot('s1').savings).toBeNull();
+      h.ledger.setReadout(readout);
+      expect(h.engine.snapshot('s1').savings).toEqual(readout);
+      expect(h.ledger.readoutCalls).toContain('s1');
+    });
+
+    test('refresh emits only when the readout changed', async () => {
+      const h = harness();
+      await h.request('s1', write1h);
+      const before = h.changes.length;
+      h.engine.refresh('s1');
+      expect(h.changes).toHaveLength(before);
+      h.ledger.setReadout(readout);
+      h.engine.refresh('s1');
+      expect(h.changes).toHaveLength(before + 1);
+      expect(h.changes.at(-1)?.savings).toEqual(readout);
+      h.engine.refresh('s1');
+      expect(h.changes).toHaveLength(before + 1);
+    });
+
+    test('refresh of an unknown session does nothing', () => {
+      const h = harness();
+      h.engine.refresh('nope');
+      expect(h.changes).toEqual([]);
+      expect(h.ledger.readoutCalls).toEqual([]);
+    });
   });
 });

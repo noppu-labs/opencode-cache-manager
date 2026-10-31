@@ -112,10 +112,14 @@ function createRequestHook({
         const parsed = await readMessages(request);
         if (parsed) primaryMessages.set(sessionID, parsed.messages);
       }
+      const activeMode = resolveActiveMode(original, mode);
+      const requestedTtl = profile.ttlForMode(activeMode);
       engine.requestSent(sessionID, {
         isPing,
         kind: evt.kind,
-        requestedTtl: profile.ttlForMode(resolveActiveMode(original, mode)),
+        model: ref,
+        requestedTtl,
+        split: activeMode === 'hybrid' && requestedTtl !== null,
       });
     } catch {
       // Keepalive bookkeeping must never fail the host's request.
