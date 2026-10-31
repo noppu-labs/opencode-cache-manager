@@ -31,6 +31,8 @@ const MODELS_DEV_RETRY_MS = 900_000;
 const MODELS_DEV_STORAGE_KEY = 'models-dev';
 /** A models.dev fetch that takes longer is aborted, so a hung request cannot stall price lookups. */
 const MODELS_DEV_FETCH_TIMEOUT_MS = 10_000;
+/** A `ctx.model.list()` call that has not settled by then counts as a failed catalog load. */
+const CATALOG_LOAD_TIMEOUT_MS = 10_000;
 /** Vendors whose own listing wins over resellers. */
 const MODELS_DEV_VENDORS: readonly string[] = ['anthropic', 'openai'];
 
@@ -46,4 +48,5 @@ export {
   MODELS_DEV_STORAGE_KEY,
   MODELS_DEV_FETCH_TIMEOUT_MS,
   MODELS_DEV_VENDORS,
+  CATALOG_LOAD_TIMEOUT_MS,
 };

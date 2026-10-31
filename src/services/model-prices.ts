@@ -1,3 +1,4 @@
+import { CATALOG_LOAD_TIMEOUT_MS } from '../constants/savings.ts';
 import type { ModelRef } from '../models/cache';
 import type { ModelPrice } from '../models/savings';
 import { isRecord } from '../utils/is-record.ts';
@@ -19,6 +20,8 @@ interface PriceBookDeps {
   listModels: () => Promise<readonly CatalogModel[]>;
   /** Opt-in models.dev fallback; undefined when modelsDevPrices is off. */
   fallback?: (names: readonly string[]) => Promise<ModelPrice | undefined>;
+  /** Defaults to `CATALOG_LOAD_TIMEOUT_MS`. */
+  loadTimeoutMs?: number;
 }
 
 /** The tier whose size is the largest at or below `contextTokens`, else the untiered entry, else the smallest tier. */
@@ -187,11 +190,20 @@ class PriceBook {
     return this.inflight;
   }
 
+  /** A load that has not settled within the timeout fails like a rejected one. */
   private async fetchCatalog(): Promise<readonly CatalogModel[] | undefined> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error('model catalog load timed out'));
+      }, this.deps.loadTimeoutMs ?? CATALOG_LOAD_TIMEOUT_MS);
+    });
     try {
-      this.catalog = await this.deps.listModels();
+      this.catalog = await Promise.race([this.deps.listModels(), timeout]);
     } catch {
       // Leave any previous catalog in place; the next lookup retries.
+    } finally {
+      clearTimeout(timer);
     }
     return this.catalog;
   }

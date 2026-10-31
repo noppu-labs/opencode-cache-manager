@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { ModelPrice } from '../../src/models/savings';
 import {
@@ -234,6 +234,34 @@ describe('PriceBook.lookup', () => {
       fallback: () => Promise.resolve(FALLBACK_PRICE),
     });
     expect(await book.lookup(ref, 1)).toEqual(FALLBACK_PRICE);
+  });
+
+  test('a catalog load that never settles counts as failed after the timeout, and the next lookup retries', async () => {
+    let calls = 0;
+    const book = new PriceBook({
+      listModels: async () => {
+        calls += 1;
+        return calls === 1 ? new Promise<never>(() => {}) : [model('claude-x', [cost(3)])];
+      },
+      loadTimeoutMs: 5,
+    });
+    expect(await book.lookup(ref, 1)).toBeUndefined();
+    expect((await book.lookup(ref, 1))?.input).toBe(3);
+    expect(calls).toBe(2);
+  });
+
+  test('a catalog load that settles in time clears its timeout', async () => {
+    const clear = spyOn(globalThis, 'clearTimeout');
+    try {
+      const book = new PriceBook({
+        listModels: async () => [model('claude-x', [cost(3)])],
+        loadTimeoutMs: 60_000,
+      });
+      expect((await book.lookup(ref, 1))?.input).toBe(3);
+      expect(clear).toHaveBeenCalled();
+    } finally {
+      clear.mockRestore();
+    }
   });
 
   test('prefetch never rejects', async () => {

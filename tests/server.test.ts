@@ -196,6 +196,12 @@ describe('keepalive wiring', () => {
     jest.useRealTimers();
   });
 
+  /** Runs a host's cleanup now (a plugin shutdown) instead of after the test. */
+  async function shutDown(host: MockCtx) {
+    open.splice(open.indexOf(host), 1);
+    await host.cleanup?.();
+  }
+
   async function start(options: Record<string, unknown> = {}, seed: HostSeed = {}) {
     const host = await setup(options, seed);
     open.push(host);
@@ -1086,7 +1092,7 @@ describe('keepalive wiring', () => {
     test('totals reload after a restart and a return right after it adds no rescue', async () => {
       const first = await start({}, { models: PRICED });
       await rescuedStretch(first);
-      await first.cleanup?.();
+      await shutDown(first);
 
       const second = await start({}, { models: PRICED, store: first.store });
       await roundTrip(second, { usage: READ_HIT });
@@ -1096,6 +1102,26 @@ describe('keepalive wiring', () => {
       const snapshot = await second.rpc().getKeepalive({ sessionID: 'ses_a' });
       expect(snapshot.savings).toMatchObject({ pings: 1, priced: true, rescues: 1 });
       expect(lastSnapshot(second).savings).toMatchObject({ rescues: 1 });
+    });
+
+    test('a restart mid-stretch keeps the charged ping and saves nothing on the return', async () => {
+      const first = await start({}, { models: PRICED });
+      pingingGenerate(first);
+      await roundTrip(first);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+      expect(lastSnapshot(first)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
+      await shutDown(first);
+
+      const second = await start({}, { models: PRICED, store: first.store });
+      jest.advanceTimersByTime(FIFTEEN_MIN);
+      await roundTrip(second, { usage: READ_HIT });
+      await flush();
+
+      const snapshot = await second.rpc().getKeepalive({ sessionID: 'ses_a' });
+      expect(snapshot.savings).toMatchObject({ pings: 1, rescues: 0 });
+      expect(second.store.get('ledger/ses_a')).toMatchObject({ pings: 1, rescues: 0 });
     });
 
     const MODELS_DEV_BODY = {

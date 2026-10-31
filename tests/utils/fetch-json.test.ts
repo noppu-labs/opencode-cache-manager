@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { fetchJson } from '../../src/utils/fetch-json.ts';
 
 describe('fetchJson', () => {
-  const fetchSpy = spyOn(globalThis, 'fetch');
+  let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
+
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, 'fetch');
+  });
 
   afterEach(() => {
-    fetchSpy.mockReset();
+    fetchSpy.mockRestore();
   });
 
   test('resolves with the parsed body', async () => {
