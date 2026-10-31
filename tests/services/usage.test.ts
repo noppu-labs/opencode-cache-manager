@@ -57,6 +57,16 @@ describe('parseUsageFromJson', () => {
     expect(hasCacheActivity(usage)).toBe(false);
   });
 
+  test('reads output_tokens', () => {
+    expect(
+      parseUsageFromJson({ usage: { input_tokens: 10, output_tokens: 7 } })?.outputTokens
+    ).toBe(7);
+  });
+
+  test('outputTokens is 0 when output_tokens is absent', () => {
+    expect(parseUsageFromJson({ usage: { input_tokens: 10 } })?.outputTokens).toBe(0);
+  });
+
   test('non-numeric fields default to 0', () => {
     const usage = parseUsageFromJson({
       usage: { input_tokens: 'x', cache_read_input_tokens: null },
@@ -81,6 +91,18 @@ describe('parseUsageFromSse', () => {
     expect(usage.cacheWriteTokens).toBe(500);
     expect(usage.write1hTokens).toBe(500);
     expect(usage.write5mTokens).toBe(0);
+  });
+
+  test('output_tokens: message_delta wins over message_start', () => {
+    const text =
+      `data: ${JSON.stringify({ type: 'message_start', message: { usage: { input_tokens: 10, output_tokens: 1 } } })}\n\n` +
+      `data: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: 7 } })}\n\n`;
+    expect(parseUsageFromSse(text)?.outputTokens).toBe(7);
+  });
+
+  test('outputTokens is 0 when the stream omits it', () => {
+    const text = `data: ${JSON.stringify({ type: 'message_start', message: { usage: { input_tokens: 10 } } })}\n\n`;
+    expect(parseUsageFromSse(text)?.outputTokens).toBe(0);
   });
 
   test('skips malformed data lines', () => {

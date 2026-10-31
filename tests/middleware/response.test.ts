@@ -26,6 +26,7 @@ const WRITE_1H_PARSED = {
   inputTokens: 10,
   cacheReadTokens: 0,
   cacheWriteTokens: 60_000,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 60_000,
 };
@@ -134,7 +135,10 @@ describe('createResponseHook', () => {
     );
     await flush();
 
-    expect(observed[0].info).toMatchObject({ stopReason: 'end_turn', usage: WRITE_1H_PARSED });
+    expect(observed[0].info).toMatchObject({
+      stopReason: 'end_turn',
+      usage: { ...WRITE_1H_PARSED, outputTokens: 5 },
+    });
   });
 
   test('passes the session and kind through', async () => {

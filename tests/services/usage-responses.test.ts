@@ -8,6 +8,7 @@ const writeParsed = {
   cacheReadTokens: 0,
   cacheWriteTokens: 8885,
   write5mTokens: undefined,
+  outputTokens: 5,
   write1hTokens: undefined,
 };
 const readParsed = {
@@ -15,6 +16,7 @@ const readParsed = {
   cacheReadTokens: 8885,
   cacheWriteTokens: 19,
   write5mTokens: undefined,
+  outputTokens: 16,
   write1hTokens: undefined,
 };
 
@@ -39,8 +41,15 @@ describe('RESPONSES_PARSERS.fromJson', () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       write5mTokens: undefined,
+      outputTokens: 3,
       write1hTokens: undefined,
     });
+  });
+
+  test('reads output_tokens as outputTokens, 0 when absent', () => {
+    const out = (usage: unknown) => RESPONSES_PARSERS.fromJson(jsonBody(usage)).usage?.outputTokens;
+    expect(out({ input_tokens: 100, output_tokens: 12 })).toBe(12);
+    expect(out({ input_tokens: 100 })).toBe(0);
   });
 
   test('input never goes negative', () => {

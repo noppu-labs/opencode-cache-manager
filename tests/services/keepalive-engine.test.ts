@@ -17,6 +17,7 @@ const write1h: CacheUsage = {
   inputTokens: 100,
   cacheReadTokens: 0,
   cacheWriteTokens: 80_000,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 80_000,
 };
@@ -30,6 +31,7 @@ const pureRead: CacheUsage = {
   inputTokens: 100,
   cacheReadTokens: 80_000,
   cacheWriteTokens: 0,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 0,
 };
@@ -37,6 +39,7 @@ const noCache: CacheUsage = {
   inputTokens: 80_100,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 0,
 };
@@ -44,6 +47,7 @@ const smallWrite: CacheUsage = {
   inputTokens: 1000,
   cacheReadTokens: 0,
   cacheWriteTokens: 30_000,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 30_000,
 };
@@ -52,6 +56,7 @@ const miss: CacheUsage = {
   inputTokens: 100,
   cacheReadTokens: 1000,
   cacheWriteTokens: 79_000,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 79_000,
 };
@@ -1238,6 +1243,7 @@ describe('keepalive engine: requested TTL without a write breakdown', () => {
     inputTokens: 100,
     cacheReadTokens: 80_000,
     cacheWriteTokens: 500,
+    outputTokens: 0,
     write5mTokens: undefined,
     write1hTokens: undefined,
   };
