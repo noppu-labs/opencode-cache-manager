@@ -88,7 +88,9 @@ After changing the sidebar component or a screen's samples, regenerate both imag
 bun scripts/capture-sidebar.ts --all
 ```
 
-`tests/scripts/capture-sidebar.test.ts` checks the rows each screen renders, so a change in the sidebar that affects the images fails the suite until the samples are updated. The picker image (`docs/images/picker.png`) is a screenshot: the picker is OpenCode's own dialog, so it can't be rendered from this repo.
+`tests/scripts/capture-sidebar.test.ts` checks the rows each screen renders, so a change in the sidebar that affects the images fails the suite until the samples are updated. The picker image (`docs/images/picker.svg`) is generated too, by the `picker` screen. The picker is OpenCode's own dialog, which this repo can't render, so `scripts/capture/picker-dialog.tsx` draws a lookalike with dimensions and colours taken from OpenCode's dialog-select and theme source at a pinned version (named in the file's comment). The rows come from the real `settingsOptions()`, and the title, placeholder and reset option from constants exported by `src/ui/picker.ts`.
+
+Before a release, compare `picker.svg` with a real screenshot of the picker in OpenCode for dimensions and colours, and update the lookalike if OpenCode's dialog has changed.
 
 ## Rules worth knowing
 

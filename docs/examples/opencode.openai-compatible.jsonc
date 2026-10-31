@@ -56,6 +56,9 @@
             "context": 1000000,
             "output": 64000,
           },
+          // Optional: a price lets the sidebar show savings in dollars. Per million
+          // tokens; a custom provider has no price unless you add one here.
+          // "cost": { "input": 3, "output": 15, "cache": { "read": 0.3, "write": 3.75 } },
           "variants": [
             {
               "id": "low",
