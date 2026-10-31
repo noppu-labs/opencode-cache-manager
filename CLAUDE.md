@@ -71,8 +71,10 @@ src/
 │   ├── model-prices.ts        # PriceBook: model price from the OpenCode catalog, tiered by context size
 │   ├── models-dev.ts          # ModelsDevPrices: opt-in models.dev prices, cached daily in plugin storage
 │   ├── fetch-json.ts          # fetchJson: GET with a timeout, parsed as JSON (the models.dev fetch)
+│   ├── ledger-store.ts        # storage-backed per-session ledger totals
+│   ├── savings-ledger.ts      # SavingsLedger: records ping costs and rescued stretches per session
 │   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
-│   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep
+│   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep (settings and ledger keys, one lookup per session)
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)
 │   ├── cache-control.ts       # cache_control block helpers shared by both wires
 │   ├── openai-cache-ttl.ts    # openai-chat TTL rewrite and breakpoint injection
