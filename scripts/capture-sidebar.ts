@@ -1,5 +1,5 @@
 /**
- * Renders one sidebar screen for the docs as truecolor ANSI on stdout, or,
+ * Renders one screen for the docs (a sidebar sample or the picker) as truecolor ANSI on stdout, or,
  * with --all, regenerates every docs/images/<screen>.svg through Charm's
  * freeze. See docs/CONTRIBUTING.md, "Sidebar images".
  */
@@ -10,6 +10,8 @@ import { join } from 'node:path';
 import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
 import { isNonEmptyString } from '../src/utils/is-non-empty-string.ts';
+import { restoreBold } from './capture/ansi.ts';
+import type { ScreenName } from './capture/screens.tsx';
 
 /*
  * Clock times in the section come from toLocaleTimeString, so pin the zone
@@ -42,18 +44,13 @@ const FREEZE_FLAGS = [
   '1.2',
 ];
 
-const { CAPTURE_NOW, SCREEN_NAMES, SECTION_HEADER, isScreenName, renderScreen } =
+const { CAPTURE_NOW, SCREEN_NAMES, isScreenName, renderScreen } =
   await import('./capture/screens.tsx');
 
-/** Charm's freeze 0.2 drops SGR bold, and the section header is the only bold text, so it is restored here. */
-function withBoldHeader(svg: string): string {
-  return svg.replaceAll(
-    `>${SECTION_HEADER}</tspan>`,
-    ` font-weight="bold">${SECTION_HEADER}</tspan>`
-  );
-}
+// The components read Date.now for their countdowns; a fixed clock keeps the rows, and the SVGs, stable.
+Date.now = (): number => CAPTURE_NOW;
 
-function renderSvg(screen: string, dir: string): boolean {
+async function renderSvg(screen: ScreenName, dir: string): Promise<boolean> {
   const svg = join(dir, `${screen}.svg`);
   const freeze = Bun.spawnSync(
     [
@@ -73,12 +70,12 @@ function renderSvg(screen: string, dir: string): boolean {
     );
     return false;
   }
-  writeFileSync(svg, withBoldHeader(readFileSync(svg, 'utf8')));
+  writeFileSync(svg, restoreBold(readFileSync(svg, 'utf8'), await renderScreen(screen)));
   return true;
 }
 
 /** Renders every screen into a staging directory, then copies them over docs/images/ only if all succeeded. */
-function regenerate(): number {
+async function regenerate(): Promise<number> {
   if (!isNonEmptyString(Bun.which('freeze'))) {
     // oxlint-disable-next-line eslint/no-console -- CLI script: stderr messages and exit codes are its interface
     console.error('freeze is not installed: brew install charmbracelet/tap/freeze');
@@ -86,7 +83,7 @@ function regenerate(): number {
   }
   const staging = mkdtempSync(join(tmpdir(), 'cache-manager-capture-'));
   try {
-    for (const screen of SCREEN_NAMES) if (!renderSvg(screen, staging)) return 1;
+    for (const screen of SCREEN_NAMES) if (!(await renderSvg(screen, staging))) return 1;
     const images = join(ROOT, 'docs/images');
     mkdirSync(images, { recursive: true });
     for (const screen of SCREEN_NAMES) {
@@ -104,8 +101,6 @@ async function capture(screen: string | undefined): Promise<number> {
     console.error(`usage: bun scripts/capture-sidebar.ts <${SCREEN_NAMES.join(' | ')}> | --all`);
     return 2;
   }
-  // The component reads Date.now for its countdowns; a fixed clock keeps the rows, and the SVGs, stable.
-  Date.now = (): number => CAPTURE_NOW;
   const rows = await renderScreen(screen);
   await Bun.write(Bun.stdout, `${rows.join('\n')}\n`);
   return 0;
@@ -114,4 +109,4 @@ async function capture(screen: string | undefined): Promise<number> {
 const [argument] = Bun.argv.slice(2);
 // A rendered TUI keeps the event loop alive, and freeze waits for the process to end, so exit explicitly.
 // oxlint-disable-next-line unicorn/no-process-exit -- CLI script: stderr messages and exit codes are its interface
-process.exit(argument === '--all' ? regenerate() : await capture(argument));
+process.exit(argument === '--all' ? await regenerate() : await capture(argument));
