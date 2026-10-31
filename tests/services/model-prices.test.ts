@@ -1,13 +1,14 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
-import type { ModelPrice } from '../../src/models/savings';
+import { CATALOG_RETRY_MS } from '../../src/constants/savings.ts';
+import type { ModelPrice } from '../../src/models/savings.ts';
 import {
   PriceBook,
   selectTier,
   toCatalogModels,
   type CatalogCost,
   type CatalogModel,
-} from '../../src/services/model-prices';
+} from '../../src/services/model-prices.ts';
 
 const cost = (input: number, size?: number, output = input * 5): CatalogCost => ({
   ...(size === undefined ? {} : { tier: { type: 'context' as const, size } }),
@@ -315,5 +316,61 @@ describe('toCatalogModels', () => {
   test('a list that is not an array maps to no models', () => {
     expect(toCatalogModels(undefined)).toEqual([]);
     expect(toCatalogModels({ data: [info()] })).toEqual([]);
+  });
+});
+
+describe('PriceBook reload backoff', () => {
+  const other = { providerID: 'anthropic', id: 'other' };
+
+  function setup(results: (() => Promise<CatalogModel[]>)[]) {
+    const clock = { t: 1_000_000 };
+    let calls = 0;
+    const book = new PriceBook({
+      listModels: () => {
+        const next = results[Math.min(calls, results.length - 1)];
+        calls += 1;
+        return next?.() ?? Promise.resolve([]);
+      },
+      now: () => clock.t,
+    });
+    return { book, calls: () => calls, clock };
+  }
+
+  test('a failed reload is not cached: the model is found once the backoff passes', async () => {
+    const { book, calls, clock } = setup([
+      () => Promise.resolve([model('claude-x', [cost(3)])]),
+      () => Promise.reject(new Error('down')),
+      () => Promise.resolve([model('claude-x', [cost(3)]), model('other', [cost(4)])]),
+    ]);
+    expect((await book.lookup(ref, 1))?.input).toBe(3);
+    expect(await book.lookup(other, 1)).toBeUndefined();
+    clock.t += CATALOG_RETRY_MS;
+    expect((await book.lookup(other, 1))?.input).toBe(4);
+    expect(calls()).toBe(3);
+  });
+
+  test('failed reloads inside the backoff do not call listModels again', async () => {
+    const { book, calls } = setup([
+      () => Promise.resolve([model('claude-x', [cost(3)])]),
+      () => Promise.reject(new Error('down')),
+    ]);
+    await book.lookup(ref, 1);
+    await book.lookup(other, 1);
+    await book.lookup(other, 1);
+    await book.lookup({ providerID: 'anthropic', id: 'third' }, 1);
+    expect(calls()).toBe(2);
+  });
+
+  test('concurrent lookups of one missing model share the in-flight reload', async () => {
+    const { book, calls } = setup([
+      () => Promise.resolve([model('claude-x', [cost(3)])]),
+      async () => {
+        await Bun.sleep(5);
+        throw new Error('down');
+      },
+    ]);
+    await book.lookup(ref, 1);
+    await Promise.all([book.lookup(other, 1), book.lookup(other, 1)]);
+    expect(calls()).toBe(2);
   });
 });

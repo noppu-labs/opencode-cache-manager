@@ -1,6 +1,6 @@
-import { CATALOG_LOAD_TIMEOUT_MS } from '../constants/savings.ts';
-import type { ModelRef } from '../models/cache';
-import type { ModelPrice } from '../models/savings';
+import { CATALOG_LOAD_TIMEOUT_MS, CATALOG_RETRY_MS } from '../constants/savings.ts';
+import type { ModelRef } from '../models/cache.ts';
+import type { ModelPrice } from '../models/savings.ts';
 import { isRecord } from '../utils/is-record.ts';
 
 interface CatalogCost {
@@ -22,6 +22,8 @@ interface PriceBookDeps {
   fallback?: (names: readonly string[]) => Promise<ModelPrice | undefined>;
   /** Defaults to `CATALOG_LOAD_TIMEOUT_MS`. */
   loadTimeoutMs?: number;
+  /** Clock for the reload backoff; defaults to `Date.now`. */
+  now?: () => number;
 }
 
 /** The tier whose size is the largest at or below `contextTokens`, else the untiered entry, else the smallest tier. */
@@ -125,10 +127,12 @@ const refKey = (ref: ModelRef): string => `${ref.providerID}\u0000${ref.id}`;
 /**
  * Per-million-token prices from OpenCode's model catalog, with an optional injected fallback.
  * The catalog is cached; a model missing from it triggers at most one reload per distinct model.
+ * A failed reload is not remembered, but no new one starts within `CATALOG_RETRY_MS` of the failure.
  */
 class PriceBook {
   private catalog: readonly CatalogModel[] | undefined;
   private inflight: Promise<readonly CatalogModel[] | undefined> | undefined;
+  private failedAt: number | undefined;
   private readonly reloads = new Map<string, Promise<CatalogModel | undefined>>();
 
   public constructor(private readonly deps: PriceBookDeps) {}
@@ -173,7 +177,13 @@ class PriceBook {
     const key = refKey(ref);
     let reload = this.reloads.get(key);
     if (reload === undefined) {
-      reload = this.load(true).then((list) => match(list));
+      reload = this.load(true).then((list) => {
+        if (this.failedAt !== undefined) {
+          // A failed reload says nothing about the model; let a later lookup try again.
+          this.reloads.delete(key);
+        }
+        return match(list);
+      });
       this.reloads.set(key, reload);
     }
     return { entry: await reload };
@@ -182,6 +192,9 @@ class PriceBook {
   /** Loads the catalog once at a time; keeps the previous one if a reload fails. */
   private async load(force = false): Promise<readonly CatalogModel[] | undefined> {
     if (!force && this.catalog !== undefined) {
+      return this.catalog;
+    }
+    if (force && this.failedAt !== undefined && this.now() - this.failedAt < CATALOG_RETRY_MS) {
       return this.catalog;
     }
     this.inflight ??= this.fetchCatalog().finally(() => {
@@ -200,12 +213,18 @@ class PriceBook {
     });
     try {
       this.catalog = await Promise.race([this.deps.listModels(), timeout]);
+      this.failedAt = undefined;
     } catch {
-      // Leave any previous catalog in place; the next lookup retries.
+      // Leave any previous catalog in place; the next lookup retries once the backoff passes.
+      this.failedAt = this.now();
     } finally {
       clearTimeout(timer);
     }
     return this.catalog;
+  }
+
+  private now(): number {
+    return (this.deps.now ?? Date.now)();
   }
 
   private async askFallback(names: readonly string[]): Promise<ModelPrice | undefined> {

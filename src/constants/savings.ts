@@ -40,6 +40,12 @@ const MODELS_DEV_STORAGE_KEY = 'models-dev';
 const MODELS_DEV_FETCH_TIMEOUT_MS = 10_000;
 /** A `ctx.model.list()` call that has not settled by then counts as a failed catalog load. */
 const CATALOG_LOAD_TIMEOUT_MS = 10_000;
+/** After a failed catalog load, wait this long before another reload for a missing model. */
+const CATALOG_RETRY_MS = 60_000;
+/** A trailing `-YYYYMMDD` release date on a model name. */
+const DATE_SUFFIX = /-\d{8}$/u;
+/** A trailing `-latest` alias on a model name. */
+const LATEST_SUFFIX = /-latest$/u;
 /** Vendors whose own listing wins over resellers. */
 const MODELS_DEV_VENDORS: readonly string[] = ['anthropic', 'openai'];
 
@@ -57,4 +63,7 @@ export {
   MODELS_DEV_FETCH_TIMEOUT_MS,
   MODELS_DEV_VENDORS,
   CATALOG_LOAD_TIMEOUT_MS,
+  CATALOG_RETRY_MS,
+  DATE_SUFFIX,
+  LATEST_SUFFIX,
 };

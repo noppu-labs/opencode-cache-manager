@@ -21,11 +21,11 @@ describe('fetchJson', () => {
 
   test('aborts the request once the timeout passes', async () => {
     fetchSpy.mockResolvedValue(Response.json({}));
-    await fetchJson('https://example.test/api.json', 5);
+    await fetchJson('https://example.test/api.json', 50);
     const signal = fetchSpy.mock.calls[0]?.[1]?.signal;
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(signal?.aborted).toBe(false);
-    await Bun.sleep(20);
+    await Bun.sleep(100);
     expect(signal?.aborted).toBe(true);
   });
 

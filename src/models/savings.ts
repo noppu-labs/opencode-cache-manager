@@ -28,7 +28,7 @@ interface SavingsReadout {
   avoidedTokens: number;
   /** `avoidedUsd - pingUsd` when priced. */
   netUsd: number | null;
-  /** Null until rescues > 0; dollars when priced, units otherwise. */
+  /** Avoided / spent, in dollars when priced and units otherwise; null while rescues is 0 or the spend is 0. */
   returnRatio: number | null;
   /** Ping cost in the current stretch; null when unpriced or none. */
   stretchUsd: number | null;
