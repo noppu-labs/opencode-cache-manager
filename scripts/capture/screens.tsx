@@ -6,7 +6,12 @@ import type { JSX } from 'solid-js';
 
 import { BUILTIN_DEFAULTS } from '../../src/config/settings.ts';
 import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
-import { settingsOptions } from '../../src/ui/picker.ts';
+import {
+  PICKER_PLACEHOLDER,
+  PICKER_TITLE,
+  RESET_SESSION_OPTION,
+  settingsOptions,
+} from '../../src/ui/picker.ts';
 import { CacheLines, type SidebarPalette } from '../../src/ui/sidebar.tsx';
 import { frameToAnsi, textRow } from './ansi.ts';
 import { DIALOG_WIDTH, PickerDialog } from './picker-dialog.tsx';
@@ -229,12 +234,12 @@ const PICKER: View = {
     <PickerDialog
       options={[
         ...settingsOptions('session', BUILTIN_DEFAULTS, {}),
-        { category: 'Session', title: 'Reset session to global', value: 'session:reset' },
+        RESET_SESSION_OPTION,
         ...settingsOptions('global', BUILTIN_DEFAULTS, null),
       ]}
-      placeholder="Select a setting"
+      placeholder={PICKER_PLACEHOLDER}
       selected="session:mode"
-      title="Cache Manager"
+      title={PICKER_TITLE}
     />
   ),
   width: DIALOG_WIDTH,
