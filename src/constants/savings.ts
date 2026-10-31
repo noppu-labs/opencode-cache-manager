@@ -24,6 +24,13 @@ const EMPTY_TOTALS: LedgerTotals = Object.freeze({
   version: 1,
 });
 
+/**
+ * A return counts as a rescue only when sent this long after the original expiry: the
+ * provider's cache clock starts a little after the send time, so an earlier return may
+ * have hit without pings.
+ */
+const SAVINGS_EXPIRY_MARGIN_MS = 30_000;
+
 const MODELS_DEV_URL = 'https://models.dev/api.json';
 const MODELS_DEV_MAX_AGE_MS = 86_400_000;
 /** Wait after a failed models.dev fetch before trying again. */
@@ -42,6 +49,7 @@ export {
   WRITE_MULTIPLIER,
   DEFAULT_WRITE_TTLS,
   EMPTY_TOTALS,
+  SAVINGS_EXPIRY_MARGIN_MS,
   MODELS_DEV_URL,
   MODELS_DEV_MAX_AGE_MS,
   MODELS_DEV_RETRY_MS,

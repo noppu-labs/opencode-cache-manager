@@ -32,6 +32,12 @@ describe('parseCommandArg', () => {
     expect(parseCommandArg('   ')).toEqual({ type: 'toggle' });
   });
 
+  test('parses savings on and off', () => {
+    expect(parseCommandArg('savings off')).toEqual({ type: 'set', patch: { savings: false } });
+    expect(parseCommandArg('savings on')).toEqual({ type: 'set', patch: { savings: true } });
+    expect(parseCommandArg('savings maybe')).toEqual({ type: 'invalid' });
+  });
+
   test('parses keepalive on and off', () => {
     expect(parseCommandArg('keepalive on')).toEqual({ type: 'set', patch: { keepalive: true } });
     expect(parseCommandArg('KEEPALIVE OFF')).toEqual({ type: 'set', patch: { keepalive: false } });
