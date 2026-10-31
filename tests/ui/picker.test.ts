@@ -34,6 +34,7 @@ function setup(options: Options = {}) {
     keepalive: true,
     maxPings: 5,
     minContextTokens: 50_000,
+    savings: true,
     ...options.global,
   };
 
@@ -124,11 +125,13 @@ describe('createPicker', () => {
       ['Session', 'session:keepalive', 'Keepalive  on · global'],
       ['Session', 'session:maxPings', 'Pings per idle  5 · global'],
       ['Session', 'session:minContextTokens', 'Min context  100k'],
+      ['Session', 'session:savings', 'Savings  on · global'],
       ['Session', 'session:reset', 'Reset session to global'],
       ['Global', 'global:mode', 'TTL mode  hybrid'],
       ['Global', 'global:keepalive', 'Keepalive  on'],
       ['Global', 'global:maxPings', 'Pings per idle  5'],
       ['Global', 'global:minContextTokens', 'Min context  50k'],
+      ['Global', 'global:savings', 'Savings  on'],
     ]);
     expect(t.setSessionCalls).toHaveLength(0);
     expect(t.setGlobalCalls).toHaveLength(0);
@@ -147,6 +150,7 @@ describe('createPicker', () => {
       'global:keepalive',
       'global:maxPings',
       'global:minContextTokens',
+      'global:savings',
     ]);
     expect(options.every((o: any) => o.category === 'Global')).toBe(true);
   });
@@ -174,6 +178,17 @@ describe('createPicker', () => {
     expect(t.setSessionCalls).toEqual([{ sessionID: 'ses_1', patch: { mode: '1h' } }]);
     expect(t.setGlobalCalls).toHaveLength(0);
     expect(t.toasts).toEqual([{ message: 'Session cache TTL set to 1h.', variant: 'success' }]);
+  });
+
+  test('selecting session:savings then off writes the session and toasts', async () => {
+    const t = setup({ selects: ['session:savings', 'off'] });
+
+    await t.picker();
+
+    expect(t.selectCalls[1].options.map((o: any) => o.value)).toEqual(['on', 'off']);
+    expect(t.selectCalls[1].current).toBe('on');
+    expect(t.setSessionCalls).toEqual([{ sessionID: 'ses_1', patch: { savings: false } }]);
+    expect(t.toasts).toEqual([{ message: 'Session savings set to off.', variant: 'success' }]);
   });
 
   test('selecting global:keepalive then off writes the global settings', async () => {

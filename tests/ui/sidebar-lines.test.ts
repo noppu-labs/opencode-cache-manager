@@ -22,6 +22,8 @@ function snap(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot {
     skipReason: null,
     contextTokens: 80_000,
     lastCache: null,
+    showSavings: true,
+    savings: null,
     ...overrides,
   };
 }

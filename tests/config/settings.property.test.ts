@@ -20,6 +20,7 @@ const validPatch: fc.Arbitrary<SettingsPatch> = fc.record(
     maxPings: fc.integer({ max: MAX_PINGS_LIMIT, min: 0 }),
     minContextTokens: fc.nat(),
     mode,
+    savings: fc.boolean(),
   },
   { requiredKeys: [] }
 );
@@ -60,6 +61,7 @@ const patchLike = fc.oneof(
       ),
       minContextTokens: fc.oneof(fc.integer({ min: -5 }), fc.double(), fc.anything()),
       mode: fc.oneof(mode, fc.anything()),
+      savings: fc.oneof(fc.boolean(), fc.anything()),
     },
     { requiredKeys: [] }
   )
@@ -68,11 +70,12 @@ const patchLike = fc.oneof(
 function expectValidPatch(patch: SettingsPatch): void {
   expect(
     Object.keys(patch).every((key) =>
-      ['keepalive', 'maxPings', 'minContextTokens', 'mode'].includes(key)
+      ['keepalive', 'maxPings', 'minContextTokens', 'mode', 'savings'].includes(key)
     )
   ).toBe(true);
   if (patch.mode !== undefined) expect(isCacheTtlMode(patch.mode)).toBe(true);
   if (patch.keepalive !== undefined) expect(typeof patch.keepalive).toBe('boolean');
+  if (patch.savings !== undefined) expect(typeof patch.savings).toBe('boolean');
   if (patch.maxPings !== undefined) {
     expect(Number.isInteger(patch.maxPings)).toBe(true);
     expect(patch.maxPings).toBeGreaterThanOrEqual(0);
@@ -87,6 +90,7 @@ function expectValidPatch(patch: SettingsPatch): void {
 function expectValidSettings(settings: Settings): void {
   expect(isCacheTtlMode(settings.mode)).toBe(true);
   expect(typeof settings.keepalive).toBe('boolean');
+  expect(typeof settings.savings).toBe('boolean');
   expect(Number.isInteger(settings.maxPings)).toBe(true);
   expect(settings.maxPings).toBeGreaterThanOrEqual(0);
   expect(settings.maxPings).toBeLessThanOrEqual(MAX_PINGS_LIMIT);
@@ -121,7 +125,13 @@ describe('settings properties', () => {
         const layers = values.map((value) => sanitizePatch(value));
         const merged = mergeSettings(...layers);
         expectValidSettings(merged);
-        for (const key of ['keepalive', 'maxPings', 'minContextTokens', 'mode'] as const) {
+        for (const key of [
+          'keepalive',
+          'maxPings',
+          'minContextTokens',
+          'mode',
+          'savings',
+        ] as const) {
           const expected = layers.findLast((layer) => layer[key] !== undefined)?.[key];
           if (expected !== undefined) expect(merged[key]).toBe(expected);
         }
@@ -142,7 +152,13 @@ describe('settings properties', () => {
       fc.property(fc.array(validPatch, { maxLength: 4 }), (layers) => {
         const merged = mergeSettings(...layers);
         expectValidSettings(merged);
-        for (const key of ['keepalive', 'maxPings', 'minContextTokens', 'mode'] as const) {
+        for (const key of [
+          'keepalive',
+          'maxPings',
+          'minContextTokens',
+          'mode',
+          'savings',
+        ] as const) {
           const expected = layers.findLast((layer) => layer[key] !== undefined)?.[key];
           if (expected !== undefined) expect(merged[key]).toBe(expected);
         }

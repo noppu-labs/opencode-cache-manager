@@ -23,7 +23,12 @@ import { memoryKv } from '../helpers/memory-kv.ts';
 function harness(
   config: { options?: Partial<PluginOptions>; profiles?: Map<string, CacheProfileId> } = {}
 ) {
-  const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
+  const options: PluginOptions = {
+    openaiCompatible: true,
+    modelsDevPrices: false,
+    cacheProfiles: [],
+    ...config.options,
+  };
   const learned = config.profiles ?? new Map<string, CacheProfileId>();
   const profiles = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
   const { kv } = memoryKv();
@@ -32,7 +37,13 @@ function harness(
   const primaryMessages = new Map<string, unknown[]>();
   const sent: {
     sessionID: string;
-    info: { requestedTtl: string | null; isPing: boolean; kind: string };
+    info: {
+      requestedTtl: string | null;
+      isPing: boolean;
+      kind: string;
+      split: boolean;
+      model: ModelRef;
+    };
   }[] = [];
   const fake = {
     skipReason: null as SkipReason | null,
@@ -44,10 +55,7 @@ function harness(
       if (fake.failSnapshot) throw new Error('snapshot failed');
       return { skipReason: fake.skipReason };
     },
-    requestSent: (
-      sessionID: string,
-      info: { requestedTtl: string | null; isPing: boolean; kind: string }
-    ) => {
+    requestSent: (sessionID: string, info: (typeof sent)[number]['info']) => {
       sent.push({ sessionID, info });
       if (fake.failRequestSent) throw new Error('engine down');
     },
@@ -204,7 +212,7 @@ describe('createRequestHook TTL rewrite', () => {
         requestSent: () => {},
       } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
-      options: { openaiCompatible: true, cacheProfiles: [] },
+      options: { openaiCompatible: true, modelsDevPrices: false, cacheProfiles: [] },
       profiles: { get: () => undefined },
       primaryMessages: new Map(),
     });
@@ -249,7 +257,16 @@ describe('createRequestHook engine reporting', () => {
       expect(cc.ttl).toBe('1h');
     }
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: '1h', isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: '1h',
+          isPing: false,
+          kind: 'primary',
+          split: false,
+          model: { providerID: 'some-proxy', id: 'claude-sonnet-5-5' },
+        },
+      },
     ]);
   });
 
@@ -266,7 +283,16 @@ describe('createRequestHook engine reporting', () => {
     });
     expect(evt.request).toBe(request);
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: null, isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: null,
+          isPing: false,
+          kind: 'primary',
+          split: false,
+          model: { providerID: 'some-proxy', id: 'deepseek/deepseek-v4.1-flash' },
+        },
+      },
     ]);
   });
 
@@ -309,7 +335,16 @@ describe('createRequestHook engine reporting', () => {
     const evt = await h.dispatch(request);
     expect(evt.request.headers.has(SENTINEL_HEADER)).toBe(false);
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: '1h', isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: '1h',
+          isPing: false,
+          kind: 'primary',
+          split: false,
+          model: { providerID: 'anthropic', id: 'claude-sonnet-5-5' },
+        },
+      },
     ]);
   });
 
@@ -358,6 +393,32 @@ describe('createRequestHook engine reporting', () => {
     );
     expect(h.sent).toHaveLength(0);
   });
+
+  test('a hybrid session on a managed profile reports a split cache and the model', async () => {
+    const h = harness();
+    await h.store.setSession('ses_a', { mode: 'hybrid' });
+    await h.dispatch(body());
+    expect(h.sent[0].info).toMatchObject({
+      split: true,
+      model: { providerID: 'anthropic', id: 'claude-sonnet-5-5' },
+    });
+  });
+
+  test.each([
+    ['5m', null, false],
+    ['1h', null, false],
+    ['5m', 'hybrid', true],
+    ['hybrid', '1h', false],
+  ] as const)(
+    'session mode %s with sentinel %p reports split %p',
+    async (mode, sentinel, split) => {
+      const h = harness();
+      await h.store.setSession('ses_a', { mode });
+      const headers: Record<string, string> = sentinel ? { [SENTINEL_HEADER]: sentinel } : {};
+      await h.dispatch(makeRequest(JSON.stringify(sampleBody()), headers));
+      expect(h.sent[0].info.split).toBe(split);
+    }
+  );
 
   test('an engine failure never fails the request', async () => {
     const h = harness();
@@ -629,7 +690,16 @@ describe('createRequestHook ping alignment', () => {
     const h = harness();
     await h.duringPing('ses_a', () => h.dispatch(makeRequest('not json'), { kind: 'generate' }));
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: '5m', isPing: true, kind: 'generate' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: '5m',
+          isPing: true,
+          kind: 'generate',
+          split: false,
+          model: { providerID: 'anthropic', id: 'claude-sonnet-5-5' },
+        },
+      },
     ]);
   });
 
@@ -673,7 +743,16 @@ describe('createRequestHook on openai-chat', () => {
     expect(out.tools[0].cache_control.ttl).toBe('1h');
     expect(evt.request.headers.get('anthropic-beta')).toBe(EXTENDED_CACHE_BETA);
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: '5m', isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: '5m',
+          isPing: false,
+          kind: 'primary',
+          split: true,
+          model: { providerID: 'omniroute', id: 'auto/claude-opus-5-5' },
+        },
+      },
     ]);
   });
 
@@ -693,7 +772,16 @@ describe('createRequestHook on openai-chat', () => {
     expect(evt.request).toBe(request);
     expect(await evt.request.text()).toBe(raw);
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: null, isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: null,
+          isPing: false,
+          kind: 'primary',
+          split: false,
+          model: { providerID: 'omniroute', id: 'deepseek/deepseek-v4.1-flash' },
+        },
+      },
     ]);
     expect(h.primaryMessages.size).toBe(0);
   });
@@ -853,9 +941,21 @@ describe('createRequestHook on the Messages wire by model', () => {
         primaryMessages: h.primaryMessages.size,
       };
     }
+    const deepseekRef = { providerID: deepseek.providerID, id: deepseek.modelID };
     const unmanaged = {
       passedThrough: true,
-      sent: [{ sessionID: 'ses_a', info: { requestedTtl: null, isPing: false, kind: 'primary' } }],
+      sent: [
+        {
+          sessionID: 'ses_a',
+          info: {
+            requestedTtl: null,
+            isPing: false,
+            kind: 'primary',
+            split: false,
+            model: deepseekRef,
+          },
+        },
+      ],
       primaryMessages: 0,
     };
     expect(results).toEqual({ '5m': unmanaged, '1h': unmanaged, 'hybrid': unmanaged });
@@ -995,7 +1095,11 @@ describe('createRequestHook with the real keepalive engine', () => {
       isChild: async () => false,
       onChange: () => {},
     });
-    const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [] };
+    const options: PluginOptions = {
+      openaiCompatible: true,
+      modelsDevPrices: false,
+      cacheProfiles: [],
+    };
     const hook = createRequestHook({
       store,
       engine,
@@ -1085,7 +1189,16 @@ describe('createRequestHook with the openai profile', () => {
     const evt = await h.dispatch(request, gpt);
     expect(evt.request).toBe(request);
     expect(h.sent).toEqual([
-      { sessionID: 'ses_a', info: { requestedTtl: '30m', isPing: false, kind: 'primary' } },
+      {
+        sessionID: 'ses_a',
+        info: {
+          requestedTtl: '30m',
+          isPing: false,
+          kind: 'primary',
+          split: false,
+          model: { providerID: 'openrouter', id: 'openai/gpt-6-luna' },
+        },
+      },
     ]);
     expect(h.primaryMessages.get('ses_a')).toEqual(chatMessages());
   });
@@ -1111,6 +1224,10 @@ describe('createRequestHook with the openai profile', () => {
     expect(await parsedBodyOf(evt.request)).toEqual({ model: 'openai/gpt-6-luna', messages });
     expect(evt.request.headers.get('anthropic-beta')).toBeNull();
     expect(h.sent[0]?.info.requestedTtl).toBe('30m');
+    expect(h.sent[0]?.info).toMatchObject({
+      split: true,
+      model: { providerID: 'openrouter', id: 'openai/gpt-6-luna' },
+    });
   });
 
   test('a title request caches nothing: explicit mode, no breakpoint', async () => {
@@ -1144,7 +1261,13 @@ describe('createRequestHook with the openai profile', () => {
       model: 'openai/gpt-6-luna',
       messages: [...stored, pingMessages[4], pingMessages[5]],
     });
-    expect(h.sent[1]?.info).toEqual({ requestedTtl: '12h', isPing: true, kind: 'generate' });
+    expect(h.sent[1]?.info).toEqual({
+      requestedTtl: '12h',
+      isPing: true,
+      kind: 'generate',
+      split: false,
+      model: { providerID: 'openrouter', id: 'openai/gpt-6-luna' },
+    });
   });
 
   test('on the Responses wire 1h marks the last input_text', async () => {

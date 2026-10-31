@@ -21,6 +21,8 @@ const snapshot = (
   skipReason: null,
   contextTokens: 80_000,
   lastCache: null,
+  showSavings: true,
+  savings: null,
   ...overrides,
 });
 

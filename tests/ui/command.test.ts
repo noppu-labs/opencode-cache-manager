@@ -29,6 +29,7 @@ function setup(options: Options = {}) {
     keepalive: true,
     maxPings: 5,
     minContextTokens: 50_000,
+    savings: true,
     ...options.global,
   };
 
@@ -135,6 +136,15 @@ describe('createCommandRunner', () => {
     ]);
   });
 
+  test('typed savings off sets the session and toasts', async () => {
+    const t = setup();
+
+    await t.run('savings off');
+
+    expect(t.setSessionCalls).toEqual([{ patch: { savings: false }, sessionID: 'ses_1' }]);
+    expect(t.toasts.map((toast) => toast.message)).toEqual(['Session savings set to off.']);
+  });
+
   test('typed status shows the effective session values', async () => {
     const t = setup({ global: { mode: 'hybrid' }, session: { maxPings: 2, keepalive: false } });
 
@@ -144,7 +154,7 @@ describe('createCommandRunner', () => {
     expect(t.openPickerCalls()).toBe(0);
     expect(t.toasts).toEqual([
       {
-        message: 'Session cache: TTL hybrid, keepalive off, pings 2, min context 50k.',
+        message: 'Session cache: TTL hybrid, keepalive off, pings 2, min context 50k, savings on.',
         variant: 'info',
       },
     ]);
@@ -179,7 +189,7 @@ describe('createCommandRunner', () => {
     expect(t.toasts).toEqual([
       {
         message:
-          'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | reset | status]',
+          'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | savings on|off | reset | status]',
         variant: 'warning',
       },
     ]);

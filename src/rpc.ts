@@ -15,6 +15,7 @@ const settingsSchema = {
     maxPings: { maximum: 100, minimum: 0, type: 'integer' },
     minContextTokens: { minimum: 0, type: 'integer' },
     mode: { enum: ['5m', '1h', 'hybrid'], type: 'string' },
+    savings: { type: 'boolean' },
   },
   type: 'object',
 } as const;
@@ -22,6 +23,21 @@ const settingsSchema = {
 const nullableString = (values: readonly string[]) =>
   ({ enum: [...values, null], type: ['string', 'null'] }) as const;
 const nullableNumber = { type: ['number', 'null'] } as const;
+
+const savingsReadoutSchema = {
+  additionalProperties: false,
+  properties: {
+    avoidedTokens: { minimum: 0, type: 'number' },
+    netUsd: nullableNumber,
+    pings: { minimum: 0, type: 'integer' },
+    priced: { type: 'boolean' },
+    rescues: { minimum: 0, type: 'integer' },
+    returnRatio: nullableNumber,
+    stretchUsd: nullableNumber,
+  },
+  required: ['priced', 'pings', 'rescues', 'avoidedTokens', 'netUsd', 'returnRatio', 'stretchUsd'],
+  type: 'object',
+} as const;
 
 const keepaliveSnapshotSchema = {
   additionalProperties: false,
@@ -45,7 +61,9 @@ const keepaliveSnapshotSchema = {
     minContextTokens: { minimum: 0, type: 'integer' },
     nextPingAt: nullableNumber,
     pingsUsed: { minimum: 0, type: 'integer' },
+    savings: { oneOf: [savingsReadoutSchema, { type: 'null' }] },
     sessionID: { type: 'string' },
+    showSavings: { type: 'boolean' },
     skipReason: nullableString([
       'disabled',
       'small-context',
@@ -73,6 +91,8 @@ const keepaliveSnapshotSchema = {
     'skipReason',
     'contextTokens',
     'lastCache',
+    'showSavings',
+    'savings',
   ],
   type: 'object',
 } as const;
@@ -113,7 +133,7 @@ const CacheTtlRpc = {
         properties: {
           global: {
             ...settingsSchema,
-            required: ['mode', 'keepalive', 'maxPings', 'minContextTokens'],
+            required: ['mode', 'keepalive', 'maxPings', 'minContextTokens', 'savings'],
           },
           session: { oneOf: [settingsSchema, { type: 'null' }] },
         },
