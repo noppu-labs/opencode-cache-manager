@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
+import type { SavingsReadout } from '../../src/models/savings.ts';
 import { sidebarLines, type SidebarLine } from '../../src/ui/sidebar-lines.ts';
 
 const NOW = 1_000_000_000;
@@ -275,5 +276,108 @@ describe('sidebarLines: implicit sessions', () => {
 
   test('renders nothing for a child session', () => {
     expect(lines(snap({ ...implicit, skipReason: 'child' }))).toEqual([]);
+  });
+});
+
+describe('sidebarLines: savings rows', () => {
+  const readout = (overrides: Partial<SavingsReadout> = {}): SavingsReadout => ({
+    priced: true,
+    pings: 2,
+    rescues: 2,
+    avoidedTokens: 282_000,
+    netUsd: 0.42,
+    returnRatio: 9,
+    stretchUsd: 0.05,
+    ...overrides,
+  });
+  const warm = (
+    savings: SavingsReadout | null,
+    overrides: Partial<KeepaliveSnapshot> = {}
+  ): SidebarLine[] =>
+    lines(snap({ pingsUsed: 2, lastPing: 'hit', nextPingAt: NOW + MIN, savings, ...overrides }));
+  const rows = (ls: SidebarLine[]): string[] =>
+    ls
+      .filter((l) => ['pings', 'saved', 'return'].includes(l.text))
+      .map((l) => `${l.text} ${l.right}`);
+
+  test('priced: suffix on pings, then saved and return', () => {
+    expect(rows(warm(readout()))).toEqual([
+      'pings 2/5 ✓ hit ($0.05)',
+      'saved $0.42 · 2 rewrites',
+      'return 9× ping cost',
+    ]);
+    expect(warm(readout()).at(-3)?.rightTone).toBe('success');
+  });
+
+  test('unpriced: no suffix, tokens instead of dollars', () => {
+    const r = readout({ priced: false, netUsd: null, stretchUsd: null });
+    expect(rows(warm(r))).toEqual([
+      'pings 2/5 ✓ hit',
+      'saved 2 rewrites · 282k',
+      'return 9× ping cost',
+    ]);
+  });
+
+  test('priced without a stretch cost has no suffix', () => {
+    expect(rows(warm(readout({ stretchUsd: null })))[0]).toBe('pings 2/5 ✓ hit');
+  });
+
+  test('singular rewrite', () => {
+    expect(rows(warm(readout({ rescues: 1 })))[1]).toBe('saved $0.42 · 1 rewrite');
+  });
+
+  test('a negative net below a cent', () => {
+    expect(rows(warm(readout({ netUsd: -0.004, returnRatio: 0.5 })))[1]).toBe(
+      'saved -<$0.01 · 2 rewrites'
+    );
+  });
+
+  test('no return row without a ratio', () => {
+    expect(rows(warm(readout({ returnRatio: null })))).toHaveLength(2);
+  });
+
+  test('pings paid but nothing saved', () => {
+    expect(rows(warm(readout({ rescues: 0, returnRatio: null, netUsd: -0.05 })))).toEqual([
+      'pings 2/5 ✓ hit ($0.05)',
+      'saved nothing yet',
+    ]);
+  });
+
+  test('no rows before the first ping', () => {
+    expect(
+      rows(warm(readout({ pings: 0, rescues: 0, returnRatio: null, stretchUsd: null })))
+    ).toEqual(['pings 2/5 ✓ hit']);
+  });
+
+  test('hidden when savings are off', () => {
+    const off = warm(readout(), { showSavings: false });
+    expect(rows(off)).toEqual(['pings 2/5 ✓ hit']);
+    expect(off).toEqual(warm(null));
+  });
+
+  test('also on the pings-used-up layout', () => {
+    const ls = warm(readout(), { nextPingAt: null, skipReason: 'exhausted', pingsUsed: 5 });
+    expect(rows(ls).slice(1)).toEqual(['saved $0.42 · 2 rewrites', 'return 9× ping cost']);
+  });
+
+  test('after the ttl row on the expired layout', () => {
+    const ls = lines(snap({ expiresAt: NOW - MIN, savings: readout() }));
+    expect(ls.map((l) => l.text).slice(-3)).toEqual(['ttl', 'saved', 'return']);
+  });
+
+  test('never on the implicit layout', () => {
+    expect(rows(lines(snap({ skipReason: 'implicit', savings: readout() })))).toEqual([]);
+  });
+
+  test.each([
+    ['missed', 'stopped · last ping missed'],
+    ['busy', 'waiting · session busy'],
+    ['disabled', 'off · disabled'],
+    ['small-context', 'off · 30k < 50k'],
+  ] as const)('%s keepalive row is followed by the savings rows', (skipReason, right) => {
+    const ls = warm(readout(), { skipReason, contextTokens: 30_000 });
+    expect(ls.find((l) => l.text === 'keepalive')?.right).toBe(right);
+    expect(rows(ls)).toEqual(['saved $0.42 · 2 rewrites', 'return 9× ping cost']);
+    expect(ls.at(-3)?.text).toBe('keepalive');
   });
 });
