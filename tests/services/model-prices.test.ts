@@ -174,6 +174,67 @@ describe('PriceBook.lookup', () => {
     expect(calls).toBe(1);
   });
 
+  test('concurrent lookups of one missing model all see the shared reload', async () => {
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const book = new PriceBook({
+      listModels: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return [];
+        }
+        await gate;
+        return [model('claude-x', [cost(3)])];
+      },
+    });
+    await book.prefetch();
+    const first = book.lookup(ref, 1);
+    const second = book.lookup(ref, 1);
+    release();
+    expect((await first)?.input).toBe(3);
+    expect((await second)?.input).toBe(3);
+    expect(calls).toBe(2);
+  });
+
+  test('without a catalog the fallback is not consulted', async () => {
+    let asked = 0;
+    const book = new PriceBook({
+      listModels: () => Promise.reject(new Error('down')),
+      fallback: () => {
+        asked += 1;
+        return Promise.resolve(FALLBACK_PRICE);
+      },
+    });
+    expect(await book.lookup(ref, 1)).toBeUndefined();
+    expect(asked).toBe(0);
+  });
+
+  test('a failed reload keeps the old catalog', async () => {
+    let calls = 0;
+    const book = new PriceBook({
+      listModels: () => {
+        calls += 1;
+        return calls === 1
+          ? Promise.resolve([model('claude-x', [cost(3)])])
+          : Promise.reject(new Error('down'));
+      },
+    });
+    expect((await book.lookup(ref, 1))?.input).toBe(3);
+    expect(await book.lookup({ providerID: 'anthropic', id: 'other' }, 1)).toBeUndefined();
+    expect((await book.lookup(ref, 1))?.input).toBe(3);
+  });
+
+  test('a catalog entry with no cost goes to the fallback', async () => {
+    const book = new PriceBook({
+      listModels: () => Promise.resolve([model('claude-x', [])]),
+      fallback: () => Promise.resolve(FALLBACK_PRICE),
+    });
+    expect(await book.lookup(ref, 1)).toEqual(FALLBACK_PRICE);
+  });
+
   test('prefetch never rejects', async () => {
     const book = new PriceBook({ listModels: () => Promise.reject(new Error('down')) });
     await book.prefetch();

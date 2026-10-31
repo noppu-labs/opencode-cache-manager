@@ -78,7 +78,7 @@ const refKey = (ref: ModelRef): string => `${ref.providerID}\u0000${ref.id}`;
 class PriceBook {
   private catalog: readonly CatalogModel[] | undefined;
   private inflight: Promise<readonly CatalogModel[] | undefined> | undefined;
-  private readonly reloaded = new Set<string>();
+  private readonly reloads = new Map<string, Promise<CatalogModel | undefined>>();
 
   public constructor(private readonly deps: PriceBookDeps) {}
 
@@ -93,9 +93,13 @@ class PriceBook {
     contextTokens: number,
     reportedModel?: string
   ): Promise<ModelPrice | undefined> {
-    const entry = await this.findEntry(ref);
-    if (entry !== undefined) {
-      const price = toPrice(selectTier(entry.cost, contextTokens));
+    const found = await this.findEntry(ref);
+    // Without a catalog we cannot tell whether the user declared a cost, so models.dev must not stand in.
+    if (found === undefined) {
+      return undefined;
+    }
+    if (found.entry !== undefined) {
+      const price = toPrice(selectTier(found.entry.cost, contextTokens));
       if (price !== undefined) {
         return price;
       }
@@ -103,18 +107,25 @@ class PriceBook {
     return this.askFallback(fallbackNames(ref.id, reportedModel));
   }
 
-  private async findEntry(ref: ModelRef): Promise<CatalogModel | undefined> {
+  /** Undefined when no catalog could be loaded; otherwise the matching entry, if any. */
+  private async findEntry(ref: ModelRef): Promise<{ entry?: CatalogModel } | undefined> {
     const match = (list: readonly CatalogModel[] | undefined): CatalogModel | undefined =>
       list?.find((model) => model.providerID === ref.providerID && model.id === ref.id);
     const cached = this.catalog ?? (await this.load());
-    const found = match(cached);
-    const key = refKey(ref);
-    // A failed first load is retried by the next lookup, not twice in this one.
-    if (cached === undefined || found !== undefined || this.reloaded.has(key)) {
-      return found;
+    if (cached === undefined) {
+      return undefined;
     }
-    this.reloaded.add(key);
-    return match(await this.load(true));
+    const entry = match(cached);
+    if (entry !== undefined) {
+      return { entry };
+    }
+    const key = refKey(ref);
+    let reload = this.reloads.get(key);
+    if (reload === undefined) {
+      reload = this.load(true).then((list) => match(list));
+      this.reloads.set(key, reload);
+    }
+    return { entry: await reload };
   }
 
   /** Loads the catalog once at a time; keeps the previous one if a reload fails. */
