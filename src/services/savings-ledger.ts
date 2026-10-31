@@ -1,5 +1,5 @@
 import type { CacheUsage, ModelRef, Ttl } from '../models/cache.ts';
-import type { LedgerTotals, SavingsReadout } from '../models/savings.ts';
+import type { LedgerTotals, ModelPrice, SavingsReadout } from '../models/savings.ts';
 import type { LedgerStore } from './ledger-store.ts';
 import type { PriceBook } from './model-prices.ts';
 import { avoidedUnits, avoidedUsd, pingUnits, pingUsd, toReadout } from './savings-math.ts';
@@ -30,11 +30,14 @@ class SavingsLedger {
 
   public constructor(private readonly deps: SavingsLedgerDeps) {}
 
-  /** A real request ended the stretch: resets the stretch ping cost. */
+  /**
+   * A real request ended the stretch: resets the stretch ping cost. The reset is applied
+   * in event order, asynchronously, so `readout` right after may still show the old
+   * stretch cost until earlier events settle.
+   */
   public stretchStarted(sessionID: string): void {
-    void this.enqueue(sessionID, async () => {
+    void this.enqueue(sessionID, () => {
       this.stretchUsd.delete(sessionID);
-      await Promise.resolve();
     });
   }
 
@@ -45,11 +48,7 @@ class SavingsLedger {
     ttl: Ttl
   ): Promise<void> {
     await this.enqueue(sessionID, async () => {
-      const price = await this.deps.prices.lookup(
-        model.ref,
-        contextTokens(usage),
-        model.reportedModel
-      );
+      const price = await this.lookupPrice(model, contextTokens(usage));
       const usd = price === undefined ? 0 : pingUsd(usage, ttl, price);
       await this.deps.store.update(sessionID, (totals) => ({
         ...totals,
@@ -73,11 +72,7 @@ class SavingsLedger {
     returnContextTokens: number
   ): Promise<void> {
     await this.enqueue(sessionID, async () => {
-      const price = await this.deps.prices.lookup(
-        model.ref,
-        returnContextTokens,
-        model.reportedModel
-      );
+      const price = await this.lookupPrice(model, returnContextTokens);
       const usd = price === undefined ? 0 : avoidedUsd(avoidedTokens, ttl, price);
       await this.deps.store.update(sessionID, (totals): LedgerTotals => ({
         ...totals,
@@ -100,6 +95,17 @@ class SavingsLedger {
     return toReadout(totals, this.stretchUsd.get(sessionID) ?? null);
   }
 
+  /** A rejected lookup counts as unpriced. */
+  private async lookupPrice(model: PricedModel, tokens: number): Promise<ModelPrice | undefined> {
+    let price: ModelPrice | undefined;
+    try {
+      price = await this.deps.prices.lookup(model.ref, tokens, model.reportedModel);
+    } catch {
+      // Left unpriced.
+    }
+    return price;
+  }
+
   private startLoad(sessionID: string): void {
     if (this.loading.has(sessionID)) return;
     this.loading.add(sessionID);
@@ -113,7 +119,7 @@ class SavingsLedger {
   }
 
   /** Runs `step` after the session's earlier events, then notifies. Never rejects. */
-  private async enqueue(sessionID: string, step: () => Promise<void>): Promise<void> {
+  private async enqueue(sessionID: string, step: () => Promise<void> | void): Promise<void> {
     const run = (this.chains.get(sessionID) ?? Promise.resolve()).then(async () => {
       try {
         await step();

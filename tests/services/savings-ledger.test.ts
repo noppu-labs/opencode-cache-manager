@@ -117,4 +117,15 @@ describe('SavingsLedger', () => {
     expect(changes).toEqual(['s']);
     expect(ledger.readout('s')).not.toBeNull();
   });
+
+  test('a rejected price lookup counts the event as unpriced', async () => {
+    const { ledger, store } = setup(async () => {
+      throw new Error('boom');
+    });
+    await store.load('s');
+    await ledger.pingCharged('s', model, usage, '5m');
+    await ledger.stretchRescued('s', model, 1000, '5m', 1000);
+    expect(store.peek('s')).toMatchObject({ pings: 1, rescues: 1, unpricedEvents: 2, pingUsd: 0 });
+    expect(ledger.readout('s')?.priced).toBe(false);
+  });
 });
