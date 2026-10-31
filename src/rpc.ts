@@ -15,6 +15,7 @@ const settingsSchema = {
     maxPings: { maximum: 100, minimum: 0, type: 'integer' },
     minContextTokens: { minimum: 0, type: 'integer' },
     mode: { enum: ['5m', '1h', 'hybrid'], type: 'string' },
+    savings: { type: 'boolean' },
   },
   type: 'object',
 } as const;
@@ -113,7 +114,7 @@ const CacheTtlRpc = {
         properties: {
           global: {
             ...settingsSchema,
-            required: ['mode', 'keepalive', 'maxPings', 'minContextTokens'],
+            required: ['mode', 'keepalive', 'maxPings', 'minContextTokens', 'savings'],
           },
           session: { oneOf: [settingsSchema, { type: 'null' }] },
         },

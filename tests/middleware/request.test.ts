@@ -23,7 +23,12 @@ import { memoryKv } from '../helpers/memory-kv.ts';
 function harness(
   config: { options?: Partial<PluginOptions>; profiles?: Map<string, CacheProfileId> } = {}
 ) {
-  const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
+  const options: PluginOptions = {
+    openaiCompatible: true,
+    modelsDevPrices: false,
+    cacheProfiles: [],
+    ...config.options,
+  };
   const learned = config.profiles ?? new Map<string, CacheProfileId>();
   const profiles = { get: (ref: ModelRef) => learned.get(`${ref.providerID}/${ref.id}`) };
   const { kv } = memoryKv();
@@ -204,7 +209,7 @@ describe('createRequestHook TTL rewrite', () => {
         requestSent: () => {},
       } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
-      options: { openaiCompatible: true, cacheProfiles: [] },
+      options: { openaiCompatible: true, modelsDevPrices: false, cacheProfiles: [] },
       profiles: { get: () => undefined },
       primaryMessages: new Map(),
     });
@@ -995,7 +1000,11 @@ describe('createRequestHook with the real keepalive engine', () => {
       isChild: async () => false,
       onChange: () => {},
     });
-    const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [] };
+    const options: PluginOptions = {
+      openaiCompatible: true,
+      modelsDevPrices: false,
+      cacheProfiles: [],
+    };
     const hook = createRequestHook({
       store,
       engine,

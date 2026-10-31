@@ -64,6 +64,9 @@ function parseCommandArg(raw: unknown): CommandAction {
   if (command === 'keepalive' && (value === 'on' || value === 'off')) {
     return { patch: { keepalive: value === 'on' }, type: 'set' };
   }
+  if (command === 'savings' && (value === 'on' || value === 'off')) {
+    return { patch: { savings: value === 'on' }, type: 'set' };
+  }
   if (command === 'pings' && /^\d+$/u.test(value ?? '')) {
     const maxPings = Number(value);
     if (maxPings <= MAX_PINGS_LIMIT) return { patch: { maxPings }, type: 'set' };

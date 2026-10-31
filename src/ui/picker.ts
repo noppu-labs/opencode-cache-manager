@@ -37,7 +37,7 @@ interface Choice<Value> {
   description?: string;
 }
 
-const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens'];
+const FIELDS: Field[] = ['mode', 'keepalive', 'maxPings', 'minContextTokens', 'savings'];
 
 const isScope = (value: string | undefined): value is Scope =>
   value === 'session' || value === 'global';
@@ -49,6 +49,7 @@ const FIELD_INFO: Record<Field, { row: string; label: string }> = {
   maxPings: { label: 'pings per idle', row: 'Pings per idle' },
   minContextTokens: { label: 'min context', row: 'Min context' },
   mode: { label: 'cache TTL', row: 'TTL mode' },
+  savings: { label: 'savings', row: 'Savings' },
 };
 
 /* oxlint-disable eslint/no-magic-numbers -- the preset values offered in the picker are the data itself */
@@ -59,7 +60,7 @@ const MIN_CONTEXT_CHOICES = [0, 20_000, 50_000, 100_000];
 type Toast = (message: string, variant: 'success' | 'info' | 'warning' | 'error') => unknown;
 
 function formatValue(field: Field, value: Settings[Field]): string {
-  if (field === 'keepalive') return value === true ? 'on' : 'off';
+  if (field === 'keepalive' || field === 'savings') return value === true ? 'on' : 'off';
   if (field === 'minContextTokens' && typeof value === 'number') return formatTokens(value);
   return String(value);
 }
@@ -87,7 +88,8 @@ function fieldChoices(field: Field): Choice<string | number>[] {
     case 'mode': {
       return (['5m', '1h', 'hybrid'] as const).map((value) => ({ value, ...OPTION_INFO[value] }));
     }
-    case 'keepalive': {
+    case 'keepalive':
+    case 'savings': {
       return [
         { title: 'on', value: 'on' },
         { title: 'off', value: 'off' },
@@ -170,8 +172,8 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
       const value = await promptNumber(field);
       if (value === undefined) return;
       patch = { [field]: value };
-    } else if (field === 'keepalive') {
-      patch = { keepalive: selected === 'on' };
+    } else if (field === 'keepalive' || field === 'savings') {
+      patch = { [field]: selected === 'on' };
     } else {
       patch = { [field]: selected };
     }
@@ -219,4 +221,4 @@ function createPicker({ dialog, rpc, toast, currentSessionID }: PickerDeps): () 
 }
 
 export type { Toast, PickerDeps };
-export { FIELDS, FIELD_INFO, formatValue, createPicker };
+export { FIELDS, FIELD_INFO, formatValue, createPicker, settingsOptions };

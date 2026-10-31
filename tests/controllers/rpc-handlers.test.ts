@@ -26,7 +26,13 @@ describe('createRpcHandlers', () => {
     test('returns the built-in defaults and a null session without a session ID', async () => {
       const { handlers } = await setup();
       expect(await handlers.getSettings({})).toEqual({
-        global: { mode: '5m', keepalive: true, maxPings: 5, minContextTokens: 50_000 },
+        global: {
+          mode: '5m',
+          keepalive: true,
+          maxPings: 5,
+          minContextTokens: 50_000,
+          savings: true,
+        },
         session: null,
       });
     });

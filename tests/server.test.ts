@@ -1058,7 +1058,7 @@ describe('cache-manager RPC', () => {
     await (plugin as any).setup(host.ctx);
     expect(host.rpc()).toBeDefined();
     expect(await host.rpc().getSettings({})).toEqual({
-      global: { mode: '5m', keepalive: true, maxPings: 5, minContextTokens: 50_000 },
+      global: { mode: '5m', keepalive: true, maxPings: 5, minContextTokens: 50_000, savings: true },
       session: null,
     });
   });
