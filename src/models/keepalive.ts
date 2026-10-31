@@ -38,7 +38,7 @@ type KeepaliveSnapshot = {
   lastCache: CacheReadout | null;
   /** The `savings` setting. */
   showSavings: boolean;
-  /** The session's ledger readout; null for unmanaged or child sessions and before the ledger loads. */
+  /** The session's ledger readout; null with savings off, for unmanaged or child sessions and before the ledger loads. */
   savings: SavingsReadout | null;
 };
 

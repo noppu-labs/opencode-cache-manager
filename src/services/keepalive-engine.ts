@@ -303,8 +303,10 @@ class KeepaliveEngine {
 
   private learnPrefix(state: SessionState, usage: CacheUsage, kind: RequestKind): void {
     if (state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl)) {
-      if (kind === 'primary' && state.firstPrimaryContext === null) {
-        state.firstPrimaryContext = contextTokens(usage);
+      const context = contextTokens(usage);
+      // A zero context says nothing about the prefix; subtracting it would count the whole read.
+      if (kind === 'primary' && state.firstPrimaryContext === null && context > 0) {
+        state.firstPrimaryContext = context;
       }
     } else if ((usage.write1hTokens ?? 0) > 0) {
       state.prefix1hTokens = usage.write1hTokens ?? null;
@@ -385,9 +387,14 @@ class KeepaliveEngine {
     }
   }
 
-  /** Managed, non-child sessions show savings; reading the ledger of any other session would load it for nothing. */
+  /** Only managed, non-child sessions with savings shown read the ledger; any other read would load it for nothing. */
   private readout(sessionID: string, state: SessionState): SavingsReadout | null {
-    if (!this.deps.savings || state.childResult !== false || state.requestedTtl === null) {
+    if (
+      !this.deps.savings ||
+      !state.showSavings ||
+      state.childResult !== false ||
+      state.requestedTtl === null
+    ) {
       return null;
     }
     try {

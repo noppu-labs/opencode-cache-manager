@@ -1355,13 +1355,28 @@ describe('keepalive engine: savings', () => {
       expect(rescues(h)).toEqual([]);
     });
 
-    test('a return on a different model is no rescue', async () => {
+    test('a rescue is priced with the model of the return response', async () => {
       const h = await pingedStretch();
       await h.advance(3 * MIN);
-      await h.request('s1', write5m, '5m', {
-        model: { providerID: 'anthropic', id: 'claude-opus-5-5' },
+      h.engine.requestSent('s1', { requestedTtl: '5m', isPing: false, model: MODEL });
+      await h.engine.responseObserved('s1', {
+        usage: pureRead,
+        ok: true,
+        isPing: false,
+        kind: 'primary',
+        model: MODEL,
+        reportedModel: 'claude-sonnet-5-5-20261001',
       });
-      expect(rescues(h)).toEqual([]);
+      expect(rescues(h)).toEqual([
+        [
+          'stretchRescued',
+          's1',
+          { ref: MODEL, reportedModel: 'claude-sonnet-5-5-20261001' },
+          80_000,
+          '5m',
+          80_100,
+        ],
+      ]);
     });
 
     test('a stretch whose only ping missed is no rescue', async () => {
@@ -1473,6 +1488,24 @@ describe('keepalive engine: savings', () => {
       expect(rescues(h)).toEqual([]);
     });
 
+    test('OpenAI hybrid never takes a zero context as the prefix', async () => {
+      const h = harness({ requestedTtl: '30m', settings: { minContextTokens: 0 } });
+      const empty: CacheUsage = {
+        ...writeNoBreakdown,
+        inputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      };
+      await h.request('s1', empty, '30m', { split: true });
+      await h.advance(MIN);
+      await h.request('s1', writeNoBreakdown, '30m', { split: true });
+      await h.advance(25 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(14 * MIN);
+      await h.request('s1', hit, '30m', { split: true });
+      expect(rescues(h)).toEqual([]);
+    });
+
     test('OpenAI hybrid subtracts the context of the first primary response', async () => {
       const h = harness({ requestedTtl: '30m', settings: { minContextTokens: 0 } });
       const first: CacheUsage = {
@@ -1571,6 +1604,17 @@ describe('keepalive engine: savings', () => {
       const off = harness({ settings: { savings: false } });
       await off.request('s1', write1h);
       expect(off.engine.snapshot('s1').showSavings).toBe(false);
+    });
+
+    test('with savings off the ledger is not read, and turning it on reads it again', async () => {
+      const h = harness({ settings: { savings: false } });
+      h.ledger.setReadout(readout);
+      await h.request('s1', write1h);
+      expect(h.engine.snapshot('s1').savings).toBeNull();
+      expect(h.ledger.readoutCalls).toEqual([]);
+      h.settings.savings = true;
+      await h.engine.reevaluate('s1');
+      expect(h.engine.snapshot('s1')).toMatchObject({ showSavings: true, savings: readout });
     });
 
     test('savings is the ledger readout of a managed session', async () => {
