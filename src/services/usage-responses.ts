@@ -26,6 +26,7 @@ function readResponsesUsage(raw: unknown): CacheUsage | undefined {
     cacheReadTokens: read,
     cacheWriteTokens: write,
     inputTokens: Math.max(0, inputTokens - read - write),
+    outputTokens: num(raw.output_tokens) ?? 0,
     write1hTokens: undefined,
     write5mTokens: undefined,
   };
