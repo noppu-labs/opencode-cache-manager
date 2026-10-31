@@ -15,6 +15,9 @@ const MIN_USD = 0.01;
 /** Below this ratio `formatMultiple` keeps one decimal. */
 const MULTIPLE_DECIMAL_LIMIT = 10;
 
+/** Smallest ratio `formatMultiple` shows as a number. */
+const MIN_MULTIPLE = 0.05;
+
 /** "52m", "3m", "45s"; "1h 05m" at 60 minutes and above. */
 function formatRemaining(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / MS_PER_SECOND));
@@ -51,8 +54,9 @@ function formatUsd(amount: number): string {
   return `${sign}$${magnitude.toFixed(2)}`;
 }
 
-/** "9×", "9.4×" below 10, "13×" from 10. */
+/** "9×", "9.4×" below 10, "13×" from 10, "<0.1×" for a positive ratio that would round to 0. */
 function formatMultiple(ratio: number): string {
+  if (ratio > 0 && ratio < MIN_MULTIPLE) return '<0.1×';
   return `${ratio < MULTIPLE_DECIMAL_LIMIT ? trim(ratio) : Math.round(ratio)}×`;
 }
 

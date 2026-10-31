@@ -72,4 +72,11 @@ describe('formatMultiple', () => {
     expect(formatMultiple(12.6)).toBe('13×');
     expect(formatMultiple(0.8)).toBe('0.8×');
   });
+
+  test('a tiny positive ratio is <0.1×, never 0×', () => {
+    expect(formatMultiple(0.04)).toBe('<0.1×');
+    expect(formatMultiple(0.0001)).toBe('<0.1×');
+    expect(formatMultiple(0.05)).toBe('0.1×');
+    expect(formatMultiple(0)).toBe('0×');
+  });
 });
