@@ -9,6 +9,15 @@ import {
 /** Below this many tokens `formatCompactTokens` keeps one decimal of thousands. */
 const COMPACT_DECIMAL_LIMIT = 100_000;
 
+/** Smallest amount `formatUsd` shows as a number. */
+const MIN_USD = 0.01;
+
+/** Below this ratio `formatMultiple` keeps one decimal. */
+const MULTIPLE_DECIMAL_LIMIT = 10;
+
+/** Smallest ratio `formatMultiple` shows as a number. */
+const MIN_MULTIPLE = 0.05;
+
 /** "52m", "3m", "45s"; "1h 05m" at 60 minutes and above. */
 function formatRemaining(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / MS_PER_SECOND));
@@ -37,9 +46,30 @@ function formatCompactTokens(tokens: number): string {
   return `${trim(tokens / MILLION)}M`;
 }
 
+/** "$0.42", "<$0.01" for a non-zero amount below a cent, "-$0.02" when negative. */
+function formatUsd(amount: number): string {
+  const sign = amount < 0 ? '-' : '';
+  const magnitude = Math.abs(amount);
+  if (magnitude > 0 && magnitude < MIN_USD) return `${sign}<$${MIN_USD.toFixed(2)}`;
+  return `${sign}$${magnitude.toFixed(2)}`;
+}
+
+/** "9×", "9.4×" below 10, "13×" from 10, "<0.1×" for a positive ratio that would round to 0. */
+function formatMultiple(ratio: number): string {
+  if (ratio > 0 && ratio < MIN_MULTIPLE) return '<0.1×';
+  return `${ratio < MULTIPLE_DECIMAL_LIMIT ? trim(ratio) : Math.round(ratio)}×`;
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
 
-export { formatRemaining, formatTokens, formatCompactTokens, errorMessage };
+export {
+  formatRemaining,
+  formatTokens,
+  formatCompactTokens,
+  formatUsd,
+  formatMultiple,
+  errorMessage,
+};
