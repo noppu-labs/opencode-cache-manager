@@ -10,6 +10,7 @@ import { createRequestHook } from './middleware/request.ts';
 import { createResponseHook } from './middleware/response.ts';
 import type { KeepaliveSnapshot } from './models/keepalive.ts';
 import { CacheTtlRpc } from './rpc.ts';
+import { fetchJson } from './services/fetch-json.ts';
 import { KeepaliveEngine } from './services/keepalive-engine.ts';
 import { LEDGER_KEY_PREFIX, LedgerStore } from './services/ledger-store.ts';
 import { PriceBook, toCatalogModels } from './services/model-prices.ts';
@@ -18,8 +19,11 @@ import { releasesMessages } from './services/ping-alignment.ts';
 import { PingTracker } from './services/ping-tracker.ts';
 import { ProfileStore } from './services/profile-store.ts';
 import { SavingsLedger } from './services/savings-ledger.ts';
-import { SettingsStore, sweepDeletedSessions } from './services/settings-store.ts';
-import { fetchJson } from './utils/fetch-json.ts';
+import {
+  SESSION_KEY_PREFIX,
+  SettingsStore,
+  sweepDeletedSessions,
+} from './services/settings-store.ts';
 
 /**
  * Server entrypoint for the prompt-cache plugin.
@@ -147,8 +151,10 @@ export default Plugin.define({
 
     const getSession = async (sessionID: string): Promise<unknown> =>
       ctx.session.get({ sessionID });
-    void sweepDeletedSessions(ctx.storage, getSession).catch(() => {});
-    void sweepDeletedSessions(ctx.storage, getSession, LEDGER_KEY_PREFIX).catch(() => {});
+    void sweepDeletedSessions(ctx.storage, getSession, [
+      SESSION_KEY_PREFIX,
+      LEDGER_KEY_PREFIX,
+    ]).catch(() => {});
 
     return () => {
       engine.dispose();

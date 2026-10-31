@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
-import { fetchJson } from '../../src/utils/fetch-json.ts';
+import { fetchJson } from '../../src/services/fetch-json.ts';
 
 describe('fetchJson', () => {
   let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
