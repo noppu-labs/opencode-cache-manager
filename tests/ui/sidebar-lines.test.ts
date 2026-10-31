@@ -332,6 +332,12 @@ describe('sidebarLines: savings rows', () => {
     );
   });
 
+  test('a negative net shows a signed dollar figure while rescues are counted', () => {
+    expect(rows(warm(readout({ netUsd: -0.05, returnRatio: 0.5 })))[1]).toBe(
+      'saved -$0.05 · 2 rewrites'
+    );
+  });
+
   test('no return row without a ratio', () => {
     expect(rows(warm(readout({ returnRatio: null })))).toHaveLength(2);
   });
