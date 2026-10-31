@@ -1,6 +1,6 @@
 {
   "name": "@noppu-labs/opencode-cache-manager",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Prompt-cache manager for OpenCode V2: per-session 5m / 1h / hybrid TTL and keepalive pings for Claude and OpenAI GPT-5.6+ on the Anthropic Messages, Chat Completions and Responses APIs (OpenRouter, proxies), plus a sidebar cache status",
   "keywords": [
     "anthropic",

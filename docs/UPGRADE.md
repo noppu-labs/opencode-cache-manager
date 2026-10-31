@@ -1,5 +1,13 @@
 # Upgrading
 
+## From 0.6.x
+
+Update the version range in your `plugins` entry to `^0.7.0`: on 0.x, `^0.6.0` does not pick up 0.7.
+
+0.7.0 adds a savings ledger. The sidebar gains `saved` and `return` rows by default, and `pings` shows the cost of the current stretch when the model has a price. Turn them off with the `savings` option, the picker's Savings row, or `/cache-manager savings off`; the ledger keeps counting while hidden. See [Savings](../README.md#savings).
+
+`modelsDevPrices` is opt-in (default `false`). Leave it off and the plugin makes no network calls of its own; sessions on models the OpenCode catalog doesn't price show the unit-free form.
+
 ## From 0.5.x
 
 0.6.0 classifies requests on the Anthropic Messages wire (`POST …/messages`) by model, the way the OpenAI wires already were. The `anthropic` and `omniroute-anthropic` providers behave as before and are always Claude. Any other provider ID is resolved from, in order, your `cacheProfiles` patterns, a Claude model name (it contains `claude` or starts with `anthropic/`, on the OpenCode model ID or the request's `model`), and the model the latest response reported, applied from the next request. A router alias that switches models therefore runs one turn behind, and a request such an alias rejects (status 400 or 422) drops the learned entry. Anything else is `implicit`: observed, never rewritten or pinged. See [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md).
@@ -34,7 +42,7 @@ Behaviour you may notice:
 - **A `-1h` variant on an `implicit` model** (for example a `"gpt": "implicit"` mapping, or a model the plugin doesn't manage) has its `x-cache-ttl` header stripped and nothing else changed. In 0.4 the header still rewrote any `cache_control` blocks already in the request, which affected a Claude router alias whose ID doesn't name Claude. Map such an alias in `cacheProfiles` (`"my-alias": "anthropic"`) so its `-1h` variant applies from the first request; otherwise it applies once a response has taught the plugin the alias is Claude.
 - **Claude through a `…/responses` endpoint** is only observed: no TTL rewrite and no pings, since the Anthropic rewrite has nothing to act on in a Responses body. With the `openaiCompatible` option off, a `…/responses` request only has the `x-cache-ttl` header stripped; before, it went through the Anthropic rewrite.
 - **A non-Claude model behind an Anthropic-ID provider** on an OpenAI wire now follows its own profile instead of being rewritten as Claude.
-- **OmniRoute** drops `prompt_cache_breakpoint`, so GPT's 12-hour cache is not expected to reach OpenAI through it yet (not yet reported upstream; expected, not measured). Caching turned off for one-off calls does work. Pings on the 12-hour schedule are then expected to miss, so use `5m` for GPT sessions there.
+- **OmniRoute** drops `prompt_cache_breakpoint`, so GPT's 12-hour cache is not expected to reach OpenAI through it yet (fixed upstream in OmniRoute PR #18255 for issue #18254, merged 2026-10-27, but not yet in a release; the latest is v3.8.52; expected, not measured). Caching turned off for one-off calls does work. Pings on the 12-hour schedule are then expected to miss, so use `5m` for GPT sessions there until a release includes the fix.
 - **Older GPT models** (before 5.6) are never sent the new fields, since they answer 400.
 
 ## From 0.3.x
