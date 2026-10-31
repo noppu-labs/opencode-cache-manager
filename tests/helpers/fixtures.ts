@@ -155,6 +155,7 @@ const fullParsed: CacheUsage = {
   inputTokens: 10,
   cacheReadTokens: 60_000,
   cacheWriteTokens: 500,
+  outputTokens: 0,
   write5mTokens: 0,
   write1hTokens: 500,
 };

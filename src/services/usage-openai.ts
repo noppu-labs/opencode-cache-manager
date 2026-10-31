@@ -25,6 +25,7 @@ function readOpenAiUsage(raw: unknown): CacheUsage | undefined {
     cacheReadTokens: read,
     cacheWriteTokens: write,
     inputTokens: Math.max(0, promptTokens - read - writeInPrompt),
+    outputTokens: num(raw.completion_tokens) ?? 0,
     write1hTokens: undefined,
     write5mTokens: undefined,
   };

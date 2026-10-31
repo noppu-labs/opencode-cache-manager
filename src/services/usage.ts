@@ -32,6 +32,7 @@ function readUsage(raw: unknown): PartialUsage | undefined {
     cacheReadTokens: num(raw.cache_read_input_tokens),
     cacheWriteTokens: num(raw.cache_creation_input_tokens),
     inputTokens: num(raw.input_tokens),
+    outputTokens: num(raw.output_tokens),
   };
   if (isRecord(raw.cache_creation)) {
     out.write5mTokens = num(raw.cache_creation.ephemeral_5m_input_tokens) ?? 0;
@@ -45,6 +46,7 @@ function finalize(partial: PartialUsage): CacheUsage {
     cacheReadTokens: partial.cacheReadTokens ?? 0,
     cacheWriteTokens: partial.cacheWriteTokens ?? 0,
     inputTokens: partial.inputTokens ?? 0,
+    outputTokens: partial.outputTokens ?? 0,
     write1hTokens: partial.write1hTokens,
     write5mTokens: partial.write5mTokens,
   };

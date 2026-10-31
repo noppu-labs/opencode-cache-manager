@@ -23,6 +23,8 @@ interface CacheUsage {
   inputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Generated tokens; 0 when the provider omits them. */
+  outputTokens: number;
   /** `undefined` when the provider omits the `cache_creation` breakdown. */
   write5mTokens: number | undefined;
   write1hTokens: number | undefined;
