@@ -261,7 +261,7 @@ Below `pings`, the sidebar shows what keepalive has saved in this session. The f
 A rewrite counts as saved when all three hold:
 
 - at least one ping in the idle stretch was a hit;
-- your next prompt (or a compaction) came after the cache would have expired without pings;
+- your next prompt (or a compaction) came more than 30 seconds after the cache would have expired without pings;
 - that request read at least 90% of the context from cache.
 
 Anything else is ping cost only: a session you never came back to, a return before the cache would have expired, a return after it expired anyway, a return on a different model, which usually doesn't read the old cache. The count errs low on purpose; when a case is unclear, it counts less. The avoided amount is what writing the cached tokens at the stretch's TTL would have cost, minus what reading them cost. On `hybrid`, only the message tail would have expired, so only the tokens past the long-lived prefix count. A restart in the middle of a stretch means that stretch's return isn't counted; pings already paid stay paid, and after the restart a session's totals reappear after its next request.
@@ -269,11 +269,11 @@ Anything else is ping cost only: a session you never came back to, a return befo
 - `saved` is the session total. In dollars it is net: avoided cost minus the cost of every ping, wasted ones included. Without a price it is `2 rewrites · 282k`, the rewrites and the tokens they avoided. `saved nothing yet` shows once you've paid for a ping and nothing has been saved.
 - `return` is avoided cost divided by ping cost, such as `9× ping cost`. It appears after the first save. The label may change.
 
-Dollars need a price for every model the session used. OpenCode's catalog prices the models of known providers. For a model under a custom provider, add `cost` to the model in `opencode.jsonc` (`input`, `output`, `cache.read`, `cache.write`, in dollars per million tokens); [the OpenAI-compatible example](docs/examples/opencode.openai-compatible.jsonc) shows where. Or set `modelsDevPrices` to `true` to look up models the catalog has no price for in models.dev. That is the only network call the plugin makes, once a day at most, and a price from there is the list price, which may differ from what a subscription-backed route charges you. A failed lookup, or a model with no clear match, leaves the model unpriced. If OpenCode's model catalog can't be loaded, events are unpriced and models.dev is not consulted.
+Dollars need a price for every model the session used. OpenCode's catalog prices the models of known providers. For a model under a custom provider, add `cost` to the model in `opencode.jsonc` (`input`, `output`, `cache.read`, `cache.write`, in dollars per million tokens); [the OpenAI-compatible example](docs/examples/opencode.openai-compatible.jsonc) shows where. Or set `modelsDevPrices` to `true` to look up models the catalog has no price for in models.dev. That is the only network call the plugin makes, once a day at most (after a failed fetch, the next try waits at least 15 minutes), and a price from there is the list price, which may differ from what a subscription-backed route charges you. A failed lookup, or a model with no clear match, leaves the model unpriced. If OpenCode's model catalog can't be loaded, events are unpriced and models.dev is not consulted.
 
 If any event in a session has no price, the whole session shows the unit-free form, since a partial dollar figure would mislead. Each event is priced with the model that served it, so a session that switches models still adds up. Dollar amounts round to the cent, with `<$0.01` for a non-zero amount below a cent and a minus sign (`-$0.02`) for a negative net.
 
-Turn the rows off with `savings` in the plugin options, in the picker, or with `/cache-manager savings off` for one session. The ledger keeps counting while they are hidden. Totals are kept when a session becomes implicit, and removed when the session is deleted.
+Turn the rows off with `savings` in the plugin options, in the picker, or with `/cache-manager savings off` for one session. The ledger keeps counting while they are hidden. Totals are kept when a session becomes implicit. Totals of deleted sessions are removed at the next startup.
 
 ## Contributing
 
