@@ -7,14 +7,23 @@ import {
   RETRY_DELAY_MS,
   TTL_MS,
 } from '../constants/keepalive.ts';
-import type { CacheUsage, Ttl } from '../models/cache.ts';
+import { OPENAI_TTLS } from '../constants/openai.ts';
+import { SAVINGS_EXPIRY_MARGIN_MS } from '../constants/savings.ts';
+import type { CacheUsage, ModelRef, Ttl } from '../models/cache.ts';
 import type {
   CacheReadout,
   KeepaliveSnapshot,
   RequestKind,
   SkipReason,
 } from '../models/keepalive.ts';
+import type { SavingsReadout } from '../models/savings.ts';
+import type { SavingsLedger } from './savings-ledger.ts';
 import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
+
+type EngineLedger = Pick<
+  SavingsLedger,
+  'stretchStarted' | 'pingCharged' | 'stretchRescued' | 'readout'
+>;
 
 interface EngineDeps {
   now: () => number;
@@ -25,6 +34,17 @@ interface EngineDeps {
   settings: (sessionID: string) => Promise<Settings>;
   isChild: (sessionID: string) => Promise<boolean>;
   onChange: (snapshot: KeepaliveSnapshot) => void;
+  /** Told of charged pings and rescued stretches; never awaited. */
+  savings?: EngineLedger;
+}
+
+/** `split`: the active mode is `hybrid` on a managed profile. */
+interface RequestInfo {
+  requestedTtl: Ttl | null;
+  isPing: boolean;
+  kind?: RequestKind;
+  split?: boolean;
+  model?: ModelRef;
 }
 
 interface PingInFlight {
@@ -40,6 +60,18 @@ interface ResponseInfo {
   kind: RequestKind;
   stopReason?: string;
   unmanaged?: boolean;
+  model?: ModelRef;
+  /** The model the response named. */
+  reportedModel?: string;
+}
+
+/** A return request that may rescue its stretch, decided by its response. */
+interface PendingReturn {
+  contextBefore: number;
+  ttl: Ttl;
+  /** Tokens of the long-lived prefix on a split cache; null when unknown. */
+  prefix: number | null;
+  split: boolean;
 }
 
 interface SessionState {
@@ -74,7 +106,30 @@ interface SessionState {
   /** Bumped by every schedule and non-ping request; invalidates older timers and async computations. */
   generation: number;
   child: Promise<boolean> | undefined;
+  /** The latest resolved child lookup; null before one resolves. */
+  childResult: boolean | null;
   lastEmitted: string;
+  showSavings: boolean;
+  /** When the cache expires without pings: the latest real primary or compaction confirmation plus its TTL. */
+  originalExpiry: number | null;
+  /** Hit pings since the latest real request. */
+  stretchHits: number;
+  /** A ping was charged since the ledger last heard of a new stretch. */
+  stretchCharged: boolean;
+  /** The TTL the latest ping was sent on, which its cost is charged at. */
+  pingTtl: Ttl | null;
+  /** Bumped by every real request; a ping charged under another value was answered after its stretch ended. */
+  stretch: number;
+  /** The `stretch` the latest ping was sent in. */
+  pingStretch: number;
+  /** The latest primary or compaction request ran in `hybrid` mode. */
+  split: boolean;
+  /** Claude split prefix: the largest 1h write of a primary or compaction response. */
+  prefix1hTokens: number | null;
+  /** OpenAI split prefix: the context of the first primary response on an OpenAI TTL. */
+  firstPrimaryContext: number | null;
+  pendingReturn: PendingReturn | null;
+  model: ModelRef | null;
 }
 
 class KeepaliveEngine {
@@ -84,10 +139,7 @@ class KeepaliveEngine {
   public constructor(private readonly deps: EngineDeps) {}
 
   /** `kind` defaults to `primary`; only `primary` and `compaction` requests decide the session's requested TTL. */
-  public requestSent(
-    sessionID: string,
-    info: { requestedTtl: Ttl | null; isPing: boolean; kind?: RequestKind }
-  ): void {
+  public requestSent(sessionID: string, info: RequestInfo): void {
     if (this.disposed) return;
     const state = this.state(sessionID);
 
@@ -102,7 +154,15 @@ class KeepaliveEngine {
     state.lastRequestAt = this.deps.now();
     state.requestSentAt = state.lastRequestAt;
     const kind = info.kind ?? 'primary';
-    if (kind === 'primary' || kind === 'compaction') {
+    const sessionTurn = kind === 'primary' || kind === 'compaction';
+    // Any earlier pending return is overtaken by this request.
+    state.pendingReturn = sessionTurn
+      ? this.returnCheck(state, state.lastRequestAt, info.split === true)
+      : null;
+    this.startStretch(sessionID, state);
+    if (sessionTurn) {
+      state.split = info.split === true;
+      if (info.model) state.model = info.model;
       state.requestedTtl = info.requestedTtl;
       // A TTL usage cannot report means the session switched to a model whose cache the detected TTL does not describe.
       const requested = info.requestedTtl;
@@ -147,10 +207,11 @@ class KeepaliveEngine {
     }
 
     if (info.ok) {
-      this.recordResponse(state, info);
+      this.recordResponse(sessionID, state, info);
     } else {
       // The request did not reach the cache, so the expiry goes back to the last confirmed request.
       state.lastRequestAt = state.confirmedAt;
+      state.pendingReturn = null;
     }
     this.commit(sessionID, state);
     await this.schedule(sessionID);
@@ -163,6 +224,13 @@ class KeepaliveEngine {
         ? [...this.sessions.keys()]
         : [sessionID].filter((id) => this.sessions.has(id));
     await Promise.all(ids.map(async (id) => this.schedule(id)));
+  }
+
+  /** Re-commits the session's snapshot, emitting it only if it changed (a new ledger readout). */
+  public refresh(sessionID: string): void {
+    if (this.disposed) return;
+    const state = this.sessions.get(sessionID);
+    if (state) this.commit(sessionID, state);
   }
 
   public snapshot(sessionID: string): KeepaliveSnapshot {
@@ -187,6 +255,8 @@ class KeepaliveEngine {
     info: ResponseInfo
   ): Promise<void> {
     const { inflight } = state;
+    // Charged even when a real request already ended the ping's stretch: it was still billed.
+    if (info.usage) this.chargePing(sessionID, state, info.usage, info);
     if (!inflight) return;
     state.inflight = null;
     if (!info.ok || !info.usage) {
@@ -200,6 +270,7 @@ class KeepaliveEngine {
     if (hit) {
       state.lastRequestAt = inflight.sentAt ?? inflight.firedAt;
       state.confirmedAt = state.lastRequestAt;
+      state.stretchHits++;
     }
     state.lastPing = hit ? 'hit' : 'miss';
     state.missed = !hit;
@@ -208,8 +279,10 @@ class KeepaliveEngine {
     await this.schedule(sessionID);
   }
 
-  /** Records a successful non-ping response: the expiry anchor, the cache readout and the learned TTL. */
-  private recordResponse(state: SessionState, info: ResponseInfo): void {
+  /** Records a successful non-ping response: the expiry anchor, the cache readout, the learned TTL and a rescue. */
+  private recordResponse(sessionID: string, state: SessionState, info: ResponseInfo): void {
+    const pending = state.pendingReturn;
+    state.pendingReturn = null;
     if (state.requestSentAt !== null) {
       state.confirmedAt = state.requestSentAt;
       state.lastRequestAt = state.requestSentAt;
@@ -219,11 +292,132 @@ class KeepaliveEngine {
       state.lastCache = total > 0 ? { read: info.usage.cacheReadTokens, total } : null;
     }
     // Title and third-party generate calls use other prompts; they say nothing about this session's cache.
-    if (info.usage && (info.kind === 'primary' || info.kind === 'compaction')) {
+    const sessionTurn = info.kind === 'primary' || info.kind === 'compaction';
+    if (info.usage && sessionTurn) {
       state.contextTokens = contextTokens(info.usage);
       this.learn(state, info.usage);
+      this.learnPrefix(state, info.usage, info.kind);
+      if (pending) this.resolveReturn(sessionID, state, pending, info);
+    }
+    if (sessionTurn) {
+      state.originalExpiry =
+        state.ttl === null || state.confirmedAt === null
+          ? null
+          : state.confirmedAt + TTL_MS[state.ttl];
     }
     if (info.kind === 'primary' && info.stopReason === 'tool_use') state.busy = true;
+  }
+
+  private learnPrefix(state: SessionState, usage: CacheUsage, kind: RequestKind): void {
+    if (state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl)) {
+      const context = contextTokens(usage);
+      // A zero context says nothing about the prefix; subtracting it would count the whole read.
+      if (kind === 'primary' && state.firstPrimaryContext === null && context > 0) {
+        state.firstPrimaryContext = context;
+      }
+    } else {
+      // A later turn may rewrite only the tail of the prefix; the largest write errs toward fewer avoided tokens.
+      const write1h = usage.write1hTokens ?? 0;
+      if (write1h > 0) state.prefix1hTokens = Math.max(state.prefix1hTokens ?? 0, write1h);
+    }
+  }
+
+  /**
+   * A real primary or compaction request may rescue its stretch when the stretch had a hit
+   * ping and the request goes out past the margin after the cache would have expired without pings.
+   */
+  private returnCheck(state: SessionState, now: number, split: boolean): PendingReturn | null {
+    if (
+      state.stretchHits === 0 ||
+      state.originalExpiry === null ||
+      now <= state.originalExpiry + SAVINGS_EXPIRY_MARGIN_MS
+    ) {
+      return null;
+    }
+    if (state.ttl === null || state.contextTokens === null) return null;
+    const openai = state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl);
+    return {
+      contextBefore: state.contextTokens,
+      prefix: openai ? state.firstPrimaryContext : state.prefix1hTokens,
+      // Either side being split means the long-lived prefix may have stayed warm on its own.
+      split: state.split || split,
+      ttl: state.ttl,
+    };
+  }
+
+  /** Reports the rescue when the return read the cache warm; a split cache counts only the part past the prefix. */
+  private resolveReturn(
+    sessionID: string,
+    state: SessionState,
+    pending: PendingReturn,
+    info: ResponseInfo
+  ): void {
+    const { usage } = info;
+    const ref = info.model ?? state.model;
+    if (!usage || !ref || usage.cacheReadTokens < HIT_RATIO * pending.contextBefore) return;
+    let avoided = usage.cacheReadTokens;
+    if (pending.split) avoided = pending.prefix === null ? 0 : avoided - pending.prefix;
+    if (avoided <= 0) return;
+    const model = { ref, reportedModel: info.reportedModel };
+    const returnContext = contextTokens(usage);
+    this.report(async (ledger) =>
+      ledger.stretchRescued(sessionID, model, avoided, pending.ttl, returnContext)
+    );
+  }
+
+  private chargePing(
+    sessionID: string,
+    state: SessionState,
+    usage: CacheUsage,
+    info: ResponseInfo
+  ): void {
+    const ref = info.model ?? state.model;
+    const ttl = state.pingTtl;
+    if (!ref || ttl === null) return;
+    // A late ping's cost belongs to the stretch that ended, not to the one now shown.
+    const inStretch = state.pingStretch === state.stretch;
+    if (inStretch) state.stretchCharged = true;
+    const model = { ref, reportedModel: info.reportedModel };
+    this.report(async (ledger) => ledger.pingCharged(sessionID, model, usage, ttl, inStretch));
+  }
+
+  /** A real request ends the stretch; the ledger only needs to hear of it after a charged ping. */
+  private startStretch(sessionID: string, state: SessionState): void {
+    state.stretch++;
+    state.stretchHits = 0;
+    if (!state.stretchCharged) return;
+    state.stretchCharged = false;
+    this.report((ledger) => {
+      ledger.stretchStarted(sessionID);
+    });
+  }
+
+  /** Fire and forget: a ledger call never blocks or breaks scheduling. */
+  private report(call: (ledger: EngineLedger) => Promise<void> | void): void {
+    const ledger = this.deps.savings;
+    if (!ledger) return;
+    try {
+      void Promise.resolve(call(ledger)).catch(() => {});
+    } catch {
+      // A failing ledger must not break scheduling.
+    }
+  }
+
+  /** Only managed, non-child sessions with savings shown read the ledger; any other read would load it for nothing. */
+  private readout(sessionID: string, state: SessionState): SavingsReadout | null {
+    if (
+      !this.deps.savings ||
+      !state.showSavings ||
+      state.childResult !== false ||
+      state.requestedTtl === null
+    ) {
+      return null;
+    }
+    try {
+      return this.deps.savings.readout(sessionID);
+    } catch {
+      return null;
+    }
   }
 
   private state(sessionID: string): SessionState {
@@ -240,9 +434,11 @@ class KeepaliveEngine {
       busy: false,
       cacheSeen: false,
       child: undefined,
+      childResult: null,
       confirmedAt: null,
       contextTokens: null,
       deferred: false,
+      firstPrimaryContext: null,
       generation: 0,
       inflight: null,
       lastCache: null,
@@ -252,13 +448,24 @@ class KeepaliveEngine {
       maxPings: BUILTIN_DEFAULTS.maxPings,
       minContextTokens: BUILTIN_DEFAULTS.minContextTokens,
       missed: false,
+      model: null,
       nextPingAt: null,
+      originalExpiry: null,
+      pendingReturn: null,
       pingPending: false,
+      pingStretch: 0,
+      pingTtl: null,
       pingsUsed: 0,
+      prefix1hTokens: null,
       requestSentAt: null,
       requestedTtl: null,
       retryAt: null,
+      showSavings: BUILTIN_DEFAULTS.savings,
       skipReason: 'no-cache-seen',
+      split: false,
+      stretch: 0,
+      stretchCharged: false,
+      stretchHits: 0,
       timer: null,
       ttl: null,
       ttlSource: null,
@@ -281,7 +488,9 @@ class KeepaliveEngine {
       minContextTokens: state.minContextTokens,
       nextPingAt: state.nextPingAt,
       pingsUsed: state.pingsUsed,
+      savings: this.readout(sessionID, state),
       sessionID,
+      showSavings: state.showSavings,
       skipReason: state.skipReason,
       ttl: state.ttl,
       ttlSource: state.ttlSource,
@@ -354,8 +563,10 @@ class KeepaliveEngine {
     }
     if (this.disposed || state.generation !== generation || state.inflight !== null) return;
 
+    state.childResult = child;
     state.maxPings = settings.maxPings;
     state.minContextTokens = settings.minContextTokens;
+    state.showSavings = settings.savings;
     state.skipReason = this.skipReason(state, settings, child);
     state.nextPingAt = state.skipReason === null ? this.pingTime(state) : null;
 
@@ -419,6 +630,8 @@ class KeepaliveEngine {
 
     state.pingsUsed++;
     state.nextPingAt = null;
+    state.pingTtl = state.ttl;
+    state.pingStretch = state.stretch;
     const inflight: PingInFlight = {
       contextBefore: state.contextTokens,
       firedAt: now,
@@ -455,5 +668,5 @@ class KeepaliveEngine {
   }
 }
 
-export type { EngineDeps };
+export type { EngineDeps, RequestInfo, ResponseInfo };
 export { KeepaliveEngine };

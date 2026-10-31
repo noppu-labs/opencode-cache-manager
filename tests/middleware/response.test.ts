@@ -42,7 +42,12 @@ function gate() {
 }
 
 function harness(config: { options?: Partial<PluginOptions> } = {}) {
-  const options: PluginOptions = { openaiCompatible: true, cacheProfiles: [], ...config.options };
+  const options: PluginOptions = {
+    openaiCompatible: true,
+    modelsDevPrices: false,
+    cacheProfiles: [],
+    ...config.options,
+  };
   const learnCalls: { ref: ModelRef; identity: unknown }[] = [];
   const forgetCalls: ModelRef[] = [];
   const store = new ProfileStore(memoryKv().kv);
@@ -108,11 +113,33 @@ describe('createResponseHook', () => {
           ok: true,
           isPing: false,
           kind: 'primary',
+          model: { providerID: 'anthropic', id: 'claude-sonnet-5-5' },
+          reportedModel: undefined,
           stopReason: undefined,
           unmanaged: false,
         },
       },
     ]);
+  });
+
+  test('reports the model and the model the response names', async () => {
+    const { hook, observed } = harness();
+    await hook(
+      event({ response: jsonResponse({ model: 'claude-sonnet-5-5-20261001', usage: WRITE_1H }) })
+    );
+    await flush();
+    expect(observed[0].info).toMatchObject({
+      model: { providerID: 'anthropic', id: 'claude-sonnet-5-5' },
+      reportedModel: 'claude-sonnet-5-5-20261001',
+    });
+  });
+
+  test('a response that names no model reports no reported model', async () => {
+    const { hook, observed } = harness();
+    await hook(event());
+    await flush();
+    expect(observed[0].info.reportedModel).toBeUndefined();
+    expect(observed[0].info.model).toEqual({ providerID: 'anthropic', id: 'claude-sonnet-5-5' });
   });
 
   test('reports the stop reason of a JSON response', async () => {
@@ -395,7 +422,7 @@ describe('createResponseHook on openai-chat', () => {
         },
       } as unknown as KeepaliveEngine,
       pings: new PingTracker(),
-      options: { openaiCompatible: true, cacheProfiles: [] },
+      options: { openaiCompatible: true, modelsDevPrices: false, cacheProfiles: [] },
       profiles: {
         learnFromResponse: async () => {
           throw new Error('storage down');
