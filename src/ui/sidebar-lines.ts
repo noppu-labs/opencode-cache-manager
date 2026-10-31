@@ -76,7 +76,7 @@ function keepaliveRows(
   return pingLines(snapshot, now, formatClock);
 }
 
-/** The session's `saved` and `return` rows; empty when hidden, not loaded, or before the first ping. */
+/** The keepalive rows of a warm cache followed by the savings rows. */
 function keepaliveLines(
   snapshot: KeepaliveSnapshot,
   now: number,
@@ -85,6 +85,7 @@ function keepaliveLines(
   return [...keepaliveRows(snapshot, now, formatClock), ...savingsLines(snapshot)];
 }
 
+/** The session's `saved` and `return` rows; empty when hidden, not loaded, or before the first ping. */
 function savingsLines(snapshot: KeepaliveSnapshot): SidebarLine[] {
   const { savings } = snapshot;
   if (!snapshot.showSavings || savings === null || savings.pings === 0) return [];

@@ -93,6 +93,17 @@ describe('LedgerStore', () => {
     expect(store.peek('ses_a')?.pings).toBe(1);
   });
 
+  test('a throwing change resolves with the unchanged totals and later updates still apply', async () => {
+    const { kv } = memoryKv();
+    const store = new LedgerStore(kv);
+    await store.update('ses_a', addPing);
+    const failed = await store.update('ses_a', () => {
+      throw new Error('bad change');
+    });
+    expect(failed).toEqual({ ...EMPTY_TOTALS, pings: 1 });
+    expect(await store.update('ses_a', addPing)).toEqual({ ...EMPTY_TOTALS, pings: 2 });
+  });
+
   test('concurrent updates on a fresh session both apply', async () => {
     const { kv, data } = memoryKv();
     const store = new LedgerStore(kv);

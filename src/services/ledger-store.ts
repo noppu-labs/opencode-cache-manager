@@ -55,14 +55,23 @@ class LedgerStore {
     return pending;
   }
 
-  /** Applies `change` to the loaded totals and persists. Never rejects; a persistence failure keeps memory. */
+  /**
+   * Applies `change` to the loaded totals and persists. Never rejects: a throwing `change`
+   * leaves the totals as they were, and a persistence failure keeps memory.
+   */
   public async update(
     sessionID: string,
     change: (totals: LedgerTotals) => LedgerTotals
   ): Promise<LedgerTotals> {
     const previous = this.queues.get(sessionID) ?? Promise.resolve();
     const run = previous.then(async () => {
-      const next = change(await this.load(sessionID));
+      const current = await this.load(sessionID);
+      let next: LedgerTotals;
+      try {
+        next = change(current);
+      } catch {
+        return current;
+      }
       this.totals.set(sessionID, next);
       try {
         await this.kv.set(ledgerKey(sessionID), next);
