@@ -1,8 +1,9 @@
 import fc from 'fast-check';
 
 import { EXTENDED_CACHE_BETA } from '../../src/constants/anthropic.ts';
-import type { CacheTtlMode, Wire } from '../../src/models/cache.ts';
+import type { CacheTtlMode, CacheUsage, Ttl, Wire } from '../../src/models/cache.ts';
 import type { RequestKind } from '../../src/models/keepalive.ts';
+import type { LedgerTotals, ModelPrice } from '../../src/models/savings.ts';
 
 type Rec = Record<string, unknown>;
 
@@ -200,8 +201,45 @@ const tokenish: fc.Arbitrary<unknown> = fc.oneof(
   fc.jsonValue().filter((value) => typeof value !== 'number')
 );
 
+const ttl = fc.constantFrom<Ttl>('5m', '1h', '30m', '12h');
+const tokenCount = fc.integer({ max: 10_000_000, min: 0 });
+// Hundredths avoid denormals, where a ratio of two tiny floats overflows.
+const priceValue = fc.integer({ max: 100_000, min: 0 }).map((hundredths) => hundredths / 100);
+
+const cacheUsage: fc.Arbitrary<CacheUsage> = fc.record({
+  cacheReadTokens: tokenCount,
+  cacheWriteTokens: tokenCount,
+  inputTokens: tokenCount,
+  outputTokens: tokenCount,
+  write1hTokens: fc.option(tokenCount, { nil: undefined }),
+  write5mTokens: fc.option(tokenCount, { nil: undefined }),
+});
+
+const modelPrice: fc.Arbitrary<ModelPrice> = fc.record({
+  cacheRead: priceValue,
+  cacheWrite: priceValue,
+  input: priceValue,
+  output: priceValue,
+});
+
+const ledgerTotals: fc.Arbitrary<LedgerTotals> = fc.record({
+  avoidedTokens: tokenCount,
+  avoidedUnits: priceValue,
+  avoidedUsd: priceValue,
+  pingUnits: priceValue,
+  pingUsd: priceValue,
+  pings: fc.integer({ max: 1000, min: 0 }),
+  rescues: fc.integer({ max: 1000, min: 0 }),
+  unpricedEvents: fc.integer({ max: 5, min: 0 }),
+  version: fc.constant(1 as const),
+});
+
 export {
   anyBody,
+  cacheUsage,
+  ledgerTotals,
+  modelPrice,
+  ttl,
   betaHeader,
   kind,
   looseBody,

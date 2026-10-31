@@ -48,12 +48,14 @@ src/
 ├── constants/
 │   ├── anthropic.ts           # beta header name and value, x-cache-ttl header name, /messages suffix, Anthropic provider IDs
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
+│   ├── savings.ts             # savings ledger: price multipliers per token kind and TTL, models.dev and catalog timeouts
 │   ├── openai.ts              # /chat/completions and /responses suffixes, Claude-model and GPT-5.6+ regexes, OpenAI TTL per mode, finish-reason map
 │   ├── sse.ts                 # SSE_DATA_PREFIX
 │   └── units.ts               # time units, THOUSAND, MILLION, PERCENT
 ├── models/
 │   ├── cache.ts               # CacheTtlMode, Ttl, CacheUsage, Wire, CacheProfileId, ModelRef, ResponseIdentity, ObservedResponse, ResponseParsers, ProfilePattern
 │   ├── profile.ts             # CacheProfile interface and RewriteContext
+│   ├── savings.ts             # ModelPrice, LedgerTotals, SavingsReadout
 │   ├── keepalive.ts           # KeepaliveSnapshot, CacheReadout, SkipReason, RequestKind
 │   └── storage.ts             # KV and ScannableKV plugin storage interfaces
 ├── controllers/
@@ -65,6 +67,10 @@ src/
 │   └── response.ts            # http.response hook: usage observation and profile learning
 ├── services/
 │   ├── keepalive-engine.ts    # scheduling engine
+│   ├── savings-math.ts        # pure savings maths: ping cost and avoided cost in input-token units and USD, totals -> readout
+│   ├── model-prices.ts        # PriceBook: model price from the OpenCode catalog, tiered by context size
+│   ├── models-dev.ts          # ModelsDevPrices: opt-in models.dev prices, cached daily in plugin storage
+│   ├── fetch-json.ts          # fetchJson: GET with a timeout, parsed as JSON (the models.dev fetch)
 │   ├── ping-tracker.ts        # which generate calls are pings, and their response promises
 │   ├── settings-store.ts      # storage-backed SettingsStore and the deleted-session sweep
 │   ├── cache-ttl.ts           # TTL rewrite of the request body and beta header merge (both wires)

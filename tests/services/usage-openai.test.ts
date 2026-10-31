@@ -19,6 +19,7 @@ describe('parseOpenAiUsageFromJson', () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 14_845,
       write5mTokens: undefined,
+      outputTokens: 4,
       write1hTokens: undefined,
     });
     expect(contextTokens(usage)).toBe(16_543);
@@ -89,6 +90,14 @@ describe('parseOpenAiUsageFromJson', () => {
         usage: { prompt_tokens: 10, prompt_tokens_details: { cached_tokens: 50 } },
       })
     ).toMatchObject({ inputTokens: 0, cacheReadTokens: 50 });
+  });
+
+  test('reads completion_tokens as outputTokens, 0 when absent', () => {
+    expect(
+      parseOpenAiUsageFromJson({ usage: { prompt_tokens: 100, completion_tokens: 12 } })
+        ?.outputTokens
+    ).toBe(12);
+    expect(parseOpenAiUsageFromJson({ usage: { prompt_tokens: 100 } })?.outputTokens).toBe(0);
   });
 
   test('returns undefined without a usage object', () => {
