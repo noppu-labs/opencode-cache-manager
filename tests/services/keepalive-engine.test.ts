@@ -7,6 +7,7 @@ import {
   RETRY_DELAY_MS,
   TTL_MS,
 } from '../../src/constants/keepalive.ts';
+import { SAVINGS_EXPIRY_MARGIN_MS } from '../../src/constants/savings.ts';
 import type { CacheUsage, ModelRef, Ttl } from '../../src/models/cache.ts';
 import type { KeepaliveSnapshot, RequestKind } from '../../src/models/keepalive.ts';
 import type { SavingsReadout } from '../../src/models/savings.ts';
@@ -1367,6 +1368,22 @@ describe('keepalive engine: savings', () => {
       expect(rescues(h)).toEqual([]);
     });
 
+    test('a return just inside the margin past the original expiry is no rescue', async () => {
+      const h = await pingedStretch();
+      // The ping refreshed the cache at 4m, so the next ping is not due until 8m.
+      await h.advance(MIN + SAVINGS_EXPIRY_MARGIN_MS - 1000);
+      expect(h.pings).toHaveLength(1);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([]);
+    });
+
+    test('a return just past the margin is a rescue', async () => {
+      const h = await pingedStretch();
+      await h.advance(MIN + SAVINGS_EXPIRY_MARGIN_MS + 1000);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 80_000, '5m', 80_100]]);
+    });
+
     test('a cold return is no rescue', async () => {
       const h = await pingedStretch();
       await h.advance(3 * MIN);
@@ -1424,8 +1441,8 @@ describe('keepalive engine: savings', () => {
       const h = await pingedStretch();
       await h.advance(MIN / 2);
       await h.request('s1', pureRead, '5m', { kind: 'title' });
-      // After the original expiry, before the next ping.
-      await h.advance(MIN);
+      // Past the original expiry and its margin, before the next ping.
+      await h.advance(2 * MIN);
       expect(h.pings).toHaveLength(1);
       await h.request('s1', pureRead);
       expect(rescues(h)).toEqual([]);

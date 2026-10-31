@@ -8,6 +8,7 @@ import {
   TTL_MS,
 } from '../constants/keepalive.ts';
 import { OPENAI_TTLS } from '../constants/openai.ts';
+import { SAVINGS_EXPIRY_MARGIN_MS } from '../constants/savings.ts';
 import type { CacheUsage, ModelRef, Ttl } from '../models/cache.ts';
 import type {
   CacheReadout,
@@ -319,10 +320,14 @@ class KeepaliveEngine {
 
   /**
    * A real primary or compaction request may rescue its stretch when the stretch had a hit
-   * ping and the request goes out after the cache would have expired without pings.
+   * ping and the request goes out past the margin after the cache would have expired without pings.
    */
   private returnCheck(state: SessionState, now: number, split: boolean): PendingReturn | null {
-    if (state.stretchHits === 0 || state.originalExpiry === null || now <= state.originalExpiry) {
+    if (
+      state.stretchHits === 0 ||
+      state.originalExpiry === null ||
+      now <= state.originalExpiry + SAVINGS_EXPIRY_MARGIN_MS
+    ) {
       return null;
     }
     if (state.ttl === null || state.contextTokens === null) return null;
