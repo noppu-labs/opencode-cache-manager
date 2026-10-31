@@ -1,6 +1,11 @@
 import { PERCENT, THOUSAND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
-import { formatCompactTokens, formatRemaining } from '../utils/format.ts';
+import {
+  formatCompactTokens,
+  formatMultiple,
+  formatRemaining,
+  formatUsd,
+} from '../utils/format.ts';
 
 type Tone = 'base' | 'muted' | 'success' | 'warning' | 'error';
 interface SidebarLine {
@@ -43,7 +48,7 @@ function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): Sidebar
 }
 
 /** The keepalive rows of a warm cache: why pings stopped, or the next ping and the pings used so far. */
-function keepaliveLines(
+function keepaliveRows(
   snapshot: KeepaliveSnapshot,
   now: number,
   formatClock: (ms: number) => string
@@ -71,6 +76,42 @@ function keepaliveLines(
   return pingLines(snapshot, now, formatClock);
 }
 
+/** The session's `saved` and `return` rows; empty when hidden, not loaded, or before the first ping. */
+function keepaliveLines(
+  snapshot: KeepaliveSnapshot,
+  now: number,
+  formatClock: (ms: number) => string
+): SidebarLine[] {
+  return [...keepaliveRows(snapshot, now, formatClock), ...savingsLines(snapshot)];
+}
+
+function savingsLines(snapshot: KeepaliveSnapshot): SidebarLine[] {
+  const { savings } = snapshot;
+  if (!snapshot.showSavings || savings === null || savings.pings === 0) return [];
+  if (savings.rescues === 0) return [{ right: 'nothing yet', text: 'saved', tone: 'base' }];
+  const rewrites = `${savings.rescues} ${savings.rescues === 1 ? 'rewrite' : 'rewrites'}`;
+  const saved =
+    savings.priced && savings.netUsd !== null
+      ? `${formatUsd(savings.netUsd)} · ${rewrites}`
+      : `${rewrites} · ${formatCompactTokens(savings.avoidedTokens)}`;
+  const lines: SidebarLine[] = [{ right: saved, text: 'saved', tone: 'base' }];
+  if (savings.returnRatio !== null) {
+    lines.push({
+      right: `${formatMultiple(savings.returnRatio)} ping cost`,
+      text: 'return',
+      tone: 'base',
+    });
+  }
+  return lines;
+}
+
+/** The ` ($0.05)` cost of the current stretch's pings; empty when hidden or unpriced. */
+function stretchCost(snapshot: KeepaliveSnapshot): string {
+  const { savings } = snapshot;
+  if (!snapshot.showSavings || savings === null || !savings.priced) return '';
+  return savings.stretchUsd === null ? '' : ` (${formatUsd(savings.stretchUsd)})`;
+}
+
 function pingLines(
   snapshot: KeepaliveSnapshot,
   now: number,
@@ -88,7 +129,7 @@ function pingLines(
   }
   const outcome = snapshot.lastPing === null ? '' : PING_OUTCOMES[snapshot.lastPing];
   const pings: SidebarLine = {
-    right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}`,
+    right: `${snapshot.pingsUsed}/${snapshot.maxPings}${outcome}${stretchCost(snapshot)}`,
     text: 'pings',
     tone: 'base',
   };
@@ -137,6 +178,7 @@ function sidebarLines(
       ...cached,
       { right: `${formatRemaining(now - snapshot.expiresAt)} ago`, text: 'expired', tone: 'base' },
       ttl,
+      ...savingsLines(snapshot),
     ];
   }
   return [
