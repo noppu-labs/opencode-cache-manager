@@ -12,6 +12,14 @@ const BODY = {
   openrouter: { models: { 'anthropic/claude-sonnet-4-5': cost(3.1), 'acme/foo': cost(1) } },
   other: { models: { foo: cost(2) } },
 };
+const c = (input: number) => ({
+  cost: { cache_read: input / 10, cache_write: input * 1.25, input, output: input * 5 },
+});
+const PRUNED = {
+  anthropic: { models: { 'claude-sonnet-4-5': c(3) } },
+  openrouter: { models: { 'anthropic/claude-sonnet-4-5': c(3.1), 'acme/foo': c(1) } },
+  other: { models: { foo: c(2) } },
+};
 const SONNET = { cacheRead: 0.3, cacheWrite: 3.75, input: 3, output: 15 };
 
 function setup(responses: unknown[] | (() => Promise<unknown>) = [BODY]) {
@@ -101,7 +109,7 @@ describe('ModelsDevPrices.match', () => {
     clock.t += MODELS_DEV_MAX_AGE_MS - 1;
     await prices.match(['claude-sonnet-4-5']);
     expect(calls).toEqual(['https://models.dev/api.json']);
-    expect(data.get('models-dev')).toEqual({ body: BODY, fetchedAt: 1_000_000 });
+    expect(data.get('models-dev')).toEqual({ body: PRUNED, fetchedAt: 1_000_000 });
     const fresh = make();
     expect(await fresh.match(['claude-sonnet-4-5'])).toEqual(SONNET);
     expect(calls).toHaveLength(1);
@@ -136,5 +144,51 @@ describe('ModelsDevPrices.match', () => {
     const { calls, prices } = setup();
     await Promise.all([prices.match(['a']), prices.match(['b'])]);
     expect(calls).toHaveLength(1);
+  });
+
+  test('persists only prices, dropping other fields and models without cost', async () => {
+    const body = {
+      anthropic: {
+        id: 'anthropic',
+        models: {
+          'claude-sonnet-4-5': { ...cost(3), limit: { context: 1 }, name: 'Sonnet' },
+          'nocost': { name: 'x' },
+        },
+      },
+    };
+    const { data, prices } = setup([body]);
+    await prices.match(['claude-sonnet-4-5']);
+    expect(data.get('models-dev')).toEqual({
+      body: { anthropic: { models: { 'claude-sonnet-4-5': c(3) } } },
+      fetchedAt: 1_000_000,
+    });
+  });
+
+  test('concurrent first matches with a fresh stored value do not fetch', async () => {
+    const { calls, data, prices } = setup();
+    data.set('models-dev', { body: BODY, fetchedAt: 1_000_000 });
+    const results = await Promise.all([
+      prices.match(['claude-sonnet-4-5']),
+      prices.match(['claude-sonnet-4-5']),
+    ]);
+    expect(results).toEqual([SONNET, SONNET]);
+    expect(calls).toHaveLength(0);
+  });
+
+  test('a stored fetchedAt in the future counts as stale', async () => {
+    const { calls, data, prices } = setup();
+    data.set('models-dev', { body: BODY, fetchedAt: 9_000_000_000 });
+    await prices.match(['claude-sonnet-4-5']);
+    expect(calls).toHaveLength(1);
+  });
+
+  test('one provider listing a name at two prices is no clear match', async () => {
+    const body = {
+      anthropic: { models: { 'x-20250101': cost(1), 'x-20250202': cost(2) } },
+      a: { models: { 'y': cost(1), 'p/y': cost(2) } },
+    };
+    const { prices } = setup([body]);
+    expect(await prices.match(['x'])).toBeUndefined();
+    expect(await prices.match(['y'])).toBeUndefined();
   });
 });

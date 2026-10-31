@@ -95,17 +95,61 @@ const samePrice = (left: ModelPrice, right: ModelPrice): boolean =>
   left.cacheRead === right.cacheRead &&
   left.cacheWrite === right.cacheWrite;
 
-function pick(listings: readonly Listing[]): ModelPrice | undefined {
-  for (const vendor of MODELS_DEV_VENDORS) {
-    const own = listings.find((listing) => listing.provider === vendor);
-    if (own !== undefined) {
-      return own.price;
+/** One price per provider; undefined when a provider's own listings disagree. */
+function byProvider(listings: readonly Listing[]): Map<string, ModelPrice | undefined> {
+  const result = new Map<string, ModelPrice | undefined>();
+  for (const { price, provider } of listings) {
+    const seen = result.get(provider);
+    if (!result.has(provider)) {
+      result.set(provider, price);
+    } else if (seen === undefined || !samePrice(seen, price)) {
+      result.set(provider, undefined);
     }
   }
-  const [first] = listings;
-  return first !== undefined && listings.every((listing) => samePrice(listing.price, first.price))
-    ? first.price
+  return result;
+}
+
+function pick(listings: readonly Listing[]): ModelPrice | undefined {
+  const prices = byProvider(listings);
+  for (const vendor of MODELS_DEV_VENDORS) {
+    if (prices.has(vendor)) {
+      return prices.get(vendor);
+    }
+  }
+  const [first, ...rest] = [...prices.values()];
+  return first !== undefined &&
+    rest.every((price) => price !== undefined && samePrice(price, first))
+    ? first
     : undefined;
+}
+
+/** The same shape as the api body, reduced to the prices that are used. */
+function pruneBody(body: unknown): Record<string, unknown> {
+  const pruned: Record<string, unknown> = {};
+  if (!isRecord(body)) {
+    return pruned;
+  }
+  for (const [provider, entry] of Object.entries(body)) {
+    if (!isRecord(entry) || !isRecord(entry.models)) {
+      continue;
+    }
+    const models: Record<string, unknown> = {};
+    for (const [key, model] of Object.entries(entry.models)) {
+      const price = isRecord(model) ? toPrice(model.cost) : undefined;
+      if (price !== undefined) {
+        models[key] = {
+          cost: {
+            cache_read: price.cacheRead,
+            cache_write: price.cacheWrite,
+            input: price.input,
+            output: price.output,
+          },
+        };
+      }
+    }
+    pruned[provider] = { models };
+  }
+  return pruned;
 }
 
 function toCache(value: unknown): Cache | undefined {
@@ -119,7 +163,7 @@ function toCache(value: unknown): Cache | undefined {
 class ModelsDevPrices {
   private cache: Cache | undefined;
   private index: Map<string, Listing[]> | undefined;
-  private loaded = false;
+  private loading: Promise<void> | undefined;
   private failedAt: number | undefined;
   private inflight: Promise<void> | undefined;
 
@@ -149,12 +193,11 @@ class ModelsDevPrices {
   }
 
   private async refresh(): Promise<void> {
-    if (!this.loaded) {
-      this.loaded = true;
-      this.cache = toCache(await this.deps.kv.get(MODELS_DEV_STORAGE_KEY).catch(() => null));
-    }
+    this.loading ??= this.load();
+    await this.loading;
     const now = this.deps.now();
-    if (this.cache !== undefined && now - this.cache.fetchedAt < MODELS_DEV_MAX_AGE_MS) {
+    const age = this.cache === undefined ? undefined : now - this.cache.fetchedAt;
+    if (age !== undefined && age >= 0 && age < MODELS_DEV_MAX_AGE_MS) {
       return;
     }
     if (this.failedAt !== undefined && now - this.failedAt < MODELS_DEV_RETRY_MS) {
@@ -166,13 +209,21 @@ class ModelsDevPrices {
     await this.inflight;
   }
 
+  private async load(): Promise<void> {
+    const stored = toCache(await this.deps.kv.get(MODELS_DEV_STORAGE_KEY).catch(() => null));
+    if (this.cache === undefined) {
+      this.cache = stored;
+      this.index = undefined;
+    }
+  }
+
   private async fetchFresh(): Promise<void> {
     try {
       const body = await this.deps.fetchJson(MODELS_DEV_URL);
       if (!isRecord(body)) {
         throw new TypeError('models.dev body is not an object');
       }
-      this.cache = { body, fetchedAt: this.deps.now() };
+      this.cache = { body: pruneBody(body), fetchedAt: this.deps.now() };
       this.index = undefined;
       this.failedAt = undefined;
       await this.deps.kv.set(MODELS_DEV_STORAGE_KEY, this.cache).catch(() => null);
