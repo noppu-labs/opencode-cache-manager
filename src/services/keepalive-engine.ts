@@ -119,7 +119,7 @@ interface SessionState {
   pingTtl: Ttl | null;
   /** The latest primary or compaction request ran in `hybrid` mode. */
   split: boolean;
-  /** Claude split prefix: the latest non-zero 1h write of a primary or compaction response. */
+  /** Claude split prefix: the largest 1h write of a primary or compaction response. */
   prefix1hTokens: number | null;
   /** OpenAI split prefix: the context of the first primary response on an OpenAI TTL. */
   firstPrimaryContext: number | null;
@@ -310,8 +310,10 @@ class KeepaliveEngine {
       if (kind === 'primary' && state.firstPrimaryContext === null && context > 0) {
         state.firstPrimaryContext = context;
       }
-    } else if ((usage.write1hTokens ?? 0) > 0) {
-      state.prefix1hTokens = usage.write1hTokens ?? null;
+    } else {
+      // A later turn may rewrite only the tail of the prefix; the largest write errs toward fewer avoided tokens.
+      const write1h = usage.write1hTokens ?? 0;
+      if (write1h > 0) state.prefix1hTokens = Math.max(state.prefix1hTokens ?? 0, write1h);
     }
   }
 

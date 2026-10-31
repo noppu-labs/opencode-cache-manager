@@ -1479,12 +1479,32 @@ describe('keepalive engine: savings', () => {
   });
 
   describe('split caches', () => {
-    test('Claude hybrid subtracts the latest non-zero 1h write', async () => {
+    test('Claude hybrid subtracts the 1h write', async () => {
       const h = harness({ requestedTtl: '5m' });
       await h.request('s1', hybridWrite, '5m', { split: true });
       await h.advance(MIN);
       // No 1h write on this turn: the prefix stays at 20_000.
       await h.request('s1', pureRead, '5m', { split: true });
+      await h.advance(4 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead, '5m', { split: true });
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
+    });
+
+    test('Claude hybrid keeps the largest 1h write when a later turn rewrites only part of it', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      await h.request('s1', hybridWrite, '5m', { split: true });
+      await h.advance(MIN);
+      // A later system block changed: only its 2k segment is rewritten at 1h, then the messages at 5m.
+      const partial: CacheUsage = {
+        ...pureRead,
+        cacheReadTokens: 18_000,
+        cacheWriteTokens: 62_000,
+        write1hTokens: 2000,
+        write5mTokens: 60_000,
+      };
+      await h.request('s1', partial, '5m', { split: true });
       await h.advance(4 * MIN);
       expect(h.engine.snapshot('s1').lastPing).toBe('hit');
       await h.advance(3 * MIN);
