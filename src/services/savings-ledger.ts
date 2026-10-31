@@ -41,11 +41,13 @@ class SavingsLedger {
     });
   }
 
+  /** `inStretch` is false for a ping answered after its stretch ended: it counts in the totals only. */
   public async pingCharged(
     sessionID: string,
     model: PricedModel,
     usage: CacheUsage,
-    ttl: Ttl
+    ttl: Ttl,
+    inStretch = true
   ): Promise<void> {
     await this.enqueue(sessionID, async () => {
       const price = await this.lookupPrice(model, contextTokens(usage));
@@ -57,7 +59,7 @@ class SavingsLedger {
         pings: totals.pings + 1,
         unpricedEvents: totals.unpricedEvents + (price === undefined ? 1 : 0),
       }));
-      if (price !== undefined) {
+      if (price !== undefined && inStretch) {
         this.stretchUsd.set(sessionID, (this.stretchUsd.get(sessionID) ?? 0) + usd);
       }
     });

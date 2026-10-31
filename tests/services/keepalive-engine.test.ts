@@ -11,7 +11,10 @@ import { SAVINGS_EXPIRY_MARGIN_MS } from '../../src/constants/savings.ts';
 import type { CacheUsage, ModelRef, Ttl } from '../../src/models/cache.ts';
 import type { KeepaliveSnapshot, RequestKind } from '../../src/models/keepalive.ts';
 import type { SavingsReadout } from '../../src/models/savings.ts';
-import { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
+import { type EngineDeps, KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
+import { LedgerStore } from '../../src/services/ledger-store.ts';
+import { SavingsLedger } from '../../src/services/savings-ledger.ts';
+import { memoryKv } from '../helpers/memory-kv.ts';
 
 const MIN = 60_000;
 const MODEL: ModelRef = { providerID: 'anthropic', id: 'claude-sonnet-5-5' };
@@ -103,7 +106,12 @@ type Behavior =
   | { kind: 'respond-then-hold' };
 
 function harness(
-  options: { settings?: Partial<Settings>; child?: boolean; requestedTtl?: Ttl } = {}
+  options: {
+    settings?: Partial<Settings>;
+    child?: boolean;
+    requestedTtl?: Ttl;
+    savings?: EngineDeps['savings'];
+  } = {}
 ) {
   let clock = 0;
   let nextHandle = 1;
@@ -147,7 +155,7 @@ function harness(
       return isChildResult;
     },
     onChange: (snapshot) => changes.push(snapshot),
-    savings: ledger.deps,
+    savings: options.savings ?? ledger.deps,
   });
 
   async function ping(sessionID: string): Promise<void> {
@@ -1589,8 +1597,8 @@ describe('keepalive engine: savings', () => {
       h.queue.push({ kind: 'respond', usage: hit }, { kind: 'respond', usage: miss });
       await h.advance(8 * MIN);
       expect(callsOf(h, 'pingCharged')).toEqual([
-        ['pingCharged', 's1', priced(), hit, '5m'],
-        ['pingCharged', 's1', priced(), miss, '5m'],
+        ['pingCharged', 's1', priced(), hit, '5m', true],
+        ['pingCharged', 's1', priced(), miss, '5m', true],
       ]);
     });
 
@@ -1611,10 +1619,31 @@ describe('keepalive engine: savings', () => {
       await h.request('s1', pureRead);
       h.held.shift()?.();
       await h.flush();
-      expect(callsOf(h, 'pingCharged')).toEqual([['pingCharged', 's1', priced(), hit, '5m']]);
+      expect(callsOf(h, 'pingCharged')).toEqual([
+        ['pingCharged', 's1', priced(), hit, '5m', false],
+      ]);
       await h.advance(MIN + MIN / 2);
       await h.request('s1', pureRead);
       expect(rescues(h)).toEqual([]);
+    });
+
+    test("a ping answered after a real request leaves the new stretch's cost empty", async () => {
+      const store = new LedgerStore(memoryKv().kv);
+      const price = { cacheRead: 0.3, cacheWrite: 3.75, input: 3, output: 15 };
+      const ledger = new SavingsLedger({
+        onChange: () => {},
+        prices: { lookup: async () => price },
+        store,
+      });
+      const h = harness({ requestedTtl: '5m', savings: ledger });
+      await store.load('s1');
+      await h.request('s1', write5m);
+      h.queue.push({ kind: 'hold' });
+      await h.advance(4 * MIN);
+      await h.request('s1', pureRead);
+      h.held.shift()?.();
+      await h.flush();
+      expect(ledger.readout('s1')).toMatchObject({ pings: 1, stretchUsd: null });
     });
 
     test('a real request after a charged ping starts a new stretch, in event order', async () => {

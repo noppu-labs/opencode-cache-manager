@@ -89,6 +89,18 @@ describe('SavingsLedger', () => {
     expect(store.peek('s')?.pings).toBe(1);
   });
 
+  test('a ping of an ended stretch adds totals but no stretch cost', async () => {
+    const { ledger, store } = setup();
+    await store.load('s');
+    await ledger.pingCharged('s', model, usage, '5m', false);
+    expect(store.peek('s')?.pings).toBe(1);
+    expect(store.peek('s')?.pingUsd).toBeCloseTo(pingUsd(usage, '5m', price));
+    expect(ledger.readout('s')?.stretchUsd).toBeNull();
+    await ledger.pingCharged('s', model, usage, '5m');
+    await ledger.pingCharged('s', model, usage, '5m', false);
+    expect(ledger.readout('s')?.stretchUsd).toBeCloseTo(pingUsd(usage, '5m', price));
+  });
+
   test('a rescue adds avoided totals priced at its own context size', async () => {
     const { ledger, lookups, store } = setup();
     await store.load('s');

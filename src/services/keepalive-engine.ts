@@ -118,6 +118,10 @@ interface SessionState {
   stretchCharged: boolean;
   /** The TTL the latest ping was sent on, which its cost is charged at. */
   pingTtl: Ttl | null;
+  /** Bumped by every real request; a ping charged under another value was answered after its stretch ended. */
+  stretch: number;
+  /** The `stretch` the latest ping was sent in. */
+  pingStretch: number;
   /** The latest primary or compaction request ran in `hybrid` mode. */
   split: boolean;
   /** Claude split prefix: the largest 1h write of a primary or compaction response. */
@@ -370,13 +374,16 @@ class KeepaliveEngine {
     const ref = info.model ?? state.model;
     const ttl = state.pingTtl;
     if (!ref || ttl === null) return;
-    state.stretchCharged = true;
+    // A late ping's cost belongs to the stretch that ended, not to the one now shown.
+    const inStretch = state.pingStretch === state.stretch;
+    if (inStretch) state.stretchCharged = true;
     const model = { ref, reportedModel: info.reportedModel };
-    this.report(async (ledger) => ledger.pingCharged(sessionID, model, usage, ttl));
+    this.report(async (ledger) => ledger.pingCharged(sessionID, model, usage, ttl, inStretch));
   }
 
   /** A real request ends the stretch; the ledger only needs to hear of it after a charged ping. */
   private startStretch(sessionID: string, state: SessionState): void {
+    state.stretch++;
     state.stretchHits = 0;
     if (!state.stretchCharged) return;
     state.stretchCharged = false;
@@ -446,6 +453,7 @@ class KeepaliveEngine {
       originalExpiry: null,
       pendingReturn: null,
       pingPending: false,
+      pingStretch: 0,
       pingTtl: null,
       pingsUsed: 0,
       prefix1hTokens: null,
@@ -455,6 +463,7 @@ class KeepaliveEngine {
       showSavings: BUILTIN_DEFAULTS.savings,
       skipReason: 'no-cache-seen',
       split: false,
+      stretch: 0,
       stretchCharged: false,
       stretchHits: 0,
       timer: null,
@@ -622,6 +631,7 @@ class KeepaliveEngine {
     state.pingsUsed++;
     state.nextPingAt = null;
     state.pingTtl = state.ttl;
+    state.pingStretch = state.stretch;
     const inflight: PingInFlight = {
       contextBefore: state.contextTokens,
       firedAt: now,
