@@ -1161,13 +1161,16 @@ describe('keepalive engine: implicit-cache sessions', () => {
 
   test('a request with a TTL does not emit the implicit skip reason it is about to clear', async () => {
     const h = harness();
-    await h.request('s1', pureRead, null);
+    await h.request('s1', write1h, null);
     await h.advance(MIN);
     const before = h.changes.length;
     h.engine.requestSent('s1', { requestedTtl: '1h', isPing: false, kind: 'primary' });
     const emitted = h.changes.slice(before);
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.skipReason).toBeNull();
+    await h.flush();
+    expect(h.engine.snapshot('s1')).toMatchObject({ skipReason: null });
+    expect(h.engine.snapshot('s1').nextPingAt).not.toBeNull();
   });
 
   test('a request without a TTL keeps an implicit session implicit', async () => {

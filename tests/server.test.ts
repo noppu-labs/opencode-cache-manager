@@ -686,6 +686,47 @@ describe('keepalive wiring', () => {
       expect(lastSnapshot(host)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
     });
 
+    test('the first ping after a learned alias is aligned even when time passed since the implicit turn', async () => {
+      const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
+      const alias = 'auto/aged';
+      const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
+      const pings: Record<string, any>[] = [];
+      host.generate.mockImplementation(async (input: any) => {
+        const body = {
+          ...sampleBody(),
+          model: alias,
+          messages: [diverging, { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] }],
+        } as Record<string, any>;
+        const ping = await roundTrip(
+          host,
+          proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {
+            sessionID: input.sessionID,
+            kind: 'generate',
+            body,
+          })
+        );
+        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
+        return {};
+      });
+
+      await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
+      await flush();
+      expect(lastSnapshot(host)).toMatchObject({ skipReason: 'implicit' });
+
+      // The request below changes lastRequestAt, so the engine's synchronous commit is a real emission.
+      jest.advanceTimersByTime(60_000);
+      const second = await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
+      await flush();
+      const primary = (await parsedBodyOf(second.requestEvt.request)) as Record<string, any>;
+
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(host.generate).toHaveBeenCalledTimes(1);
+      expect(pings[0]?.messages[0]).toEqual(primary.messages[0]);
+      expect(pings[0]?.messages[0]).not.toEqual(diverging);
+    });
+
     test('a learned alias whose response names a non-Claude model stops pinging and is left alone next turn', async () => {
       const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/best';
