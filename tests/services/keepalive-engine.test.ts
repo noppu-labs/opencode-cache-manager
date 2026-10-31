@@ -1451,12 +1451,21 @@ describe('keepalive engine: savings', () => {
     test('a hit ping of an earlier stretch does not carry over', async () => {
       const h = await pingedStretch();
       await h.advance(MIN / 2);
-      await h.request('s1', pureRead, '5m', { kind: 'title' });
+      await h.request('s1', pureRead, '5m');
       // Past the original expiry and its margin, before the next ping.
       await h.advance(2 * MIN);
       expect(h.pings).toHaveLength(1);
       await h.request('s1', pureRead);
       expect(rescues(h)).toEqual([]);
+    });
+
+    test('a title call inside the stretch neither ends it nor overtakes the return', async () => {
+      const h = await pingedStretch();
+      await h.advance(MIN / 2);
+      await h.request('s1', pureRead, '5m', { kind: 'title' });
+      await h.advance(2 * MIN);
+      await h.request('s1', pureRead);
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 80_000, '5m', 80_100]]);
     });
 
     test('a return that fails is no rescue, and neither is the request after it', async () => {
@@ -1545,6 +1554,45 @@ describe('keepalive engine: savings', () => {
       await h.advance(3 * MIN);
       await h.request('s1', pureRead, '5m', { split: true });
       expect(rescues(h)).toEqual([]);
+    });
+
+    test('Claude hybrid on a wire without the 1h split estimates the prefix from the first primary context', async () => {
+      const h = harness({ requestedTtl: '5m' });
+      const first: CacheUsage = {
+        ...writeNoBreakdown,
+        inputTokens: 100,
+        cacheWriteTokens: 19_900,
+      };
+      await h.request('s1', first, '5m', { split: true });
+      await h.advance(MIN);
+      await h.request('s1', writeNoBreakdown, '5m', { split: true });
+      await h.advance(4 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(3 * MIN);
+      await h.request('s1', hit, '5m', { split: true });
+      expect(rescues(h)).toEqual([
+        ['stretchRescued', 's1', priced(), 80_100 - 20_000, '5m', 80_200],
+      ]);
+    });
+
+    test('a 1h-mode full write is not a prefix for a later hybrid turn', async () => {
+      const h = harness({ requestedTtl: '1h' });
+      const full: CacheUsage = {
+        ...hybridWrite,
+        cacheWriteTokens: 80_000,
+        write5mTokens: 0,
+        write1hTokens: 80_000,
+      };
+      await h.request('s1', full, '1h');
+      await h.advance(MIN);
+      await h.request('s1', hybridWrite, '5m', { split: true });
+      await h.advance(MIN);
+      await h.request('s1', pureRead, '5m', { split: true });
+      await h.advance(4 * MIN);
+      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+      await h.advance(3 * MIN);
+      await h.request('s1', pureRead, '5m', { split: true });
+      expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
     });
 
     test('a split stretch stays split when the return is not', async () => {
@@ -1660,17 +1708,26 @@ describe('keepalive engine: savings', () => {
       expect(h.ledger.calls.map(([call]) => call)).toEqual(['pingCharged', 'stretchStarted']);
     });
 
-    test('child and implicit sessions make no ledger calls and load no ledger', async () => {
+    test('child sessions make no ledger calls and load no ledger', async () => {
       const h = harness({ child: true });
       await h.request('s1', write1h);
       await h.advance(60 * MIN);
       await h.request('s1', pureRead);
-      await h.request('s2', write1h, null);
-      await h.request('s2', pureRead, null);
       expect(h.pings).toHaveLength(0);
       expect(h.ledger.calls).toEqual([]);
       expect(h.ledger.readoutCalls).toEqual([]);
       expect(h.engine.snapshot('s1').savings).toBeNull();
+    });
+
+    test('implicit sessions make no ledger calls and load no ledger', async () => {
+      const h = harness();
+      await h.request('s2', write1h, null);
+      await h.advance(60 * MIN);
+      await h.request('s2', pureRead, null);
+      expect(h.pings).toHaveLength(0);
+      expect(h.ledger.calls).toEqual([]);
+      expect(h.ledger.readoutCalls).toEqual([]);
+      expect(h.engine.snapshot('s2').savings).toBeNull();
     });
   });
 

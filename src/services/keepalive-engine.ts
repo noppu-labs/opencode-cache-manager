@@ -120,7 +120,6 @@ interface SessionState {
   pingTtl: Ttl | null;
   /** Bumped by every real request; a ping charged under another value was answered after its stretch ended. */
   stretch: number;
-  /** The `stretch` the latest ping was sent in. */
   pingStretch: number;
   /** The latest primary or compaction request ran in `hybrid` mode. */
   split: boolean;
@@ -155,12 +154,10 @@ class KeepaliveEngine {
     state.requestSentAt = state.lastRequestAt;
     const kind = info.kind ?? 'primary';
     const sessionTurn = kind === 'primary' || kind === 'compaction';
-    // Any earlier pending return is overtaken by this request.
-    state.pendingReturn = sessionTurn
-      ? this.returnCheck(state, state.lastRequestAt, info.split === true)
-      : null;
-    this.startStretch(sessionID, state);
     if (sessionTurn) {
+      // Only a session turn overtakes an earlier pending return and ends the stretch; title and generate calls do neither.
+      state.pendingReturn = this.returnCheck(state, state.lastRequestAt, info.split === true);
+      this.startStretch(sessionID, state);
       state.split = info.split === true;
       if (info.model) state.model = info.model;
       state.requestedTtl = info.requestedTtl;
@@ -309,17 +306,24 @@ class KeepaliveEngine {
   }
 
   private learnPrefix(state: SessionState, usage: CacheUsage, kind: RequestKind): void {
-    if (state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl)) {
+    if (this.estimatesPrefix(state, usage)) {
       const context = contextTokens(usage);
       // A zero context says nothing about the prefix; subtracting it would count the whole read.
       if (kind === 'primary' && state.firstPrimaryContext === null && context > 0) {
         state.firstPrimaryContext = context;
       }
-    } else {
+    } else if (state.split) {
       // A later turn may rewrite only the tail of the prefix; the largest write errs toward fewer avoided tokens.
+      // A 1h-mode full write is no prefix, so only hybrid turns count.
       const write1h = usage.write1hTokens ?? 0;
       if (write1h > 0) state.prefix1hTokens = Math.max(state.prefix1hTokens ?? 0, write1h);
     }
+  }
+
+  /** OpenAI TTLs and wires that report no 1h/5m split give no measured prefix, so the first primary context stands in. */
+  private estimatesPrefix(state: SessionState, usage: CacheUsage): boolean {
+    const openai = state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl);
+    return openai || usage.write1hTokens === undefined;
   }
 
   /**
@@ -338,7 +342,10 @@ class KeepaliveEngine {
     const openai = state.requestedTtl !== null && OPENAI_TTLS.has(state.requestedTtl);
     return {
       contextBefore: state.contextTokens,
-      prefix: openai ? state.firstPrimaryContext : state.prefix1hTokens,
+      // Claude prefers the measured 1h write and falls back to the estimate when its wire reports no split.
+      prefix: openai
+        ? state.firstPrimaryContext
+        : (state.prefix1hTokens ?? state.firstPrimaryContext),
       // Either side being split means the long-lived prefix may have stayed warm on its own.
       split: state.split || split,
       ttl: state.ttl,
@@ -399,7 +406,7 @@ class KeepaliveEngine {
     try {
       void Promise.resolve(call(ledger)).catch(() => {});
     } catch {
-      // A failing ledger must not break scheduling.
+      // Ledger failures never reach scheduling.
     }
   }
 
