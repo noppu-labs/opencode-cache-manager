@@ -97,7 +97,7 @@ function boldRuns(rows: readonly string[]): string[] {
 function restoreBold(svg: string, rows: readonly string[]): string {
   let out = svg;
   for (const text of new Set(boldRuns(rows))) {
-    out = out.replaceAll(`>${text}</tspan>`, ` font-weight="bold">${text}</tspan>`);
+    out = out.replaceAll(`>${text}</tspan>`, () => ` font-weight="bold">${text}</tspan>`);
   }
   return out;
 }

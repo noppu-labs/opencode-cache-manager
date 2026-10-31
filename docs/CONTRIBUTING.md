@@ -82,7 +82,7 @@ Where things go:
 brew install charmbracelet/tap/freeze   # other package managers: see the freeze README
 ```
 
-After changing the sidebar component or a screen's samples, regenerate both images and commit them:
+After changing the sidebar component or a screen's samples, regenerate all three images (`sidebar.svg`, `sidebar-states.svg`, `picker.svg`) and commit them. A change to `src/ui/picker.ts` or `scripts/capture/picker-dialog.tsx` needs it too:
 
 ```sh
 bun scripts/capture-sidebar.ts --all

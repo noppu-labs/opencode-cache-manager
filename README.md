@@ -203,7 +203,7 @@ The effective value of each setting is the first one set, in this order:
 
 1. the session's override (`/cache-manager` typed argument, or the picker's Session section)
 2. the global value stored from the picker's Global section
-3. the plugin option (`defaultMode` or `keepalive.*`)
+3. the plugin option (`defaultMode`, `keepalive.*` or `savings`)
 4. the built-in default
 
 A global value stored from the picker overrides the plugin option for the same setting, so changing `defaultMode` in `opencode.jsonc` has no effect once the picker has stored a global value for that setting.
@@ -234,7 +234,7 @@ Cache
 - `cached` describes the latest primary turn: the share of its prompt that was read from cache, then the tokens read / the prompt total, such as `92% · 14.8k / 16.1k`. Pings, titles and other one-off requests don't change it. It shows for every session with cache usage, Claude or not, once a response has arrived.
 - `next ping` is when the next ping goes out. It reads `none` once the limit is reached.
 - `pings 2/5` counts pings used in this idle stretch, followed by the last result: `✓ hit`, `✗ miss` or `✗ failed`. No result is shown before the first ping.
-- `pings` also shows what the pings of the current idle stretch cost, such as `($0.05)`, when the model has a price.
+- `pings` also shows what the pings of the current idle stretch cost, such as `($0.05)`, when every ping in the session was priced.
 - `saved` and `return` are the session's savings totals; see [Savings](#savings).
 - When keepalive isn't running, a `keepalive` row says why: `off · 31k < 50k` (context below the minimum), `off · disabled`, `waiting · session busy` (waiting on a tool call), or `stopped · last ping missed`.
 
@@ -269,7 +269,7 @@ Anything else is ping cost only: a session you never came back to, a return befo
 - `saved` is the session total. In dollars it is net: avoided cost minus the cost of every ping, wasted ones included. Without a price it is `2 rewrites · 282k`, the rewrites and the tokens they avoided. `saved nothing yet` shows once you've paid for a ping and nothing has been saved.
 - `return` is avoided cost divided by ping cost, such as `9× ping cost`. It appears after the first save. The label may change.
 
-Dollars need a price for every model the session used. OpenCode's catalog prices the models of known providers. For a model under a custom provider, add `cost` to the model in `opencode.jsonc` (`input`, `output`, `cache.read`, `cache.write`, in dollars per million tokens); [the OpenAI-compatible example](docs/examples/opencode.openai-compatible.jsonc) shows where. Or set `modelsDevPrices` to `true` to look up models the catalog has no price for in models.dev. That is the only network call the plugin makes, once a day at most (after a failed fetch, the next try waits at least 15 minutes), and a price from there is the list price, which may differ from what a subscription-backed route charges you. A failed lookup, or a model with no clear match, leaves the model unpriced. If OpenCode's model catalog can't be loaded, events are unpriced and models.dev is not consulted.
+Dollars need a price for every model the session used. OpenCode's catalog prices the models of known providers. For a model under a custom provider, add `cost` to the model in `opencode.jsonc` (`input`, `output`, `cache.read`, `cache.write`, in dollars per million tokens; `cache.write` prices 5m and 30m writes, while 1h and 12h writes are priced from `input` at 2x and 2.5x); [the OpenAI-compatible example](docs/examples/opencode.openai-compatible.jsonc) shows where. Or set `modelsDevPrices` to `true` to look up models the catalog has no price for in models.dev. That is the only network call the plugin makes, once a day at most (within one run of OpenCode, a failed fetch is retried after 15 minutes at the earliest; that wait isn't kept across restarts), and a price from there is the list price at the model's base tier, with no long-context tier, which may differ from what a subscription-backed route charges you. A failed lookup, or a model with no clear match, leaves the model unpriced. If OpenCode's model catalog can't be loaded, events are unpriced and models.dev is not consulted.
 
 If any event in a session has no price, the whole session shows the unit-free form, since a partial dollar figure would mislead. Each event is priced with the model that served it, so a session that switches models still adds up. Dollar amounts round to the cent, with `<$0.01` for a non-zero amount below a cent and a minus sign (`-$0.02`) for a negative net.
 
