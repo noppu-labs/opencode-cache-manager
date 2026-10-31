@@ -3,7 +3,13 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { RGBA, TextAttributes, type CapturedFrame } from '@opentui/core';
 import { ensureSolidTransformPlugin } from '@opentui/solid/bun-plugin';
 
-import { frameToAnsi, stripAnsi, textRow } from '../../scripts/capture/ansi.ts';
+import {
+  boldRuns,
+  frameToAnsi,
+  restoreBold,
+  stripAnsi,
+  textRow,
+} from '../../scripts/capture/ansi.ts';
 
 // The screens render sidebar.tsx, so the Solid transform must be registered before they load.
 ensureSolidTransformPlugin();
@@ -63,6 +69,42 @@ test('textRow colours each part and resets at the end', () => {
   ).toBe('\u001B[38;2;96;96;96m# \u001B[38;2;255;255;255mcap\u001B[0m');
 });
 
+describe('boldRuns', () => {
+  test('returns the text of each bold span, in order', () => {
+    const rows = frameToAnsi(
+      frame([
+        line(span('Cache', '#eeeeee', TextAttributes.BOLD), span(' esc')),
+        line(span('plain'), span('TTL mode  5m', '#0a0a0a', TextAttributes.BOLD)),
+      ])
+    );
+    expect(boldRuns(rows)).toEqual(['Cache', 'TTL mode  5m']);
+  });
+
+  test('ignores bold spans with no visible text and rows without bold', () => {
+    const rows = [
+      ...frameToAnsi(frame([line(span('a'), span('   ', '#eeeeee', TextAttributes.BOLD))])),
+      textRow([{ fg: '#606060', text: '# caption' }]),
+    ];
+    expect(boldRuns(rows)).toEqual([]);
+  });
+});
+
+describe('restoreBold', () => {
+  test('marks each bold run once, even when it repeats', () => {
+    const rows = frameToAnsi(
+      frame([
+        line(span('Cache', '#eeeeee', TextAttributes.BOLD)),
+        line(span('Cache', '#eeeeee', TextAttributes.BOLD)),
+      ])
+    );
+    const svg =
+      '<tspan fill="#eeeeee">Cache</tspan><tspan fill="#eeeeee">Cache</tspan><tspan>Cached</tspan>';
+    expect(restoreBold(svg, rows)).toBe(
+      '<tspan fill="#eeeeee" font-weight="bold">Cache</tspan><tspan fill="#eeeeee" font-weight="bold">Cache</tspan><tspan>Cached</tspan>'
+    );
+  });
+});
+
 describe('renderScreen', () => {
   const realNow = Date.now;
   const realTz = process.env.TZ;
@@ -85,7 +127,9 @@ describe('renderScreen', () => {
       '  expires     14:52 (52m)',
       '  ttl         1h (detected)',
       '  next ping   14:42 (42m)',
-      '  pings       2/5 ✓ hit',
+      '  pings       2/5 ✓ hit ($0.05)',
+      '  saved       $0.42 · 2 rewrites',
+      '  return      9× ping cost',
     ]);
   });
 
@@ -111,15 +155,73 @@ describe('renderScreen', () => {
       '  keepalive   n/a · implicit cache',
       '• status      expired',
       '  expired     12m ago',
+      '# Savings in dollars',
+      '  pings       1/5 ✓ hit ($0.03)',
+      '  saved       $0.27 · 1 rewrite',
+      '  return      4.6× ping cost',
+      '# Savings without a model price',
+      '  saved       2 rewrites · 282k',
+      '# Nothing saved yet',
+      '  saved       nothing yet',
+      '# Savings turned off',
     ]) {
       expect(rows).toContain(expected);
     }
   });
 
-  test('the header is the only bold text, so the SVG post-processing can find it', async () => {
-    const rows = await screens.renderScreen('sidebar');
-    const bold = rows.filter((row) => row.includes('\u001B[1m'));
-    expect(bold).toHaveLength(1);
-    expect(stripAnsi(bold[0])).toBe(screens.SECTION_HEADER);
+  test('the savings rows show only when the setting is on', async () => {
+    const rows = (await screens.renderScreen('sidebar-states')).map((row) => stripAnsi(row));
+    const off = rows.slice(rows.indexOf('# Savings turned off'));
+    expect(off).toContain('  pings       2/5 ✓ hit');
+    expect(off.some((row) => row.includes('saved') || row.includes('return'))).toBe(false);
+  });
+
+  test('the header is the only bold text in the sidebar', async () => {
+    expect(boldRuns(await screens.renderScreen('sidebar'))).toEqual([screens.SECTION_HEADER]);
+  });
+
+  test('the picker shows both sections with the first Session row selected', async () => {
+    const rows = (await screens.renderScreen('picker')).map((row) => stripAnsi(row));
+    expect(rows).toEqual([
+      '',
+      `${'    Cache Manager'.padEnd(53)}esc`,
+      '',
+      '    Select a setting',
+      '',
+      '    Session',
+      '    TTL mode  5m · global',
+      '    Keepalive  on · global',
+      '    Pings per idle  5 · global',
+      '    Min context  50k · global',
+      '    Savings  on · global',
+      '    Reset session to global',
+      '',
+      '    Global',
+      '    TTL mode  5m',
+      '    Keepalive  on',
+      '    Pings per idle  5',
+      '    Min context  50k',
+      '    Savings  on',
+      '',
+      '',
+    ]);
+  });
+
+  test('the picker bolds the title, the section headers and the selected row', async () => {
+    const rows = await screens.renderScreen('picker');
+    expect(boldRuns(rows)).toEqual(['Cache Manager', 'Session', 'TTL mode  5m · global', 'Global']);
+  });
+
+  test('the picker paints the dialog, the selected row and the cursor from the theme', async () => {
+    const rows = await screens.renderScreen('picker');
+    const dialog = '\u001B[48;2;20;20;20m';
+    const primary = '\u001B[48;2;250;178;131m';
+    expect(rows.every((row) => row.includes(dialog))).toBe(true);
+    expect(rows[3]).toContain(`${primary}S`);
+    const selected = rows.filter((row) => row.includes(primary));
+    expect(selected.map((row) => stripAnsi(row).trim())).toEqual([
+      'Select a setting',
+      'TTL mode  5m · global',
+    ]);
   });
 });

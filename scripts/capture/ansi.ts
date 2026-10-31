@@ -75,5 +75,28 @@ function stripAnsi(row: string): string {
   return row.replaceAll(/\u001B\[[0-9;]*m/gu, '').trimEnd();
 }
 
+/** The text of every bold span in rows from `frameToAnsi`, in order; spans with no visible text are left out. */
+function boldRuns(rows: readonly string[]): string[] {
+  // oxlint-disable-next-line eslint/no-control-regex -- matching the ESC byte of SGR sequences is the point
+  const span = /\u001B\[0m(?<codes>(?:\u001B\[[0-9;]*m)*)(?<text>[^\u001B]*)/gu;
+  const runs: string[] = [];
+  for (const row of rows) {
+    for (const { groups } of row.matchAll(span)) {
+      const { codes = '', text = '' } = groups ?? {};
+      if (codes.includes(`${ESC}${SGR_BOLD}m`) && text.trim() !== '') runs.push(text);
+    }
+  }
+  return runs;
+}
+
+/** Charm's freeze 0.2 drops SGR bold: marks the SVG text runs that are bold in the ANSI rows it was made from. */
+function restoreBold(svg: string, rows: readonly string[]): string {
+  let out = svg;
+  for (const text of new Set(boldRuns(rows))) {
+    out = out.replaceAll(`>${text}</tspan>`, ` font-weight="bold">${text}</tspan>`);
+  }
+  return out;
+}
+
 export type { TextPart };
-export { frameToAnsi, textRow, stripAnsi };
+export { restoreBold, boldRuns, frameToAnsi, textRow, stripAnsi };
