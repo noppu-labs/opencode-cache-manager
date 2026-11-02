@@ -1364,6 +1364,15 @@ describe('keepalive engine: savings', () => {
     return h;
   }
 
+  /** A split turn with `turn`, a hit ping 4m later, then a split return with `back` past the original expiry. */
+  async function splitPingAndReturn(h: H, turn: CacheUsage, back: CacheUsage = pureRead) {
+    await h.request('s1', turn, '5m', { split: true });
+    await h.advance(4 * MIN);
+    expect(h.engine.snapshot('s1').lastPing).toBe('hit');
+    await h.advance(3 * MIN);
+    await h.request('s1', back, '5m', { split: true });
+  }
+
   describe('rescued stretches', () => {
     test('a warm return after the original expiry counts its cache reads at the stretch TTL', async () => {
       const h = await pingedStretch();
@@ -1521,11 +1530,7 @@ describe('keepalive engine: savings', () => {
       await h.request('s1', hybridWrite, '5m', { split: true });
       await h.advance(MIN);
       // No 1h write on this turn: the prefix stays at 20_000.
-      await h.request('s1', pureRead, '5m', { split: true });
-      await h.advance(4 * MIN);
-      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
-      await h.advance(3 * MIN);
-      await h.request('s1', pureRead, '5m', { split: true });
+      await splitPingAndReturn(h, pureRead);
       expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
     });
 
@@ -1541,11 +1546,7 @@ describe('keepalive engine: savings', () => {
         write1hTokens: 2000,
         write5mTokens: 60_000,
       };
-      await h.request('s1', partial, '5m', { split: true });
-      await h.advance(4 * MIN);
-      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
-      await h.advance(3 * MIN);
-      await h.request('s1', pureRead, '5m', { split: true });
+      await splitPingAndReturn(h, partial);
       expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
     });
 
@@ -1565,11 +1566,7 @@ describe('keepalive engine: savings', () => {
       };
       await h.request('s1', first, '5m', { split: true });
       await h.advance(MIN);
-      await h.request('s1', writeNoBreakdown, '5m', { split: true });
-      await h.advance(4 * MIN);
-      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
-      await h.advance(3 * MIN);
-      await h.request('s1', hit, '5m', { split: true });
+      await splitPingAndReturn(h, writeNoBreakdown, hit);
       expect(rescues(h)).toEqual([
         ['stretchRescued', 's1', priced(), 80_100 - 20_000, '5m', 80_200],
       ]);
@@ -1587,11 +1584,7 @@ describe('keepalive engine: savings', () => {
       await h.advance(MIN);
       await h.request('s1', hybridWrite, '5m', { split: true });
       await h.advance(MIN);
-      await h.request('s1', pureRead, '5m', { split: true });
-      await h.advance(4 * MIN);
-      expect(h.engine.snapshot('s1').lastPing).toBe('hit');
-      await h.advance(3 * MIN);
-      await h.request('s1', pureRead, '5m', { split: true });
+      await splitPingAndReturn(h, pureRead);
       expect(rescues(h)).toEqual([['stretchRescued', 's1', priced(), 60_000, '5m', 80_100]]);
     });
 

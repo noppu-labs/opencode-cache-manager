@@ -610,6 +610,29 @@ describe('keepalive wiring', () => {
       responseText: messagesSse(resolvedModel, usage),
       ...turn,
     });
+    /** Routes every ping for `alias` through the hooks with a diverging first message; returns that message and the sent bodies. */
+    const capturePings = (host: MockCtx, alias: string) => {
+      const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
+      const pings: Record<string, any>[] = [];
+      host.generate.mockImplementation(async (input: any) => {
+        const body = {
+          ...sampleBody(),
+          model: alias,
+          messages: [diverging, { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] }],
+        } as Record<string, any>;
+        const ping = await roundTrip(
+          host,
+          proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {
+            sessionID: input.sessionID,
+            kind: 'generate',
+            body,
+          })
+        );
+        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
+        return {};
+      });
+      return { diverging, pings };
+    };
 
     test('a DeepSeek session is observed but never pings', async () => {
       const host = await start({ keepalive: { minContextTokens: 0 } });
@@ -634,25 +657,7 @@ describe('keepalive wiring', () => {
     test('an alias is untouched on turn 1, then rewritten and kept warm once its response names Claude', async () => {
       const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/fast';
-      const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
-      const pings: Record<string, any>[] = [];
-      host.generate.mockImplementation(async (input: any) => {
-        const body = {
-          ...sampleBody(),
-          model: alias,
-          messages: [diverging, { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] }],
-        } as Record<string, any>;
-        const ping = await roundTrip(
-          host,
-          proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {
-            sessionID: input.sessionID,
-            kind: 'generate',
-            body,
-          })
-        );
-        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
-        return {};
-      });
+      const { diverging, pings } = capturePings(host, alias);
 
       const turn = proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5');
       const raw = JSON.stringify(turn.body);
@@ -689,25 +694,7 @@ describe('keepalive wiring', () => {
     test('the first ping after a learned alias is aligned even when time passed since the implicit turn', async () => {
       const host = await start({ defaultMode: '1h', keepalive: { minContextTokens: 0 } });
       const alias = 'auto/aged';
-      const diverging = { role: 'user', content: [{ type: 'text', text: 'rewritten 0' }] };
-      const pings: Record<string, any>[] = [];
-      host.generate.mockImplementation(async (input: any) => {
-        const body = {
-          ...sampleBody(),
-          model: alias,
-          messages: [diverging, { role: 'user', content: [{ type: 'text', text: PING_PROMPT }] }],
-        } as Record<string, any>;
-        const ping = await roundTrip(
-          host,
-          proxyTurn(alias, READ_HIT, 'claude-haiku-5-5', {
-            sessionID: input.sessionID,
-            kind: 'generate',
-            body,
-          })
-        );
-        pings.push((await parsedBodyOf(ping.requestEvt.request)) as Record<string, any>);
-        return {};
-      });
+      const { diverging, pings } = capturePings(host, alias);
 
       await roundTrip(host, proxyTurn(alias, WRITE_1H, 'claude-haiku-5-5'));
       await flush();
