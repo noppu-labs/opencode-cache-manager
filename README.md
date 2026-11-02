@@ -10,7 +10,9 @@
   <img src="docs/images/social-preview.png" alt="Cache Manager, an OpenCode plugin: take control of your prompt cache. Pick a 5m, 1h or hybrid TTL per session, and keep idle caches warm with pings. A chart: after stepping away for 15 minutes, the default 5m cache has expired and the next prompt rewrites it at 1.25x; with keepalive, three pings keep it warm and the next prompt reads it at about 0.1x." width="800">
 </p>
 
-An [OpenCode](https://opencode.ai) plugin for managing your prompt cache. Keep the cache of idle sessions warm with hidden pings so they don't expire while you're away. TUI gives you a way to visualise your cache state and savings from your cache keepalive runs. Plugin is highly configurable and specially tuned for Claude and OpenAI GPT-5.6+.
+An [OpenCode](https://opencode.ai) plugin for managing your prompt cache. Keep the cache of idle sessions warm with hidden pings so they don't expire while you're away. The TUI gives you a way to visualise your cache state and savings from your cache keepalive runs. This plugin is highly configurable and especially tuned for Claude and OpenAI GPT-5.6+.
+
+Pick a cache TTL per session (5 minutes, 1 hour, or a hybrid of the two). Pings are timed to land just before it expires.
 
 <p align="center">
   <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, cached 92% · 141k / 153k, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit ($0.05), saved $0.42 · 2 rewrites, return 9× ping cost" width="420">
@@ -22,9 +24,13 @@ An [OpenCode](https://opencode.ai) plugin for managing your prompt cache. Keep t
 opencode plugin add @noppu-labs/opencode-cache-manager
 ```
 
-> It works with Claude and OpenAI models through their official API or through proxies such as OpenRouter or OmniRoute (via Anthropic Messages API or OpenAI-compatible endpoints). It can work with other models, as long as they report cache TTL.
+## Supported models
 
-> For incompatible models (e.g. older GPT, Gemini, or DeepSeek), the plugin shows how much of each prompt was cached and performs no keepalive mechanics (because you'd get no benefit from it).
+- It works with Claude and OpenAI models through their official API or through proxies such as OpenRouter or OmniRoute (via Anthropic Messages API or OpenAI-compatible endpoints).
+- It can work with other models as long as they support Claude/OpenAI style of cache breakpoints, with some [additional configuration](#settings).
+- For incompatible/unconfigured models (e.g. older GPT, Gemini, or DeepSeek), the plugin shows how much of each prompt was cached and performs no keepalive mechanics (because you'd get no benefit from it).
+
+---
 
 ## Contents
 
