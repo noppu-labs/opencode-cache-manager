@@ -11,6 +11,7 @@ interface Settings {
   keepalive: boolean;
   maxPings: number;
   minContextTokens: number;
+  savings: boolean;
 }
 
 /** A layer that overrides some settings and leaves the rest to lower layers. */
@@ -21,6 +22,7 @@ const BUILTIN_DEFAULTS: Settings = {
   maxPings: 5,
   minContextTokens: 50_000,
   mode: '5m',
+  savings: true,
 };
 
 /** Keeps only the valid fields of `value`; anything else is dropped. */
@@ -29,6 +31,7 @@ function sanitizePatch(value: unknown): SettingsPatch {
   const patch: SettingsPatch = {};
   if (isCacheTtlMode(value.mode)) patch.mode = value.mode;
   if (typeof value.keepalive === 'boolean') patch.keepalive = value.keepalive;
+  if (typeof value.savings === 'boolean') patch.savings = value.savings;
   if (isNonNegativeInteger(value.maxPings) && value.maxPings <= MAX_PINGS_LIMIT) {
     patch.maxPings = value.maxPings;
   }
@@ -42,7 +45,7 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
-/** Reads the plugin options (`defaultMode`, `keepalive.*`) as a settings layer. */
+/** Reads the plugin options (`defaultMode`, `keepalive.*`, `savings`) as a settings layer. */
 function settingsFromOptions(options: unknown): SettingsPatch {
   if (!isRecord(options)) return {};
   const keepalive = isRecord(options.keepalive) ? options.keepalive : {};
@@ -51,6 +54,7 @@ function settingsFromOptions(options: unknown): SettingsPatch {
     maxPings: keepalive.maxPings,
     minContextTokens: keepalive.minContextTokens,
     mode: options.defaultMode,
+    savings: options.savings,
   });
 }
 
@@ -58,13 +62,15 @@ function settingsFromOptions(options: unknown): SettingsPatch {
 interface PluginOptions {
   openaiCompatible: boolean;
   cacheProfiles: ProfilePattern[];
+  modelsDevPrices: boolean;
 }
 
-/** Reads `openaiCompatible` (default `true`) and `cacheProfiles`; invalid values fall back to the defaults. */
+/** Reads `openaiCompatible` (default `true`), `modelsDevPrices` (default `false`) and `cacheProfiles`; invalid values fall back to the defaults. */
 function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
     cacheProfiles: parseCacheProfiles(record.cacheProfiles),
+    modelsDevPrices: typeof record.modelsDevPrices === 'boolean' ? record.modelsDevPrices : false,
     openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
   };
 }
@@ -77,6 +83,7 @@ function mergeSettings(...layers: SettingsPatch[]): Settings {
     if (layer.keepalive !== undefined) merged.keepalive = layer.keepalive;
     if (layer.maxPings !== undefined) merged.maxPings = layer.maxPings;
     if (layer.minContextTokens !== undefined) merged.minContextTokens = layer.minContextTokens;
+    if (layer.savings !== undefined) merged.savings = layer.savings;
   }
   return merged;
 }

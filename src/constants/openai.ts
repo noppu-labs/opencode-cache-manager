@@ -16,6 +16,9 @@ const OPENAI_TTL_FOR_MODE: Record<CacheTtlMode, Ttl> = {
   'hybrid': '30m',
 };
 
+/** TTLs only the openai profile requests; a session on one of them is an OpenAI session. */
+const OPENAI_TTLS: ReadonlySet<Ttl> = new Set(Object.values(OPENAI_TTL_FOR_MODE));
+
 /** Model IDs treated as Claude-family: `anthropic/…`, `~anthropic/…` or any `claude` name. */
 const CLAUDE_MODEL = /(?:^|\/)~?anthropic\/|claude/iu;
 
@@ -30,6 +33,7 @@ export {
   RESPONSES_SUFFIX,
   OPENAI_CACHE_MODEL,
   OPENAI_TTL_FOR_MODE,
+  OPENAI_TTLS,
   CLAUDE_MODEL,
   ANTHROPIC_UPSTREAM,
   FINISH_REASON_MAP,

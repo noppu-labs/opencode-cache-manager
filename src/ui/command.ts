@@ -5,7 +5,7 @@ import { errorMessage, formatTokens } from '../utils/format.ts';
 import { FIELD_INFO, FIELDS, formatValue, type Toast } from './picker.ts';
 
 const USAGE =
-  'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | reset | status]';
+  'Usage: /cache-manager [5m | 1h | hybrid | keepalive on|off | pings <n> | min <n|nk> | savings on|off | reset | status]';
 const NO_SESSION = 'Open a session to change session cache settings.';
 
 interface CommandRunnerDeps {
@@ -38,7 +38,7 @@ function createCommandRunner({ rpc, toast, currentSessionID, openPicker }: Comma
       const { global, session } = await rpc.getSettings({ sessionID });
       const settings = mergeSettings(global, session ?? {});
       toast(
-        `Session cache: TTL ${settings.mode}, keepalive ${formatValue('keepalive', settings.keepalive)}, pings ${settings.maxPings}, min context ${formatTokens(settings.minContextTokens)}.`,
+        `Session cache: TTL ${settings.mode}, keepalive ${formatValue('keepalive', settings.keepalive)}, pings ${settings.maxPings}, min context ${formatTokens(settings.minContextTokens)}, savings ${formatValue('savings', settings.savings)}.`,
         'info'
       );
       return;

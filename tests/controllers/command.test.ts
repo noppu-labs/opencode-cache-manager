@@ -108,6 +108,14 @@ describe('createCacheManagerCommand', () => {
     expect(data.has('global')).toBe(false);
   });
 
+  test('status text ends with the savings setting', async () => {
+    const { run, said } = await setup();
+    await run('status');
+    expect(said[0].text).toContain('min context 50000 tokens, savings on.');
+    await run('savings off');
+    expect(said[1].text).toContain('min context 50000 tokens, savings off.');
+  });
+
   test('reset removes the session patch', async () => {
     const { run, data, said } = await setup();
     await run('1h');

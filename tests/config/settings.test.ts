@@ -17,7 +17,13 @@ describe('mergeSettings', () => {
       keepalive: true,
       maxPings: 5,
       minContextTokens: 50_000,
+      savings: true,
     });
+  });
+
+  test('savings defaults on and a layer can turn it off', () => {
+    expect(mergeSettings().savings).toBe(true);
+    expect(mergeSettings({ savings: false }).savings).toBe(false);
   });
 
   test('later layers win field by field', () => {
@@ -35,6 +41,7 @@ describe('sanitizePatch', () => {
       keepalive: false,
       maxPings: 0,
       minContextTokens: 0,
+      savings: false,
     };
     expect(sanitizePatch(patch)).toEqual(patch);
   });
@@ -49,6 +56,8 @@ describe('sanitizePatch', () => {
         extra: 1,
       })
     ).toEqual({});
+    expect(sanitizePatch({ savings: 'no' })).toEqual({});
+    expect(sanitizePatch({ savings: false })).toEqual({ savings: false });
     expect(sanitizePatch({ maxPings: 1.5 })).toEqual({});
     expect(sanitizePatch({ maxPings: -1 })).toEqual({});
     expect(sanitizePatch({ minContextTokens: 1.5 })).toEqual({});
@@ -91,8 +100,16 @@ describe('settingsFromOptions', () => {
 
 describe('pluginOptions', () => {
   test('defaults to enabled with no patterns', () => {
-    expect(pluginOptions(undefined)).toEqual({ openaiCompatible: true, cacheProfiles: [] });
-    expect(pluginOptions({})).toEqual({ openaiCompatible: true, cacheProfiles: [] });
+    expect(pluginOptions(undefined)).toEqual({
+      openaiCompatible: true,
+      modelsDevPrices: false,
+      cacheProfiles: [],
+    });
+    expect(pluginOptions({})).toEqual({
+      openaiCompatible: true,
+      modelsDevPrices: false,
+      cacheProfiles: [],
+    });
   });
 
   test('reads openaiCompatible only when it is a boolean', () => {
@@ -118,5 +135,18 @@ describe('pluginOptions', () => {
 
   test('explicitCacheModels is ignored', () => {
     expect(pluginOptions({ explicitCacheModels: ['auto/opus'] }).cacheProfiles).toEqual([]);
+  });
+});
+
+describe('savings and modelsDevPrices options', () => {
+  test('savings is a top-level option, not under keepalive', () => {
+    expect(settingsFromOptions({ savings: false })).toEqual({ savings: false });
+    expect(settingsFromOptions({ keepalive: { savings: false } })).toEqual({});
+  });
+
+  test('modelsDevPrices defaults to false and needs a boolean', () => {
+    expect(pluginOptions({}).modelsDevPrices).toBe(false);
+    expect(pluginOptions({ modelsDevPrices: true }).modelsDevPrices).toBe(true);
+    expect(pluginOptions({ modelsDevPrices: 'yes' }).modelsDevPrices).toBe(false);
   });
 });

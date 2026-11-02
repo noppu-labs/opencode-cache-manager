@@ -26,6 +26,8 @@ function snapshot(overrides: Partial<KeepaliveSnapshot> = {}): KeepaliveSnapshot
     skipReason: null,
     contextTokens: null,
     lastCache: null,
+    showSavings: true,
+    savings: null,
     ...overrides,
   };
 }

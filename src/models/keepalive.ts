@@ -1,4 +1,5 @@
 import type { Ttl } from './cache.ts';
+import type { SavingsReadout } from './savings.ts';
 
 /** Cache reads and total prompt tokens of one response. */
 interface CacheReadout {
@@ -35,6 +36,10 @@ type KeepaliveSnapshot = {
   contextTokens: number | null;
   /** Cache reads and total prompt tokens of the latest non-ping response; null before one arrives. */
   lastCache: CacheReadout | null;
+  /** The `savings` setting. */
+  showSavings: boolean;
+  /** The session's ledger readout; null with savings off, for unmanaged or child sessions and before the ledger loads. */
+  savings: SavingsReadout | null;
 };
 
 export type { CacheReadout, SkipReason, RequestKind, KeepaliveSnapshot };

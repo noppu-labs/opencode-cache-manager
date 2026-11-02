@@ -94,9 +94,23 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
             .catch(() => false)
         : Promise.resolve(false);
 
-      const reported = Promise.all([observed.usage, observed.stopReason, unmanagedCheck])
-        .then(async ([usage, stopReason, unmanaged]) =>
-          engine.responseObserved(sessionID, { isPing, kind, ok, stopReason, unmanaged, usage })
+      const reported = Promise.all([
+        observed.usage,
+        observed.stopReason,
+        unmanagedCheck,
+        observed.identity,
+      ])
+        .then(async ([usage, stopReason, unmanaged, identity]) =>
+          engine.responseObserved(sessionID, {
+            isPing,
+            kind,
+            model: ref,
+            ok,
+            reportedModel: isNonEmptyString(identity?.model) ? identity.model : undefined,
+            stopReason,
+            unmanaged,
+            usage,
+          })
         )
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);

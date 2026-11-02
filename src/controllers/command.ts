@@ -4,13 +4,14 @@ import { parseCommandArg } from './command-args.ts';
 
 const INVALID_ARGUMENT_TEXT =
   'Unknown cache argument. Use `5m`, `1h`, `hybrid`, `keepalive on|off`, ' +
-  '`pings <0-100>`, `min <tokens|50k>`, `status`, or `reset`, ' +
+  '`pings <0-100>`, `min <tokens|50k>`, `savings on|off`, `status`, or `reset`, ' +
   'or run `/cache-manager` with no argument to toggle this session between 5m and 1h.';
 
 function describeSettings(settings: Settings): string {
   return (
     `mode ${settings.mode}, keepalive ${settings.keepalive ? 'on' : 'off'}, ` +
-    `max pings ${settings.maxPings}, min context ${settings.minContextTokens} tokens`
+    `max pings ${settings.maxPings}, min context ${settings.minContextTokens} tokens, ` +
+    `savings ${settings.savings ? 'on' : 'off'}`
   );
 }
 
@@ -36,7 +37,7 @@ function createCacheManagerCommand({
 }: CommandDeps): CacheManagerCommand {
   return {
     description:
-      "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | status | reset)",
+      "Manage this session's prompt cache (5m | 1h | hybrid | keepalive on|off | pings N | min N | savings on|off | status | reset)",
     async execute(input: { sessionID: string; prompt: unknown }): Promise<void> {
       const { sessionID } = input;
       const action = parseCommandArg(input.prompt);
