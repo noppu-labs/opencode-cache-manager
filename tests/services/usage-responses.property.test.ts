@@ -50,6 +50,7 @@ const known = fc
       cacheReadTokens: read,
       cacheWriteTokens: write,
       inputTokens: extra,
+      outputTokens: 0,
       write1hTokens: undefined,
       write5mTokens: undefined,
     },

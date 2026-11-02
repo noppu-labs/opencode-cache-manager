@@ -30,6 +30,7 @@ const event = fc.oneof(
 
 interface Counts {
   input: number;
+  output: number;
   read: number;
   w1h: number;
   w5m: number;
@@ -38,6 +39,7 @@ interface Counts {
 
 const counts: fc.Arbitrary<Counts> = fc.record({
   input: fc.nat(),
+  output: fc.nat(),
   read: fc.nat(),
   w1h: fc.nat(),
   w5m: fc.nat(),
@@ -49,6 +51,7 @@ const wireUsage = (c: Counts): Record<string, unknown> => ({
   cache_creation_input_tokens: c.write,
   cache_read_input_tokens: c.read,
   input_tokens: c.input,
+  output_tokens: c.output,
 });
 
 describe('ANTHROPIC_PARSERS properties', () => {
@@ -75,6 +78,7 @@ describe('ANTHROPIC_PARSERS properties', () => {
           cacheReadTokens: c.read,
           cacheWriteTokens: c.write,
           inputTokens: c.input,
+          outputTokens: c.output,
           write1hTokens: c.w1h,
           write5mTokens: c.w5m,
         });
@@ -98,6 +102,7 @@ describe('ANTHROPIC_PARSERS properties', () => {
             cacheReadTokens: delta.cache_read_input_tokens ?? c.read,
             cacheWriteTokens: c.write,
             inputTokens: delta.input_tokens ?? c.input,
+            outputTokens: delta.output_tokens ?? c.output,
             write1hTokens: c.w1h,
             write5mTokens: c.w5m,
           });

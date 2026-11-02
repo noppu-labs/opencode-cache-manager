@@ -978,6 +978,7 @@ describe('createRequestHook with the real keepalive engine', () => {
     inputTokens: 100,
     cacheReadTokens: 70_000,
     cacheWriteTokens: 0,
+    outputTokens: 0,
     write5mTokens: undefined,
     write1hTokens: undefined,
   };
