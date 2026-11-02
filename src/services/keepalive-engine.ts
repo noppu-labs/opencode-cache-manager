@@ -123,6 +123,8 @@ class KeepaliveEngine {
     state.retryAt = null;
     state.nextPingAt = null;
     if (state.skipReason === 'missed' || state.skipReason === 'exhausted') state.skipReason = null;
+    // A stale `implicit` here would make the server drop the primary messages this request just stored.
+    if (state.skipReason === 'implicit' && state.requestedTtl !== null) state.skipReason = null;
     this.commit(sessionID, state);
     void this.schedule(sessionID);
   }
