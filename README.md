@@ -18,6 +18,22 @@ It works with Claude through the Anthropic API, through proxies that speak the A
   <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, cached 92% · 141k / 153k, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit ($0.05), saved $0.42 · 2 rewrites, return 9× ping cost" width="420">
 </p>
 
+## Contents
+
+- [Why](#why)
+- [The three modes](#the-three-modes)
+  - [Modes per provider](#modes-per-provider)
+- [Supported providers and endpoints](#supported-providers-and-endpoints)
+- [Install](#install)
+- [Usage](#usage)
+  - [Per-model override](#per-model-override)
+  - [Proxies and other provider ids](#proxies-and-other-provider-ids)
+- [Keepalive](#keepalive)
+- [Settings](#settings)
+- [Sidebar](#sidebar)
+  - [Savings](#savings)
+- [Contributing](#contributing)
+
 ## Why
 
 OpenCode marks Claude's cache breakpoints on its own (tools, system prompt, the last message) but always sends `ttl: "5m"`, and there is no config option for it. Step away for ten minutes and your next prompt writes the whole context into the cache again at 1.25x the base input price (2x for the 1h cache) instead of reading it at about 0.1x. GPT-5.6+ has the same problem: OpenAI caches for 30 minutes on its own, and the 12-hour cache has to be requested per breakpoint, which OpenCode never does.
