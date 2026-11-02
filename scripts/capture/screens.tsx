@@ -2,18 +2,29 @@
 /* oxlint-disable eslint/no-magic-numbers -- sample snapshots for the README images: the numbers are the fixture data */
 import { RGBA } from '@opentui/core';
 import { testRender } from '@opentui/solid';
+import type { JSX } from 'solid-js';
 
+import { BUILTIN_DEFAULTS } from '../../src/config/settings.ts';
 import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
+import {
+  PICKER_PLACEHOLDER,
+  PICKER_TITLE,
+  RESET_SESSION_OPTION,
+  settingsOptions,
+} from '../../src/ui/picker.ts';
 import { CacheLines, type SidebarPalette } from '../../src/ui/sidebar.tsx';
 import { frameToAnsi, textRow } from './ansi.ts';
+import { DIALOG_WIDTH, PickerDialog } from './picker-dialog.tsx';
 
 /** 14:00 UTC; the script pins Date.now and TZ to it so the clock times in the images are stable. */
 const CAPTURE_NOW = Date.UTC(2026, 9, 23, 14, 0, 0);
 
 const MINUTE = 60_000;
 const COLUMNS = 40;
-/** Rows of the test terminal; the section is at most 7 lines tall. */
-const HEIGHT = 8;
+/** Rows of the test terminal; the section is at most 9 lines tall. */
+const HEIGHT = 10;
+/** Rows of the test terminal for the picker; the rows below the dialog are dropped. */
+const PICKER_HEIGHT = 40;
 
 /** OpenCode's default theme ("opencode"), dark mode, from packages/tui/src/theme/assets/opencode.json. */
 const OPENCODE_DARK = {
@@ -44,7 +55,15 @@ const BASE: KeepaliveSnapshot = {
   minContextTokens: 50_000,
   nextPingAt: CAPTURE_NOW + 42 * MINUTE,
   pingsUsed: 2,
-  savings: null,
+  savings: {
+    avoidedTokens: 282_000,
+    netUsd: 0.42,
+    pings: 2,
+    priced: true,
+    rescues: 2,
+    returnRatio: 9,
+    stretchUsd: 0.05,
+  },
   sessionID: 'ses_capture',
   showSavings: true,
   skipReason: null,
@@ -52,8 +71,10 @@ const BASE: KeepaliveSnapshot = {
   ttlSource: 'detected',
 };
 
+/** BASE without the savings rows, so each state shows only what it is about. */
 const snapshot = (overrides: Partial<KeepaliveSnapshot>): KeepaliveSnapshot => ({
   ...BASE,
+  savings: null,
   ...overrides,
 });
 
@@ -150,9 +171,81 @@ const STATES: readonly Block[] = [
       skipReason: 'exhausted',
     }),
   },
+  {
+    caption: 'Savings in dollars',
+    snapshot: snapshot({
+      pingsUsed: 1,
+      savings: {
+        avoidedTokens: 141_300,
+        netUsd: 0.27,
+        pings: 3,
+        priced: true,
+        rescues: 1,
+        returnRatio: 4.6,
+        stretchUsd: 0.03,
+      },
+    }),
+  },
+  {
+    caption: 'Savings without a model price',
+    snapshot: snapshot({
+      savings: {
+        avoidedTokens: 282_000,
+        netUsd: null,
+        pings: 2,
+        priced: false,
+        rescues: 2,
+        returnRatio: 9,
+        stretchUsd: null,
+      },
+    }),
+  },
+  {
+    caption: 'Nothing saved yet',
+    snapshot: snapshot({
+      savings: {
+        avoidedTokens: 0,
+        netUsd: -0.05,
+        pings: 2,
+        priced: true,
+        rescues: 0,
+        returnRatio: null,
+        stretchUsd: 0.05,
+      },
+    }),
+  },
+  {
+    caption: 'Savings turned off',
+    snapshot: snapshot({ showSavings: false }),
+  },
 ];
 
-const SCREENS = { 'sidebar': HERO, 'sidebar-states': STATES } as const;
+/** A screen drawn once by its own component rather than as sidebar blocks. */
+interface View {
+  width: number;
+  height: number;
+  render: () => JSX.Element;
+}
+
+/** The Cache Manager picker with a session open: no session overrides, built-in global settings. */
+const PICKER: View = {
+  height: PICKER_HEIGHT,
+  render: () => (
+    <PickerDialog
+      options={[
+        ...settingsOptions('session', BUILTIN_DEFAULTS, {}),
+        RESET_SESSION_OPTION,
+        ...settingsOptions('global', BUILTIN_DEFAULTS, null),
+      ]}
+      placeholder={PICKER_PLACEHOLDER}
+      selected="session:mode"
+      title={PICKER_TITLE}
+    />
+  ),
+  width: DIALOG_WIDTH,
+};
+
+const SCREENS = { 'picker': PICKER, 'sidebar': HERO, 'sidebar-states': STATES } as const;
 type ScreenName = keyof typeof SCREENS;
 const SCREEN_NAMES: ScreenName[] = Object.keys(SCREENS).filter((name): name is ScreenName =>
   isScreenName(name)
@@ -162,14 +255,8 @@ function isScreenName(name: string): name is ScreenName {
   return name in SCREENS;
 }
 
-async function renderBlock(block: Block): Promise<string[]> {
-  const setup = await testRender(
-    () => <CacheLines palette={() => PALETTE} snapshot={() => block.snapshot} />,
-    {
-      height: HEIGHT,
-      width: COLUMNS,
-    }
-  );
+async function renderFrame(view: View): Promise<string[]> {
+  const setup = await testRender(view.render, { height: view.height, width: view.width });
   try {
     await setup.flush();
     return frameToAnsi(setup.captureSpans());
@@ -178,12 +265,18 @@ async function renderBlock(block: Block): Promise<string[]> {
   }
 }
 
-/** Renders the screen's blocks top to bottom, one blank row apart, as ANSI rows. */
+/** Renders a view, or the screen's blocks top to bottom one blank row apart, as ANSI rows. */
 async function renderScreen(name: ScreenName): Promise<string[]> {
+  const screen: View | readonly Block[] = SCREENS[name];
+  if ('render' in screen) return renderFrame(screen);
   const rows: string[] = [];
-  for (const block of SCREENS[name]) {
+  for (const block of screen) {
     // @opentui/solid attaches its engine to the latest test renderer, so each block renders and is destroyed before the next starts.
-    const body = await renderBlock(block);
+    const body = await renderFrame({
+      height: HEIGHT,
+      render: () => <CacheLines palette={() => PALETTE} snapshot={() => block.snapshot} />,
+      width: COLUMNS,
+    });
     if (rows.length > 0) rows.push('');
     if (block.caption !== undefined) {
       rows.push(textRow([{ fg: CAPTION_COLOR, text: `# ${block.caption}` }]));

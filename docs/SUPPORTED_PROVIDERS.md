@@ -51,7 +51,7 @@ On Chat Completions, Claude requests in `1h` and `hybrid` carry the same `anthro
 
 ### OmniRoute and other proxies
 
-OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is expected to be billed as the automatic 30m cache (observed in the probe, not measured for every route). This is not yet reported upstream; until it is fixed, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. In `1h` keepalive still pings on the 12h schedule, so on OmniRoute those pings are expected to arrive after the 30m cache is gone and miss (expected, not measured). Use `5m` for GPT sessions on such a proxy.
+OmniRoute forwards `prompt_cache_options` but currently drops `prompt_cache_breakpoint`. Through it, caching turned off on one-off calls works, while the 12h lifetime (`1h` and `hybrid` modes) does not reach OpenAI yet: the request is expected to be billed as the automatic 30m cache (observed in the probe, not measured for every route). This is fixed upstream in OmniRoute PR #18255 (issue #18254, merged 2026-10-27) but not yet in a release (the latest is v3.8.52); until a release includes it, reach GPT-5.6+ through OpenRouter or OpenAI directly if you want 12h. In `1h` keepalive still pings on the 12h schedule, so on OmniRoute those pings are expected to arrive after the 30m cache is gone and miss (expected, not measured). Use `5m` for GPT sessions on such a proxy until a release includes the fix.
 
 Example provider configs with `-1h` variants:
 
