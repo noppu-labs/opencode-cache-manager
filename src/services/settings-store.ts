@@ -71,29 +71,45 @@ function isSessionNotFound(error: unknown): boolean {
   return [_tag, name].some((tag) => typeof tag === 'string' && /SessionNotFound/u.test(tag));
 }
 
-/** Drops stored settings for sessions that were deleted while the plugin was not running. */
-async function sweepDeletedSessions(
-  storage: ScannableKV,
-  getSession: (sessionID: string) => Promise<unknown>
-): Promise<void> {
+/** Every key stored under `prefix`, across scan pages. */
+async function scanKeys(storage: ScannableKV, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
   let after: string | undefined;
   do {
     const page = await storage.scan({
-      prefix: SESSION_KEY_PREFIX,
+      prefix,
       ...(isNonEmptyString(after) ? { after } : {}),
     });
-    for (const entry of page.entries) {
-      const sessionID = entry.key.startsWith(SESSION_KEY_PREFIX)
-        ? entry.key.slice(SESSION_KEY_PREFIX.length)
-        : entry.key;
-      try {
-        await getSession(sessionID);
-      } catch (error) {
-        if (isSessionNotFound(error)) await storage.remove(entry.key);
-      }
-    }
+    keys.push(...page.entries.map((entry) => entry.key));
     after = page.next;
   } while (isNonEmptyString(after));
+  return keys;
 }
 
-export { SettingsStore, sweepDeletedSessions };
+/**
+ * Drops stored entries under each of `prefixes` for sessions that were deleted while the
+ * plugin was not running, looking each session up once however many prefixes it has keys under.
+ */
+async function sweepDeletedSessions(
+  storage: ScannableKV,
+  getSession: (sessionID: string) => Promise<unknown>,
+  prefixes: readonly string[] = [SESSION_KEY_PREFIX]
+): Promise<void> {
+  const keysBySession = new Map<string, string[]>();
+  for (const prefix of prefixes) {
+    for (const key of await scanKeys(storage, prefix)) {
+      const sessionID = key.startsWith(prefix) ? key.slice(prefix.length) : key;
+      keysBySession.set(sessionID, [...(keysBySession.get(sessionID) ?? []), key]);
+    }
+  }
+  for (const [sessionID, keys] of keysBySession) {
+    try {
+      await getSession(sessionID);
+    } catch (error) {
+      if (!isSessionNotFound(error)) continue;
+      for (const key of keys) await storage.remove(key);
+    }
+  }
+}
+
+export { SESSION_KEY_PREFIX, SettingsStore, sweepDeletedSessions };
