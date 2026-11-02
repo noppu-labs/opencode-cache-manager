@@ -10,13 +10,21 @@
   <img src="docs/images/social-preview.png" alt="Cache Manager, an OpenCode plugin: take control of your prompt cache. Pick a 5m, 1h or hybrid TTL per session, and keep idle caches warm with pings. A chart: after stepping away for 15 minutes, the default 5m cache has expired and the next prompt rewrites it at 1.25x; with keepalive, three pings keep it warm and the next prompt reads it at about 0.1x." width="800">
 </p>
 
-An [OpenCode](https://opencode.ai) plugin for the prompt cache of Claude and OpenAI GPT-5.6+. Pick the cache TTL per session (5 minutes, 1 hour, or a hybrid of the two) from inside the TUI, keep idle sessions' caches warm with hidden pings so they don't expire while you're away, and watch the cache state in the sidebar.
-
-It works with Claude through the Anthropic API, through proxies that speak the Anthropic Messages API, and through OpenAI-compatible endpoints such as OpenRouter and proxies like OmniRoute. GPT-5.6 and later work through OpenAI's own endpoint (Responses) and through the same OpenAI-compatible endpoints. For other models (older GPT, DeepSeek, Gemini, …), it shows how much of each prompt was cached and leaves the cache alone.
+An [OpenCode](https://opencode.ai) plugin for managing your prompt cache. Keep the cache of idle sessions warm with hidden pings so they don't expire while you're away. TUI gives you a way to visualise your cache state and savings from your cache keepalive runs. Plugin is highly configurable and specially tuned for Claude and OpenAI GPT-5.6+.
 
 <p align="center">
   <img src="docs/images/sidebar.svg" alt="The Cache section of the OpenCode sidebar: status warm, cached 92% · 141k / 153k, expires 14:52 (52m), ttl 1h (detected), next ping 14:42 (42m), pings 2/5 ✓ hit ($0.05), saved $0.42 · 2 rewrites, return 9× ping cost" width="420">
 </p>
+
+## Quickstart
+
+```sh
+opencode plugin add @noppu-labs/opencode-cache-manager
+```
+
+> It works with Claude and OpenAI models through their official API or through proxies such as OpenRouter or OmniRoute (via Anthropic Messages API or OpenAI-compatible endpoints). It can work with other models, as long as they report cache TTL.
+
+> For incompatible models (e.g. older GPT, Gemini, or DeepSeek), the plugin shows how much of each prompt was cached and performs no keepalive mechanics (because you'd get no benefit from it).
 
 ## Contents
 
@@ -76,19 +84,29 @@ The plugin handles the Anthropic Messages API (`POST …/messages`), OpenAI Chat
 
 ## Install
 
-Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. OpenCode installs it at startup; there is no manual `npm install`:
+### Via CLI
+
+```sh
+opencode plugin add @noppu-labs/opencode-cache-manager
+```
+
+### Manually registered
+
+Add the package to the `plugins` array in `~/.config/opencode/opencode.jsonc`. OpenCode installs it at startup:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
-    "@noppu-labs/opencode-cache-manager@^0.7.0",
-    // or: "opencode-cache-manager@^0.7.0" -- same package, unscoped name
+    "@noppu-labs/opencode-cache-manager",
+    // or: "opencode-cache-manager" -- same package, unscoped name
   ],
 }
 ```
 
-To run from a clone instead, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Upgrading from 0.1.x? See [docs/UPGRADE.md](docs/UPGRADE.md).
+### From clone
+
+To run from a local clone, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Upgrading from 0.1.x? See [docs/UPGRADE.md](docs/UPGRADE.md).
 
 ## Usage
 
