@@ -1,4 +1,6 @@
 import {
+  DATE_SUFFIX,
+  LATEST_SUFFIX,
   MODELS_DEV_MAX_AGE_MS,
   MODELS_DEV_RETRY_MS,
   MODELS_DEV_STORAGE_KEY,
@@ -24,9 +26,6 @@ interface Cache {
   fetchedAt: number;
   body: unknown;
 }
-
-const DATE_SUFFIX = /-\d{8}$/u;
-const LATEST_SUFFIX = /-latest$/u;
 
 /** Lowercased name without a `provider/` prefix, a `-YYYYMMDD` suffix or `-latest`. */
 function normaliseModelName(name: string): string {
@@ -147,7 +146,9 @@ function pruneBody(body: unknown): Record<string, unknown> {
         };
       }
     }
-    pruned[provider] = { models };
+    if (Object.keys(models).length > 0) {
+      pruned[provider] = { models };
+    }
   }
   return pruned;
 }
@@ -223,7 +224,11 @@ class ModelsDevPrices {
       if (!isRecord(body)) {
         throw new TypeError('models.dev body is not an object');
       }
-      this.cache = { body: pruneBody(body), fetchedAt: this.deps.now() };
+      const pruned = pruneBody(body);
+      if (Object.keys(pruned).length === 0) {
+        throw new TypeError('models.dev body has no priced models');
+      }
+      this.cache = { body: pruned, fetchedAt: this.deps.now() };
       this.index = undefined;
       this.failedAt = undefined;
       await this.deps.kv.set(MODELS_DEV_STORAGE_KEY, this.cache).catch(() => null);

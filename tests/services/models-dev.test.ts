@@ -140,6 +140,18 @@ describe('ModelsDevPrices.match', () => {
     expect(calls).toHaveLength(2);
   });
 
+  test('a 200 body with no priced models keeps the cache and the stored copy, and backs off', async () => {
+    const { calls, clock, data, prices } = setup([BODY, { error: 'x' }]);
+    expect(await prices.match(['claude-sonnet-4-5'])).toEqual(SONNET);
+    const stored = JSON.stringify(data.get('models-dev'));
+    clock.t += MODELS_DEV_MAX_AGE_MS;
+    expect(await prices.match(['claude-sonnet-4-5'])).toEqual(SONNET);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(data.get('models-dev'))).toBe(stored);
+    await prices.match(['claude-sonnet-4-5']);
+    expect(calls).toHaveLength(2);
+  });
+
   test('concurrent matches share one fetch', async () => {
     const { calls, prices } = setup();
     await Promise.all([prices.match(['a']), prices.match(['b'])]);

@@ -58,6 +58,8 @@
           },
           // Optional: a price lets the sidebar show savings in dollars. Per million
           // tokens; a custom provider has no price unless you add one here.
+          // cache.write prices 5m and 30m writes; 1h and 12h writes are priced from
+          // input (2x and 2.5x).
           // "cost": { "input": 3, "output": 15, "cache": { "read": 0.3, "write": 3.75 } },
           "variants": [
             {

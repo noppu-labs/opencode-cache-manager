@@ -173,6 +173,7 @@ describe('renderScreen', () => {
     const rows = (await screens.renderScreen('sidebar-states')).map((row) => stripAnsi(row));
     const off = rows.slice(rows.indexOf('# Savings turned off'));
     expect(off).toContain('  pings       2/5 ✓ hit');
+    expect(off.some((row) => row.includes('($'))).toBe(false);
     expect(off.some((row) => row.includes('saved') || row.includes('return'))).toBe(false);
   });
 

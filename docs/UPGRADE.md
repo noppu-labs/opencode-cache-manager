@@ -4,7 +4,7 @@
 
 Update the version range in your `plugins` entry to `^0.7.0`: on 0.x, `^0.6.0` does not pick up 0.7.
 
-0.7.0 adds a savings ledger. The sidebar gains `saved` and `return` rows by default, and `pings` shows the cost of the current stretch when the model has a price. Turn them off with the `savings` option, the picker's Savings row, or `/cache-manager savings off`; the ledger keeps counting while hidden. See [Savings](../README.md#savings).
+0.7.0 adds a savings ledger. The sidebar gains `saved` and `return` rows by default, and `pings` shows the cost of the current stretch when every ping in the session was priced. Turn them off with the `savings` option, the picker's Savings row, or `/cache-manager savings off`; the ledger keeps counting while hidden. See [Savings](../README.md#savings).
 
 `modelsDevPrices` is opt-in (default `false`). Leave it off and the plugin makes no network calls of its own; sessions on models the OpenCode catalog doesn't price show the unit-free form.
 

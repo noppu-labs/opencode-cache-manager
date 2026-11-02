@@ -34,11 +34,19 @@ describe('LedgerStore', () => {
     expect(totals.pings).toBe(5);
   });
 
-  test('update never mutates the previous totals', async () => {
-    const { kv } = memoryKv();
+  test('change receives the stored totals unmodified and not aliased', async () => {
+    const { kv, data } = memoryKv();
+    const stored = { ...EMPTY_TOTALS, pings: 4 };
+    data.set('ledger/ses_a', stored);
     const store = new LedgerStore(kv);
-    await store.update('ses_a', addPing);
-    expect(EMPTY_TOTALS.pings).toBe(0);
+    let received: LedgerTotals | undefined;
+    await store.update('ses_a', (totals) => {
+      received = totals;
+      return { ...totals, pings: 9 };
+    });
+    expect(received).toEqual({ ...EMPTY_TOTALS, pings: 4 });
+    expect(received).not.toBe(stored);
+    expect(stored.pings).toBe(4);
   });
 
   test.each([
@@ -67,6 +75,44 @@ describe('LedgerStore', () => {
       throw new Error('read failed');
     };
     expect(await new LedgerStore(kv).load('ses_a')).toEqual(EMPTY_TOTALS);
+  });
+
+  test('a failed read is not cached and does not clobber the stored record', async () => {
+    const { kv, data } = memoryKv();
+    data.set('ledger/ses_a', { ...EMPTY_TOTALS, pings: 40 });
+    const original = kv.get;
+    let failNext = true;
+    kv.get = async (key) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('transient');
+      }
+      return original(key);
+    };
+    const store = new LedgerStore(kv);
+    await store.update('ses_a', addPing);
+    expect((data.get('ledger/ses_a') as LedgerTotals).pings).toBe(40);
+    expect(store.peek('ses_a')).toBeUndefined();
+    const after = await store.update('ses_a', addPing);
+    expect(after.pings).toBe(42);
+    expect((data.get('ledger/ses_a') as LedgerTotals).pings).toBe(42);
+  });
+
+  test('a synchronously throwing get leaves no stale load, so a later load retries', async () => {
+    const { kv, data } = memoryKv();
+    data.set('ledger/ses_a', { ...EMPTY_TOTALS, pings: 7 });
+    const original = kv.get;
+    let throwNext = true;
+    kv.get = (key) => {
+      if (throwNext) {
+        throwNext = false;
+        throw new Error('sync');
+      }
+      return original(key);
+    };
+    const store = new LedgerStore(kv);
+    expect(await store.load('ses_a')).toEqual(EMPTY_TOTALS);
+    expect((await store.load('ses_a')).pings).toBe(7);
   });
 
   test('concurrent loads share one read', async () => {

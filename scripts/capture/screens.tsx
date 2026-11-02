@@ -216,7 +216,18 @@ const STATES: readonly Block[] = [
   },
   {
     caption: 'Savings turned off',
-    snapshot: snapshot({ showSavings: false }),
+    snapshot: snapshot({
+      savings: {
+        avoidedTokens: 120_000,
+        netUsd: 0.27,
+        pings: 2,
+        priced: true,
+        rescues: 1,
+        returnRatio: 4.6,
+        stretchUsd: 0.05,
+      },
+      showSavings: false,
+    }),
   },
 ];
 
