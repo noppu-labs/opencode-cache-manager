@@ -57,10 +57,10 @@
     "fuzz": "FC_NUM_RUNS=${FC_NUM_RUNS:-1000} bun test --timeout 600000 .property.test"
   },
   "devDependencies": {
-    "@opencode/plugin": "2.2.1",
-    "@opencode/theme": "2.2.0",
-    "@opentui/core": "0.7.0",
-    "@opentui/solid": "0.7.0",
+    "@opencode/plugin": "2.2.5",
+    "@opencode/theme": "2.2.5",
+    "@opentui/core": "0.8.1",
+    "@opentui/solid": "0.8.1",
     "@types/bun": "^1.4.4",
     "eslint": "^10.13.0",
     "eslint-plugin-solid": "^0.18.1",
@@ -68,7 +68,7 @@
     "oxfmt": "^0.75.0",
     "oxlint": "^1.90.0",
     "oxlint-tsgolint": "^7.0.2005",
-    "solid-js": "1.9.17",
+    "solid-js": "1.9.18",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
