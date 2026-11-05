@@ -2,6 +2,7 @@ import { BETA_HEADER, EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../constants/
 import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from '../models/cache.ts';
 import type { RequestKind } from '../models/keepalive.ts';
 import type { CacheProfile } from '../models/profile.ts';
+import { dbg, dbgEnabled, dbgUrl } from '../utils/debug-log.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { applyTtlToBlock, hasOneHourCacheControl } from './cache-control.ts';
 
@@ -135,6 +136,55 @@ function applyProfileHeaders(headers: Headers, extra: Record<string, string>): v
   }
 }
 
+/** A `cache_control` field for the trace. Only a primitive: an object could hold body text, or be too deep to serialize. */
+function describeCacheField(value: unknown): string {
+  return typeof value === 'object' && value !== null ? 'object' : JSON.stringify(value);
+}
+
+/** A node's `cache_control` as `type` or `type/ttl`; undefined when it has none. */
+function describeCacheControl(node: unknown): string | undefined {
+  const cc = isRecord(node) && isRecord(node.cache_control) ? node.cache_control : undefined;
+  if (cc === undefined) return undefined;
+  const ttl = cc.ttl === undefined ? '' : `/${describeCacheField(cc.ttl)}`;
+  return `${describeCacheField(cc.type)}${ttl}`;
+}
+
+/**
+ * Debug only: where `cache_control` sits in a body, so a request logged as
+ * `inject=true, rewritten=false` can be told apart from one that was simply
+ * already marked.
+ */
+function breakpointSurvey(body: Record<string, unknown>): Record<string, unknown> {
+  const marks: string[] = [];
+  const tools = Array.isArray(body.tools) ? body.tools : [];
+  for (const [index, tool] of tools.entries()) {
+    const mark = describeCacheControl(tool);
+    if (mark !== undefined) marks.push(`tool[${index}]=${mark}`);
+  }
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  for (const [index, message] of messages.entries()) {
+    // `String` throws on a parsed object with no string form, and this runs outside `dbg`'s try.
+    const role = isRecord(message) && typeof message.role === 'string' ? message.role : '?';
+    const mark = describeCacheControl(message);
+    if (mark !== undefined) marks.push(`msg[${index}:${role}]=${mark}`);
+    const content = isRecord(message) ? message.content : undefined;
+    if (!Array.isArray(content)) continue;
+    for (const [part, node] of content.entries()) {
+      const partMark = describeCacheControl(node);
+      if (partMark !== undefined) {
+        marks.push(`msg[${index}:${role}].content[${part}]=${partMark}`);
+      }
+    }
+  }
+
+  return {
+    marks,
+    messages: messages.length,
+    tools: tools.length,
+    topLevel: describeCacheControl(body) ?? null,
+  };
+}
+
 /**
  * Transforms an outbound request through its cache profile: strips the internal
  * `x-cache-ttl` sentinel, lets the profile rewrite the body for the active mode,
@@ -154,7 +204,10 @@ async function transformHttpRequest(
   const headers = new Headers(request.headers);
   headers.delete(SENTINEL_HEADER);
 
-  if (activeMode === '5m' && !hadSentinel && !request.body) return request;
+  if (activeMode === '5m' && !hadSentinel && !request.body) {
+    dbg('transform.skipped5mNoBody', { url: dbgUrl(request.url) });
+    return request;
+  }
 
   if (!request.body) {
     return hadSentinel
@@ -171,6 +224,7 @@ async function transformHttpRequest(
   }
 
   if (!isRecord(parsed)) {
+    dbg('transform.bodyNotRecord', { hadSentinel, mode: activeMode, url: dbgUrl(request.url) });
     if (!hadSentinel) return request;
     const buffer = await request.clone().arrayBuffer();
     return new Request(request.url, {
@@ -182,7 +236,21 @@ async function transformHttpRequest(
   }
 
   const { wire, profile, kind, isPing, inject } = opts;
+  const before = dbgEnabled() ? breakpointSurvey(parsed) : undefined;
   const changed = profile.rewrite(parsed, { inject, isPing, kind, mode: activeMode, wire });
+  if (dbgEnabled()) {
+    dbg('transform.breakpoints', {
+      after: breakpointSurvey(parsed),
+      before,
+      changed,
+      inject,
+      isPing,
+      kind,
+      mode: activeMode,
+      profile: profile.id,
+      wire,
+    });
+  }
   applyProfileHeaders(headers, profile.headers?.(parsed, { mode: activeMode, wire }) ?? {});
   if (changed || (wire === 'anthropic-messages' && profile.id === 'anthropic')) {
     return finalizeRequest(request, parsed, headers);

@@ -1,9 +1,10 @@
 import type { PluginOptions } from '../config/settings.ts';
-import { SENTINEL_HEADER } from '../constants/anthropic.ts';
+import { BETA_HEADER, SENTINEL_HEADER } from '../constants/anthropic.ts';
 import type { CacheTtlMode, ModelRef } from '../models/cache.ts';
 import type { RequestKind } from '../models/keepalive.ts';
 import { resolveActiveMode, transformHttpRequest } from '../services/cache-ttl.ts';
 import {
+  type Classification,
   classifyRequestWithBody,
   isAnthropicProvider,
   profileForRoute,
@@ -16,6 +17,7 @@ import type { PingTracker } from '../services/ping-tracker.ts';
 import type { ProfileStore } from '../services/profile-store.ts';
 import { profileFor } from '../services/profiles/index.ts';
 import type { SettingsStore } from '../services/settings-store.ts';
+import { dbg, dbgUrl } from '../utils/debug-log.ts';
 
 /** The fields of OpenCode's `http.request` hook event this plugin reads or writes. */
 interface HttpRequestEvent {
@@ -33,6 +35,24 @@ interface RequestHookDeps {
   profiles: Pick<ProfileStore, 'get'>;
   /** Latest primary request messages per session, in memory only, kept while a ping may still use them. */
   primaryMessages: Map<string, unknown[]>;
+}
+
+/** Traces a request no profile applies to, so it can be told apart from one that never reached the hook. */
+function logUnhandled(
+  evt: HttpRequestEvent,
+  cls: Classification | undefined,
+  flags: { anthropicProvider: boolean; hasSentinel: boolean }
+): void {
+  dbg('request.unhandled', {
+    ...flags,
+    classified: cls?.profile ?? null,
+    kind: evt.kind,
+    model: evt.model.id,
+    provider: evt.model.providerID,
+    sessionID: evt.sessionID,
+    url: dbgUrl(evt.request.url),
+    wire: cls?.wire ?? null,
+  });
 }
 
 /** `http.request`: aligns pings with the last primary request, rewrites cache TTLs, and records the request. */
@@ -62,7 +82,10 @@ function createRequestHook({
       openaiCompatible: options.openaiCompatible,
     });
     const profileId = profileForRoute(route, options.openaiCompatible);
-    if (profileId === undefined) return;
+    if (profileId === undefined) {
+      logUnhandled(evt, cls, { anthropicProvider, hasSentinel });
+      return;
+    }
     const profile = profileFor(profileId);
     const { rewrites } = route;
     const observed = route.observedWire !== undefined;
@@ -109,6 +132,21 @@ function createRequestHook({
       }
     }
     evt.request = request;
+    dbg('request.hook', {
+      beta: request.headers.get(BETA_HEADER),
+      inject: shouldInject(route, evt.kind, isPing),
+      isPing,
+      kind: evt.kind,
+      mode,
+      model: ref.id,
+      observed,
+      profile: profileId,
+      provider: ref.providerID,
+      rewrites,
+      rewritten: request !== original,
+      sessionID,
+      url: dbgUrl(request.url),
+    });
     if (!observed) return;
 
     try {
