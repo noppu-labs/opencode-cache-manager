@@ -1,3 +1,5 @@
+import { dbg, dbgError } from '../utils/debug-log.ts';
+
 /** Tracks keepalive pings in flight so the HTTP hooks can tell a ping from a real `generate` call. */
 export class PingTracker {
   /** Pending `send()` calls per session. */
@@ -15,9 +17,18 @@ export class PingTracker {
   /** Runs `generate` as a ping and settles once its response has been reported. */
   public async send(sessionID: string, generate: () => Promise<unknown>): Promise<void> {
     this.inFlight.set(sessionID, (this.inFlight.get(sessionID) ?? 0) + 1);
+    dbg('pingTracker.send.start', { sessionID });
     try {
       await generate();
+      dbg('pingTracker.generate.settled', {
+        hasReported: this.responses.get(sessionID) !== undefined,
+        sessionID,
+      });
       await this.responses.get(sessionID);
+      dbg('pingTracker.reported.settled', { sessionID });
+    } catch (error) {
+      dbg('pingTracker.send.threw', { err: dbgError(error), sessionID });
+      throw error;
     } finally {
       const left = (this.inFlight.get(sessionID) ?? 1) - 1;
       if (left > 0) {
@@ -31,6 +42,7 @@ export class PingTracker {
 
   /** Records the promise that settles once a ping's response has been reported. */
   public responded(sessionID: string, reported: Promise<void>): void {
+    dbg('pingTracker.responded', { sessionID });
     this.responses.set(sessionID, reported);
   }
 }

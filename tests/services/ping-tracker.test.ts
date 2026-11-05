@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { PingTracker } from '../../src/services/ping-tracker.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -162,5 +163,52 @@ describe('PingTracker.send', () => {
     g.open();
     await sending;
     expect(pings.isPing('generate', 'ses_a')).toBe(false);
+  });
+});
+
+describe('debug log', () => {
+  const trace = useDebugTrace();
+
+  test('a successful send logs start, generate and reported in order', async () => {
+    const pings = new PingTracker();
+    await pings.send('ses_a', async () => {
+      pings.responded('ses_a', Promise.resolve());
+    });
+
+    expect(trace.events()).toMatchObject([
+      { ev: 'pingTracker.send.start', sessionID: 'ses_a' },
+      { ev: 'pingTracker.responded', sessionID: 'ses_a' },
+      { ev: 'pingTracker.generate.settled', hasReported: true, sessionID: 'ses_a' },
+      { ev: 'pingTracker.reported.settled', sessionID: 'ses_a' },
+    ]);
+  });
+
+  test('a failed send logs pingTracker.send.threw and still rethrows', async () => {
+    const pings = new PingTracker();
+    const error = new TypeError('boom');
+
+    await expect(
+      pings.send('ses_a', async () => {
+        throw error;
+      })
+    ).rejects.toBe(error);
+
+    expect(trace.events()).toMatchObject([
+      { ev: 'pingTracker.send.start', sessionID: 'ses_a' },
+      { err: 'TypeError', ev: 'pingTracker.send.threw', sessionID: 'ses_a' },
+    ]);
+  });
+
+  test('send.threw does not carry the message with bodies off', async () => {
+    const pings = new PingTracker();
+
+    await expect(
+      pings.send('ses_a', async () => {
+        throw new Error('https://x.test/?key=SECRET');
+      })
+    ).rejects.toThrow('SECRET');
+
+    expect(trace.events().at(-1)).toMatchObject({ err: 'Error', ev: 'pingTracker.send.threw' });
+    expect(trace.text()).not.toContain('SECRET');
   });
 });
