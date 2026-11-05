@@ -47,6 +47,7 @@ src/
 │   └── model-patterns.ts      # parseCacheProfiles: cacheProfiles option (pattern -> anthropic/openai/implicit; substring or /regex/flags) -> ProfilePattern[]
 ├── constants/
 │   ├── anthropic.ts           # beta header name and value, x-cache-ttl header name, /messages suffix, Anthropic provider IDs
+│   ├── debug.ts               # debug option: default filename, ~/ prefix, excerpt and field caps, file mode, instance ID length
 │   ├── keepalive.ts           # TTL_MS, PING_OFFSET_MS, HIT_RATIO, PING_PROMPT, ...
 │   ├── savings.ts             # savings ledger: price multipliers per token kind and TTL, models.dev and catalog timeouts
 │   ├── openai.ts              # /chat/completions and /responses suffixes, Claude-model and GPT-5.6+ regexes, OpenAI TTL per mode, finish-reason map
@@ -100,6 +101,7 @@ src/
 │   ├── sidebar.compiled.d.ts  # types for the compiled output
 │   └── sidebar-lines.ts       # pure sidebar line formatting
 └── utils/
+    ├── debug-log.ts           # dbg and helpers: appends the JSONL trace of the debug option; holds module-level state (the active options), unlike the rest of utils/
     ├── format.ts              # formatRemaining, formatTokens, formatCompactTokens, errorMessage
     ├── is-record.ts
     ├── node-modules.ts        # isInsideNodeModules: whether a module URL was loaded from node_modules
