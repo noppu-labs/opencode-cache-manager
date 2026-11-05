@@ -2,6 +2,7 @@ import { Plugin } from '@opencode/plugin';
 import type { RpcHandlers, RpcRegistration } from '@opencode/plugin/promise/rpc';
 
 import { pluginOptions, settingsFromOptions } from './config/settings.ts';
+import { DEBUG_INSTANCE_ID_CHARS } from './constants/debug.ts';
 import { PING_PROMPT } from './constants/keepalive.ts';
 import { MODELS_DEV_FETCH_TIMEOUT_MS } from './constants/savings.ts';
 import { createCacheManagerCommand } from './controllers/command.ts';
@@ -25,6 +26,7 @@ import {
   SettingsStore,
   sweepDeletedSessions,
 } from './services/settings-store.ts';
+import { configureDebugLog, dbg } from './utils/debug-log.ts';
 import { isProcessAlive } from './utils/is-process-alive.ts';
 
 /**
@@ -47,6 +49,9 @@ export default Plugin.define({
     const store = new SettingsStore(ctx.storage, settingsFromOptions(ctx.options));
     await store.load();
     const options = pluginOptions(ctx.options);
+    configureDebugLog(options.debug);
+    // The logger module is shared by every instance in the process, so the ID is per setup.
+    const instance = Math.random().toString().slice(-DEBUG_INSTANCE_ID_CHARS);
     const profiles = new ProfileStore(ctx.storage);
     await profiles.load();
 
@@ -165,10 +170,17 @@ export default Plugin.define({
       KEEPALIVE_KEY_PREFIX,
     ]).catch(() => {});
 
+    dbg('plugin.setup', { directory: ctx.location.directory, instance });
+
     // Pings go out unaligned until the session's next request: `primaryMessages` is never stored.
     void keepaliveStore
       .restorable(Date.now())
       .then(async (sessions) => {
+        dbg('plugin.restorable', {
+          directory: ctx.location.directory,
+          instance,
+          sessions: sessions.map(({ sessionID }) => sessionID),
+        });
         await Promise.all(
           sessions.map(async ({ record, sessionID }) => engine.restore(sessionID, record))
         );
@@ -176,6 +188,8 @@ export default Plugin.define({
       .catch(() => {});
 
     return () => {
+      // Logging stays configured: other instances in the process may still be running.
+      dbg('plugin.dispose', { instance });
       engine.dispose();
       primaryMessages.clear();
     };
