@@ -12,6 +12,7 @@ import type { KeepaliveSnapshot } from './models/keepalive.ts';
 import { CacheTtlRpc } from './rpc.ts';
 import { fetchJson } from './services/fetch-json.ts';
 import { KeepaliveEngine } from './services/keepalive-engine.ts';
+import { KEEPALIVE_KEY_PREFIX, KeepaliveStore } from './services/keepalive-store.ts';
 import { LEDGER_KEY_PREFIX, LedgerStore } from './services/ledger-store.ts';
 import { PriceBook, toCatalogModels } from './services/model-prices.ts';
 import { ModelsDevPrices } from './services/models-dev.ts';
@@ -24,6 +25,7 @@ import {
   SettingsStore,
   sweepDeletedSessions,
 } from './services/settings-store.ts';
+import { isProcessAlive } from './utils/is-process-alive.ts';
 
 /**
  * Server entrypoint for the prompt-cache plugin.
@@ -83,6 +85,11 @@ export default Plugin.define({
       store: new LedgerStore(ctx.storage),
     });
 
+    const keepaliveStore = new KeepaliveStore(ctx.storage, {
+      directory: ctx.location.directory,
+      isAlive: isProcessAlive,
+      pid: process.pid,
+    });
     const engine = new KeepaliveEngine({
       clearTimer: (handle) => {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the engine only passes back handles that setTimer above returned
@@ -99,6 +106,7 @@ export default Plugin.define({
           () => {}
         );
       },
+      persist: keepaliveStore,
       ping: async (sessionID) =>
         pings.send(sessionID, async () => ctx.session.generate({ prompt: PING_PROMPT, sessionID })),
       savings,
@@ -154,7 +162,18 @@ export default Plugin.define({
     void sweepDeletedSessions(ctx.storage, getSession, [
       SESSION_KEY_PREFIX,
       LEDGER_KEY_PREFIX,
+      KEEPALIVE_KEY_PREFIX,
     ]).catch(() => {});
+
+    // Pings go out unaligned until the session's next request: `primaryMessages` is never stored.
+    void keepaliveStore
+      .restorable(Date.now())
+      .then(async (sessions) => {
+        await Promise.all(
+          sessions.map(async ({ record, sessionID }) => engine.restore(sessionID, record))
+        );
+      })
+      .catch(() => {});
 
     return () => {
       engine.dispose();

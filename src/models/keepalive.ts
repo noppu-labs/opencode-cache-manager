@@ -1,4 +1,4 @@
-import type { Ttl } from './cache.ts';
+import type { ModelRef, Ttl } from './cache.ts';
 import type { SavingsReadout } from './savings.ts';
 
 /** Cache reads and total prompt tokens of one response. */
@@ -43,4 +43,23 @@ type KeepaliveSnapshot = {
   savings: SavingsReadout | null;
 };
 
-export type { CacheReadout, SkipReason, RequestKind, KeepaliveSnapshot };
+/** What a session's schedule needs to carry on after the plugin reloads; the rest of its state is rebuilt by the next request. */
+interface KeepaliveRecord {
+  contextTokens: number | null;
+  firstPrimaryContext: number | null;
+  lastCache: CacheReadout | null;
+  lastPing: KeepaliveSnapshot['lastPing'];
+  lastRequestAt: number;
+  model: ModelRef | null;
+  originalExpiry: number | null;
+  pingsUsed: number;
+  prefix1hTokens: number | null;
+  requestedTtl: Ttl;
+  split: boolean;
+  stretchCharged: boolean;
+  stretchHits: number;
+  ttl: Ttl;
+  ttlSource: 'detected' | 'requested' | null;
+}
+
+export type { CacheReadout, SkipReason, RequestKind, KeepaliveSnapshot, KeepaliveRecord };

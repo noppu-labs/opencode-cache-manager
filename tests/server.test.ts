@@ -38,6 +38,8 @@ interface HostSeed {
   store?: Map<string, unknown>;
   /** What `ctx.model.list()` returns as `data`. */
   models?: unknown[];
+  /** The directory this plugin instance is loaded for. */
+  directory?: string;
 }
 
 function createMockCtx(options: Record<string, unknown> = {}, seed: HostSeed = {}): MockCtx {
@@ -54,6 +56,7 @@ function createMockCtx(options: Record<string, unknown> = {}, seed: HostSeed = {
 
   const ctx = {
     options,
+    location: { directory: seed.directory ?? '/repo' },
     model: { list: listModels },
     storage: {
       get: async (key: string) => store.get(key),
@@ -1083,6 +1086,120 @@ describe('keepalive wiring', () => {
     expect(lastSnapshot(host)).toMatchObject({ ttl: '1h', contextTokens: 60_010 });
   });
 
+  describe('plugin reloads', () => {
+    const RELOAD_AFTER = 300_000;
+    const GONE_PID = 2_147_483_646;
+
+    test('an armed ping still fires after a reload', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      const due = lastSnapshot(first).nextPingAt;
+      jest.advanceTimersByTime(RELOAD_AFTER);
+      await shutDown(first);
+      expect(first.generate).not.toHaveBeenCalled();
+
+      const second = await start({}, { store: first.store });
+      pingingGenerate(second);
+      await flush();
+
+      expect(lastSnapshot(second)).toMatchObject({ nextPingAt: due, skipReason: null });
+      jest.advanceTimersByTime(FIFTY_MIN - RELOAD_AFTER);
+      await flush();
+      expect(second.generate).toHaveBeenCalledTimes(1);
+      expect(lastSnapshot(second)).toMatchObject({ lastPing: 'hit', pingsUsed: 1 });
+    });
+
+    test('an instance for another directory does not ping the session', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      await shutDown(first);
+
+      const other = await start({}, { directory: '/elsewhere', store: first.store });
+      pingingGenerate(other);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(other.generate).not.toHaveBeenCalled();
+      expect(first.store.has('keepalive/ses_a')).toBe(true);
+    });
+
+    test('another running OpenCode process in the same directory does not ping the session', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      await shutDown(first);
+      first.store.set('keepalive/ses_a', {
+        ...(first.store.get('keepalive/ses_a') as object),
+        pid: process.ppid,
+      });
+
+      const other = await start({}, { store: first.store });
+      pingingGenerate(other);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(other.generate).not.toHaveBeenCalled();
+    });
+
+    test('a restart takes over from the process that has gone', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      await shutDown(first);
+      first.store.set('keepalive/ses_a', {
+        ...(first.store.get('keepalive/ses_a') as object),
+        pid: GONE_PID,
+      });
+
+      const second = await start({}, { store: first.store });
+      pingingGenerate(second);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(second.generate).toHaveBeenCalledTimes(1);
+      expect(first.store.get('keepalive/ses_a')).toMatchObject({ pid: process.pid });
+    });
+
+    test('a session whose cache expired while the plugin was away is not pinged', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      await shutDown(first);
+      jest.advanceTimersByTime(FIFTY_MIN * 2);
+
+      const second = await start({}, { store: first.store });
+      pingingGenerate(second);
+      await flush();
+      jest.advanceTimersByTime(FIFTY_MIN);
+      await flush();
+
+      expect(second.generate).not.toHaveBeenCalled();
+      expect(first.store.has('keepalive/ses_a')).toBe(false);
+    });
+
+    test('the record of a session deleted while the plugin was away is swept', async () => {
+      const first = await start();
+      await roundTrip(first);
+      await flush();
+      await shutDown(first);
+
+      const second = createMockCtx({}, { store: first.store });
+      second.sessionGet.mockImplementation(async () => {
+        throw Object.assign(new Error('gone'), { name: 'SessionNotFound' });
+      });
+      second.cleanup = await (plugin as any).setup(second.ctx);
+      await flush();
+
+      expect(first.store.has('keepalive/ses_a')).toBe(false);
+      expect(second.generate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('savings ledger', () => {
     const SONNET_COST = { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } };
     const catalogModel = (cost: unknown[]) => ({
@@ -1132,7 +1249,7 @@ describe('keepalive wiring', () => {
       expect(lastSnapshot(second).savings).toMatchObject({ rescues: 1 });
     });
 
-    test('a restart mid-stretch keeps the charged ping and saves nothing on the return', async () => {
+    test('a rescue is counted when the stretch crossed a restart', async () => {
       const first = await start({}, { models: PRICED });
       pingingGenerate(first);
       await roundTrip(first);
@@ -1148,8 +1265,8 @@ describe('keepalive wiring', () => {
       await flush();
 
       const snapshot = await second.rpc().getKeepalive({ sessionID: 'ses_a' });
-      expect(snapshot.savings).toMatchObject({ pings: 1, rescues: 0 });
-      expect(second.store.get('ledger/ses_a')).toMatchObject({ pings: 1, rescues: 0 });
+      expect(snapshot.savings).toMatchObject({ pings: 1, rescues: 1 });
+      expect(second.store.get('ledger/ses_a')).toMatchObject({ pings: 1, rescues: 1 });
     });
 
     const MODELS_DEV_BODY = {
