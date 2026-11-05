@@ -19,7 +19,7 @@ Symlink the repo's `src/` directory (not the repo root) into OpenCode's plugins 
 ln -s "$(pwd)/src" ~/.config/opencode/plugins/opencode-cache-manager
 ```
 
-A checkout loads `src/ui/sidebar.tsx` directly, so no build is needed. Don't keep the npm package in `plugins` at the same time, or the plugin loads twice.
+A checkout loads `src/ui/sidebar.tsx` directly, so no build is needed. Don't keep the npm package in `plugins` at the same time. OpenCode runs one plugin per ID, so the second copy doesn't run.
 
 ## Before opening a pull request
 

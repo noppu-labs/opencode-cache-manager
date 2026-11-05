@@ -227,7 +227,7 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 | `modelsDevPrices`            | `false` | Price models the OpenCode catalog has no price for from models.dev (see [Savings](#savings)). Off means no network calls of the plugin's own. Read at startup; not in the picker |
 | `openaiCompatible`           | `true`  | Handle OpenAI Chat Completions and Responses requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped           |
 | `cacheProfiles`              | `{}`    | Which cache profile manages a model, by pattern (see below)                                                                                                                      |
-| `debug`                      | `false` | Write a trace of what the plugin does to a file (see [Debug log](#debug-log)). Not in the picker                                                                                 |
+| `debug`                      | `false` | Write a trace of what the plugin does to a file (see [Debug log](#debug-log)). Applies to the whole OpenCode process. Not in the picker                                          |
 
 `cacheProfiles` maps a pattern to a profile. Patterns are matched against `<providerID>/<modelID>`, in order, and the first match wins:
 
@@ -328,17 +328,24 @@ To turn it on, set it in the plugin options:
 "debug": true
 ```
 
-That writes to `~/opencode-cache-manager-debug.jsonl`. To choose the file and add response excerpts, give an object:
+That writes to `~/opencode-cache-manager-debug.jsonl`. Give an object to set either of these, or both:
+
+- `path` chooses the file.
+- `bodies: true` adds response excerpts and error messages. Without it, no part of a response body or error message is written, except the model name and stop reason a response reports, capped at 128 characters.
 
 ```jsonc
-"debug": { "path": "/tmp/trace.jsonl", "bodies": true }
+"debug": { "path": "~/trace.jsonl", "bodies": true }
 ```
 
-Saving a changed `debug` option in `opencode.jsonc` takes effect straight away, with no restart. To trace a local build, replace the plugin's entry rather than adding one beside it, because OpenCode silently runs only one of two plugins with the same ID.
+The option applies to the whole OpenCode process, and the instance that started last decides. On a service with several projects, set it in the global config, not a project's.
+
+Saving a changed `debug` option in `opencode.jsonc` takes effect straight away, with no restart. If it doesn't, run `opencode service restart`.
+
+To trace a local build, keep only one copy of the plugin configured. OpenCode runs one plugin per ID, so options on a second copy are ignored.
 
 `path` must be absolute or start with `~/`. Anything else leaves logging off. The file's folder must already exist. If the path can't be written to, such as a missing folder or a path that is itself a folder, nothing is written and the plugin carries on as normal.
 
-The file holds metadata: status, sizes, token counts, model, session IDs, the project directory, and URLs without their query string. `bodies: true` adds up to 600 characters from each end of a response when no usage could be read from it, the first 600 characters of a failed response, and error messages capped at 600 characters. That can include conversation text. Request bodies are never written. The file is created readable only by you.
+The file holds metadata such as status, sizes, token counts, model, session IDs, the project directory, and URLs without their query string. A proxy with a key in its URL path will have that key in the file, so check the file before sharing it. `bodies: true` adds up to 600 characters from each end of a response when no usage could be read from it, the first 600 characters of a failed response, and error messages capped at 600 characters. That can include conversation text. Request bodies are never written. A new file is created readable only by you. An existing file keeps its permissions.
 
 The file grows until you delete it, so turn the option off when you're done.
 
