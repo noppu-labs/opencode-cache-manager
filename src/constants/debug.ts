@@ -10,6 +10,9 @@ const DEBUG_BODY_CHARS = 600;
 /** Longest string from a request body the trace prints; anything longer could be body text and logs as `string`. */
 const DEBUG_FIELD_CHARS = 16;
 
+/** Longest string a response chooses, such as a model name, that the trace prints with `bodies` off. */
+const DEBUG_LABEL_CHARS = 128;
+
 /** The trace can hold response content, so only the owner may read it. */
 const DEBUG_FILE_MODE = 0o600;
 
@@ -22,5 +25,6 @@ export {
   DEBUG_FILE_MODE,
   DEBUG_HOME_PATH_PREFIX,
   DEBUG_INSTANCE_ID_CHARS,
+  DEBUG_LABEL_CHARS,
   DEBUG_LOG_FILENAME,
 };

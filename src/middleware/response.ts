@@ -15,7 +15,7 @@ import { observeResponseUsage } from '../services/response-observer.ts';
 import { OPENAI_PARSERS } from '../services/usage-openai.ts';
 import { RESPONSES_PARSERS } from '../services/usage-responses.ts';
 import { ANTHROPIC_PARSERS } from '../services/usage.ts';
-import { dbg, dbgUrl } from '../utils/debug-log.ts';
+import { dbg, dbgLabel, dbgUrl } from '../utils/debug-log.ts';
 import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
@@ -128,9 +128,9 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
             isPing,
             kind,
             ok,
-            reportedModel: identity?.model ?? null,
+            reportedModel: identity?.model === undefined ? null : dbgLabel(identity.model),
             sessionID,
-            stopReason: stopReason ?? null,
+            stopReason: stopReason === undefined ? null : dbgLabel(stopReason),
             unmanaged,
           });
           return engine.responseObserved(sessionID, {

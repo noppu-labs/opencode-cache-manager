@@ -9,6 +9,7 @@ import {
   dbgEnabled,
   dbgError,
   dbgExcerpt,
+  dbgLabel,
   dbgUrl,
 } from '../../src/utils/debug-log.ts';
 
@@ -134,6 +135,34 @@ describe('dbgError', () => {
   test('a value with no string form does not throw', () => {
     configureDebugLog({ bodies: true, path });
     expect(dbgError(Object.create(null))).toBe('unknown');
+  });
+
+  test('dbgError caps the name at 128 characters with bodies off', () => {
+    configureDebugLog({ bodies: false, path });
+    const error = new Error('secret');
+    error.name = `CANARY${'x'.repeat(700)}`;
+    expect(dbgError(error)).toBe(error.name.slice(0, 128));
+  });
+
+  test('an error whose name is not a string does not throw', () => {
+    configureDebugLog({ bodies: false, path });
+    const error = new Error('secret');
+    Object.assign(error, { name: 5 });
+    expect(dbgError(error)).toBe('unknown');
+  });
+});
+
+describe('dbgLabel', () => {
+  test('dbgLabel caps a long string at 128 characters', () => {
+    expect(dbgLabel('x'.repeat(700))).toBe('x'.repeat(128));
+  });
+
+  test('dbgLabel leaves a short string alone', () => {
+    expect(dbgLabel('end_turn')).toBe('end_turn');
+  });
+
+  test('a value that is not a string at runtime does not throw', () => {
+    expect(dbgLabel(Object as unknown as string)).toBe('unknown');
   });
 });
 

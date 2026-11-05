@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 
 import type { DebugOptions } from '../config/settings.ts';
-import { DEBUG_BODY_CHARS, DEBUG_FILE_MODE } from '../constants/debug.ts';
+import { DEBUG_BODY_CHARS, DEBUG_FILE_MODE, DEBUG_LABEL_CHARS } from '../constants/debug.ts';
 
 /** Shared by every plugin instance in the process: the latest `setup` decides. */
 let active: DebugOptions | undefined;
@@ -33,11 +33,21 @@ function dbgExcerpt(text: string, end: 'head' | 'tail'): string | undefined {
   return end === 'head' ? text.slice(0, DEBUG_BODY_CHARS) : text.slice(-DEBUG_BODY_CHARS);
 }
 
+/** Caps a string a response chose, which the trace prints with `bodies` off too. */
+function dbgLabel(text: string): string {
+  try {
+    return text.slice(0, DEBUG_LABEL_CHARS);
+  } catch {
+    // `finish_reason: "constructor"` reaches here as a function, through the parser's map lookup. Callers sit outside `dbg`'s try.
+    return 'unknown';
+  }
+}
+
 /** An error message can quote a body or a URL, so it needs `bodies`; otherwise only the name. */
 function dbgError(error: unknown): string {
   try {
     if (active?.bodies === true) return String(error).slice(0, DEBUG_BODY_CHARS);
-    return error instanceof Error ? error.name : 'unknown';
+    return error instanceof Error ? dbgLabel(error.name) : 'unknown';
   } catch {
     // `String` throws on a value with no string form. Callers sit outside `dbg`'s try.
     return 'unknown';
@@ -54,4 +64,4 @@ function dbgUrl(url: string): string {
   }
 }
 
-export { configureDebugLog, dbg, dbgEnabled, dbgError, dbgExcerpt, dbgUrl };
+export { configureDebugLog, dbg, dbgEnabled, dbgError, dbgExcerpt, dbgLabel, dbgUrl };

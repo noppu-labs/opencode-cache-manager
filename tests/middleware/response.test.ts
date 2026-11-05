@@ -798,6 +798,41 @@ describe('debug log', () => {
     });
   });
 
+  test('caps the model and stop reason a response reports', async () => {
+    const { hook, observed } = harness();
+    const model = `MODEL-CANARY${'m'.repeat(700)}`;
+    const stopReason = `STOP-CANARY${'s'.repeat(700)}`;
+
+    await hook(event({ response: jsonResponse({ model, stop_reason: stopReason }) }));
+    await flush();
+
+    expect(eventsNamed('response.parsed')[0]).toMatchObject({
+      reportedModel: model.slice(0, 128),
+      stopReason: stopReason.slice(0, 128),
+    });
+    expect(trace.text()).not.toContain('m'.repeat(129));
+    expect(trace.text()).not.toContain('s'.repeat(129));
+    // The cap is only on the log line: the engine still hears the whole values.
+    expect(observed[0]?.info).toMatchObject({ reportedModel: model, stopReason });
+  });
+
+  test('a finish reason that names an Object member still reaches the engine', async () => {
+    const { hook, observed } = harness();
+    await hook(
+      event({
+        model: { providerID: 'omniroute', id: 'auto/opus-5' },
+        request: new Request('https://omni.example/v1/chat/completions', {
+          method: 'POST',
+          body: '{}',
+        }),
+        response: jsonResponse({ choices: [{ finish_reason: 'constructor' }] }),
+      })
+    );
+    await flush();
+
+    expect(observed).toHaveLength(1);
+  });
+
   test('a query string never reaches the file', async () => {
     const { hook } = harness();
     await hook(
