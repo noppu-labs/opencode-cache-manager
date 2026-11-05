@@ -58,6 +58,16 @@ describe('dbg', () => {
     expect(Object.keys(lines()[0] ?? {})).toEqual(['ev', 'pid', 't', 'a']);
   });
 
+  test('a field cannot overwrite ev, pid or t, and they stay first', () => {
+    configureDebugLog({ bodies: false, path });
+    dbg('x', { a: 1, ev: 'forged', pid: -1, t: 'forged' });
+
+    const line = lines()[0] ?? {};
+    expect(line).toMatchObject({ a: 1, ev: 'x', pid: process.pid });
+    expect(line.t).not.toBe('forged');
+    expect(Object.keys(line)).toEqual(['ev', 'pid', 't', 'a']);
+  });
+
   test('the file is created with mode 0600', () => {
     configureDebugLog({ bodies: false, path });
     dbg('x');

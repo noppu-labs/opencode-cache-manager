@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 
 import { DEBUG_HOME_PATH_PREFIX, DEBUG_LOG_FILENAME } from '../constants/debug.ts';
 import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from '../models/cache.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { parseCacheProfiles } from './model-patterns.ts';
 
@@ -76,11 +77,12 @@ interface PluginOptions {
   debug?: DebugOptions;
 }
 
-/** An absolute path, or one under `~/` expanded; anything else is `undefined`. */
+/** An absolute path, or a file under `~/` expanded; anything else is `undefined`. */
 function parseDebugPath(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   if (value.startsWith(DEBUG_HOME_PATH_PREFIX)) {
-    return join(homedir(), value.slice(DEBUG_HOME_PATH_PREFIX.length));
+    const file = value.slice(DEBUG_HOME_PATH_PREFIX.length);
+    return isNonEmptyString(file) ? join(homedir(), file) : undefined;
   }
   return isAbsolute(value) ? value : undefined;
 }

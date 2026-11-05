@@ -18,12 +18,9 @@ function dbgEnabled(): boolean {
 function dbg(event: string, fields: Record<string, unknown> = {}): void {
   if (active === undefined) return;
   try {
-    const line = JSON.stringify({
-      ev: event,
-      pid: process.pid,
-      t: new Date().toISOString(),
-      ...fields,
-    });
+    const required = { ev: event, pid: process.pid, t: new Date().toISOString() };
+    // The first spread fixes the key order, the last makes the required values win.
+    const line = JSON.stringify({ ...required, ...fields, ...required });
     appendFileSync(active.path, `${line}\n`, { mode: DEBUG_FILE_MODE });
   } catch {
     // A trace with a gap is better than a failed request.

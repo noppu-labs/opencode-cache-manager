@@ -184,6 +184,7 @@ describe('debug option', () => {
   test('an invalid path means off, not the default file', () => {
     expect(pluginOptions({ debug: { path: 't.jsonl' } }).debug).toBeUndefined();
     expect(pluginOptions({ debug: { path: '~' } }).debug).toBeUndefined();
+    expect(pluginOptions({ debug: { path: '~/' } }).debug).toBeUndefined();
     expect(pluginOptions({ debug: { path: '' } }).debug).toBeUndefined();
     expect(pluginOptions({ debug: { path: 3 } }).debug).toBeUndefined();
   });

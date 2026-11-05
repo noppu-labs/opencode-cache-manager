@@ -12,6 +12,7 @@ import {
   type SettingsPatch,
 } from '../../src/config/settings.ts';
 import { isCacheProfileId, isCacheTtlMode } from '../../src/models/cache.ts';
+import { isRecord } from '../../src/utils/is-record.ts';
 import { mode } from '../helpers/arbitraries.ts';
 
 const validPatch: fc.Arbitrary<SettingsPatch> = fc.record(
@@ -174,6 +175,32 @@ describe('settings properties', () => {
         for (const pattern of parsed.cacheProfiles) {
           expect(isCacheProfileId(pattern.profile)).toBe(true);
         }
+      })
+    );
+  });
+
+  test('debug is off for anything other than true or a record', () => {
+    const notTrueOrRecord = fc
+      .oneof(fc.anything(), fc.array(fc.anything()), fc.constantFrom(null, false, 0, 1, '', 'true'))
+      .filter((value) => value !== true && !isRecord(value));
+    fc.assert(
+      fc.property(notTrueOrRecord, (value) => {
+        expect(pluginOptions({ debug: value }).debug).toBeUndefined();
+      })
+    );
+  });
+
+  test('debug.bodies is true only for literal true', () => {
+    const bodies = fc.oneof(
+      fc.constantFrom(true, 'true', 1, {}, []),
+      fc.boolean(),
+      fc.string(),
+      fc.anything()
+    );
+    fc.assert(
+      fc.property(bodies, (value) => {
+        const parsed = pluginOptions({ debug: { bodies: value, path: '/tmp/t.jsonl' } });
+        expect(parsed.debug?.bodies).toBe(value === true);
       })
     );
   });
