@@ -576,6 +576,11 @@ class KeepaliveEngine {
     state.showSavings = settings.savings;
     state.skipReason = this.skipReason(state, settings, child);
     state.nextPingAt = state.skipReason === null ? this.pingTime(state) : null;
+    /*
+     * Nothing blocks a ping, yet none could land before the cache expires: say so
+     * rather than leave the session with no next ping and no reason for it.
+     */
+    if (state.skipReason === null && state.nextPingAt === null) state.skipReason = 'too-late';
 
     if (state.nextPingAt !== null) {
       const delay = Math.max(0, state.nextPingAt - this.deps.now());
@@ -630,7 +635,9 @@ class KeepaliveEngine {
         ? state.lastRequestAt + TTL_MS[state.ttl]
         : null;
     if (expiresAt === null || now > expiresAt - EXPIRY_MARGIN_MS) {
+      // The timer fired too close to the expiry for a ping to help; record why.
       state.nextPingAt = null;
+      state.skipReason = 'too-late';
       this.commit(sessionID, state);
       return;
     }

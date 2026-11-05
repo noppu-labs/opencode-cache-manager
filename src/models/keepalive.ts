@@ -15,7 +15,9 @@ type SkipReason =
   | 'busy'
   | 'exhausted'
   | 'no-cache-seen'
-  | 'missed';
+  | 'missed'
+  /** No ping can reach the provider before the cache expires, so none is scheduled. */
+  | 'too-late';
 
 /** OpenCode's request kind for a model call. */
 type RequestKind = 'primary' | 'compaction' | 'title' | 'generate';
