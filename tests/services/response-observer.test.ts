@@ -253,11 +253,12 @@ describe('debug log', () => {
   test('observer.parsed has no excerpt when usage was read', async () => {
     configureDebugLog({ bodies: true, path: trace.path });
 
-    await observe(sse(fullUsage), { headers: SSE_HEADERS });
+    await observe(`${sse(fullUsage)}${noUsageSse}`, { headers: SSE_HEADERS });
 
     const [event] = trace.events();
     expect(event).toMatchObject({ ev: 'observer.parsed', hasUsage: true });
     expect(event).not.toContainAnyKeys(['head', 'tail']);
+    expect(trace.text()).not.toContain('CANARY');
   });
 
   test('observer.parsed says when the caller cancelled the stream', async () => {
@@ -314,6 +315,8 @@ describe('debug log', () => {
     expect(trace.events()[0]?.ev).toBe('observer.parsed');
 
     configureDebugLog({ bodies: true, path: join(dirname(trace.path), 'missing', 'trace.jsonl') });
-    expect(await observe(body, init)).toBe(body);
+    const unwritable = observeResponseUsage(new Response(body, init), ANTHROPIC_PARSERS);
+    expect(await unwritable.response.text()).toBe(body);
+    expect((await unwritable.usage)?.cacheReadTokens).toBe(61_000);
   });
 });
