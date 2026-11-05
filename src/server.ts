@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Plugin } from '@opencode/plugin';
 import type { RpcHandlers, RpcRegistration } from '@opencode/plugin/promise/rpc';
 
@@ -51,7 +53,7 @@ export default Plugin.define({
     const options = pluginOptions(ctx.options);
     configureDebugLog(options.debug);
     // The logger module is shared by every instance in the process, so the ID is per setup.
-    const instance = Math.random().toString().slice(-DEBUG_INSTANCE_ID_CHARS);
+    const instance = randomUUID().slice(0, DEBUG_INSTANCE_ID_CHARS);
     const profiles = new ProfileStore(ctx.storage);
     await profiles.load();
 
