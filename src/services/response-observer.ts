@@ -4,6 +4,7 @@ import type {
   ResponseIdentity,
   ResponseParsers,
 } from '../models/cache.ts';
+import { dbg, dbgError, dbgExcerpt } from '../utils/debug-log.ts';
 
 // oxlint-disable-next-line unicorn/no-useless-undefined, typescript/require-await -- an empty body would type as Promise<void>; async only wraps the value in the promise the callers expect
 const resolvedUndefined = async <Value>(): Promise<Value | undefined> => undefined;
@@ -35,9 +36,11 @@ export function observeResponseUsage(
   const [callerBranch, observerBranch] = response.body.tee();
   const callerReader = callerBranch.getReader();
   const observerReader = observerBranch.getReader();
+  let cancelled = false;
   const forCaller = new ReadableStream<Uint8Array>(
     {
       async cancel(reason) {
+        cancelled = true;
         await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
       },
       async pull(controller) {
@@ -71,10 +74,30 @@ export function observeResponseUsage(
        * the usage block by then; discarding it made a finished call look like
        * a failure. Whatever is missing simply parses to undefined.
        */
-      if (!response.ok) return {};
-      if (contentType.includes('text/event-stream')) return parsers.fromSse(text);
-      return parsers.fromJson(JSON.parse(text));
-    } catch {
+      if (!response.ok) {
+        dbg('observer.discarded', {
+          bytes: text.length,
+          cancelled,
+          head: dbgExcerpt(text, 'head'),
+          ok: response.ok,
+        });
+        return {};
+      }
+      const result = contentType.includes('text/event-stream')
+        ? parsers.fromSse(text)
+        : parsers.fromJson(JSON.parse(text));
+      dbg('observer.parsed', {
+        bytes: text.length,
+        cancelled,
+        contentType,
+        hasUsage: result.usage !== undefined,
+        // The raw body is only worth keeping when nothing could be read from it.
+        head: result.usage === undefined ? dbgExcerpt(text, 'head') : undefined,
+        tail: result.usage === undefined ? dbgExcerpt(text, 'tail') : undefined,
+      });
+      return result;
+    } catch (error) {
+      dbg('observer.threw', { err: dbgError(error) });
       return {};
     }
   })();

@@ -15,6 +15,7 @@ import { observeResponseUsage } from '../services/response-observer.ts';
 import { OPENAI_PARSERS } from '../services/usage-openai.ts';
 import { RESPONSES_PARSERS } from '../services/usage-responses.ts';
 import { ANTHROPIC_PARSERS } from '../services/usage.ts';
+import { dbg, dbgUrl } from '../utils/debug-log.ts';
 import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 
 /** The fields of OpenCode's `http.response` hook event this plugin reads or writes. */
@@ -49,16 +50,34 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
   return async (evt: HttpResponseEvent): Promise<void> => {
     try {
       const ref: ModelRef = { id: evt.model.id, providerID: evt.model.providerID };
+      const sentWire = requestWire(evt.request);
       const wire = observedWireFor(
-        requestWire(evt.request),
+        sentWire,
         isAnthropicProvider(ref.providerID),
         options.openaiCompatible
       );
+      dbg('response.hook', {
+        kind: evt.kind,
+        model: ref.id,
+        provider: ref.providerID,
+        requestWire: sentWire ?? null,
+        sessionID: evt.sessionID,
+        status: evt.response.status,
+        url: dbgUrl(evt.request.url),
+        wire: wire ?? null,
+      });
       if (!wire) return;
 
       const { kind, sessionID } = evt;
       const isPing = pings.isPing(kind, sessionID);
       const { ok } = evt.response;
+      dbg('response.classified', {
+        ct: evt.response.headers.get('content-type'),
+        isPing,
+        kind,
+        ok,
+        sessionID,
+      });
       const parsers = PARSERS_BY_WIRE[wire];
       const observed = observeResponseUsage(evt.response, parsers);
       evt.response = observed.response;
@@ -100,8 +119,21 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
         unmanagedCheck,
         observed.identity,
       ])
-        .then(async ([usage, stopReason, unmanaged, identity]) =>
-          engine.responseObserved(sessionID, {
+        .then(async ([usage, stopReason, unmanaged, identity]) => {
+          dbg('response.parsed', {
+            cacheRead: usage?.cacheReadTokens ?? null,
+            cacheWrite: usage?.cacheWriteTokens ?? null,
+            hasUsage: usage !== undefined,
+            inputTokens: usage?.inputTokens ?? null,
+            isPing,
+            kind,
+            ok,
+            reportedModel: identity?.model ?? null,
+            sessionID,
+            stopReason: stopReason ?? null,
+            unmanaged,
+          });
+          return engine.responseObserved(sessionID, {
             isPing,
             kind,
             model: ref,
@@ -110,8 +142,8 @@ function createResponseHook({ engine, pings, options, profiles }: ResponseHookDe
             stopReason,
             unmanaged,
             usage,
-          })
-        )
+          });
+        })
         .catch(() => {});
       if (isPing) pings.responded(sessionID, reported);
     } catch {
