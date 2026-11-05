@@ -73,6 +73,7 @@ const keepaliveSnapshotSchema = {
       'no-cache-seen',
       'missed',
       'implicit',
+      'too-late',
     ]),
     ttl: nullableString(['5m', '1h', '30m', '12h']),
     ttlSource: nullableString(['detected', 'requested']),

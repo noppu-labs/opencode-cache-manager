@@ -630,6 +630,31 @@ describe('keepalive engine: ping outcomes', () => {
     expect(h.pings).toHaveLength(4);
   });
 
+  test('a retry that cannot land before the expiry says so instead of stopping silently', async () => {
+    const h = harness({ requestedTtl: '5m' });
+    await h.request('s1', write5m);
+
+    // The ping resolves without a response ever being observed, so it counts as failed.
+    h.queue.push({ kind: 'silent' });
+    await h.advance(PING_OFFSET_MS['5m']);
+    expect(h.engine.snapshot('s1')).toMatchObject({
+      lastPing: 'failed',
+      nextPingAt: h.clock + RETRY_DELAY_MS,
+      skipReason: null,
+    });
+
+    // The retry fails too, and a further retry would land past the expiry cutoff.
+    h.queue.push({ kind: 'silent' });
+    await h.advance(RETRY_DELAY_MS);
+    expect(h.pings).toHaveLength(2);
+    expect(h.engine.snapshot('s1')).toMatchObject({
+      lastPing: 'failed',
+      nextPingAt: null,
+      // Below maxPings, so `exhausted` would be wrong: nothing can land in time.
+      skipReason: 'too-late',
+    });
+  });
+
   test('hit threshold is 90% of the context seen before the ping', async () => {
     const h = harness();
     await h.request('s1', write1h);

@@ -184,6 +184,18 @@ describe('sidebarLines', () => {
     ]);
   });
 
+  test('a ping that can no longer land before expiry says so', () => {
+    expect(lines(snap({ skipReason: 'too-late', pingsUsed: 2, lastPing: 'failed' }))).toEqual([
+      ...HEADER,
+      {
+        right: 'stopped · no ping fits before expiry',
+        rightTone: 'error',
+        text: 'keepalive',
+        tone: 'base',
+      },
+    ]);
+  });
+
   test('a busy session is waiting rather than pinged', () => {
     expect(lines(snap({ skipReason: 'busy' }))).toEqual([
       ...HEADER,
@@ -380,6 +392,7 @@ describe('sidebarLines: savings rows', () => {
     ['busy', 'waiting · session busy'],
     ['disabled', 'off · disabled'],
     ['small-context', 'off · 30k < 50k'],
+    ['too-late', 'stopped · no ping fits before expiry'],
   ] as const)('%s keepalive row is followed by the savings rows', (skipReason, right) => {
     const ls = warm(readout(), { skipReason, contextTokens: 30_000 });
     expect(ls.find((l) => l.text === 'keepalive')?.right).toBe(right);

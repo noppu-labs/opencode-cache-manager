@@ -73,6 +73,16 @@ function keepaliveRows(
   if (snapshot.skipReason === 'disabled') {
     return [{ right: 'off · disabled', text: 'keepalive', tone: 'base' }];
   }
+  if (snapshot.skipReason === 'too-late') {
+    return [
+      {
+        right: 'stopped · no ping fits before expiry',
+        rightTone: 'error',
+        text: 'keepalive',
+        tone: 'base',
+      },
+    ];
+  }
   return pingLines(snapshot, now, formatClock);
 }
 
