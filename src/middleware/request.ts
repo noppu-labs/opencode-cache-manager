@@ -99,8 +99,13 @@ function createRequestHook({
           profile,
           wire: route.transformWire ?? 'anthropic-messages',
         });
-      } catch {
-        // A rewrite failure sends the request as it was rather than failing it.
+      } catch (error) {
+        // The request goes out as it was rather than failing; this is the only trace of that.
+        // oxlint-disable-next-line no-console -- server plugins have no log API; the host's docs use console, which lands in its log
+        console.warn(
+          '[opencode-cache-manager] cache rewrite failed, request sent unchanged:',
+          error
+        );
       }
     }
     evt.request = request;

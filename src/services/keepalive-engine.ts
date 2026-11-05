@@ -12,11 +12,13 @@ import { SAVINGS_EXPIRY_MARGIN_MS } from '../constants/savings.ts';
 import type { CacheUsage, ModelRef, Ttl } from '../models/cache.ts';
 import type {
   CacheReadout,
+  KeepaliveRecord,
   KeepaliveSnapshot,
   RequestKind,
   SkipReason,
 } from '../models/keepalive.ts';
 import type { SavingsReadout } from '../models/savings.ts';
+import type { KeepaliveStore } from './keepalive-store.ts';
 import type { SavingsLedger } from './savings-ledger.ts';
 import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
 
@@ -36,6 +38,8 @@ interface EngineDeps {
   onChange: (snapshot: KeepaliveSnapshot) => void;
   /** Told of charged pings and rescued stretches; never awaited. */
   savings?: EngineLedger;
+  /** Keeps an armed session's record, so its schedule outlives a plugin reload; never awaited. */
+  persist?: Pick<KeepaliveStore, 'save' | 'remove'>;
 }
 
 /** `split`: the active mode is `hybrid` on a managed profile. */
@@ -129,6 +133,8 @@ interface SessionState {
   firstPrimaryContext: number | null;
   pendingReturn: PendingReturn | null;
   model: ModelRef | null;
+  /** The record last handed to `persist`, serialized; null when none is stored. */
+  lastPersisted: string | null;
 }
 
 class KeepaliveEngine {
@@ -228,6 +234,19 @@ class KeepaliveEngine {
     if (this.disposed) return;
     const state = this.sessions.get(sessionID);
     if (state) this.commit(sessionID, state);
+  }
+
+  /** Resumes a session from its stored record after a reload; one that has already made a request here keeps its live state. */
+  public async restore(sessionID: string, record: KeepaliveRecord): Promise<void> {
+    if (this.disposed || this.sessions.has(sessionID)) return;
+    const state = this.state(sessionID);
+    Object.assign(state, record, {
+      cacheSeen: true,
+      confirmedAt: record.lastRequestAt,
+      lastPersisted: JSON.stringify(record),
+      requestSentAt: record.lastRequestAt,
+    });
+    await this.schedule(sessionID);
   }
 
   public snapshot(sessionID: string): KeepaliveSnapshot {
@@ -450,6 +469,7 @@ class KeepaliveEngine {
       inflight: null,
       lastCache: null,
       lastEmitted: '',
+      lastPersisted: null,
       lastPing: null,
       lastRequestAt: null,
       maxPings: BUILTIN_DEFAULTS.maxPings,
@@ -504,7 +524,47 @@ class KeepaliveEngine {
     };
   }
 
+  /** The session's record while a ping is armed or on its way; null once there is no schedule to resume. */
+  private toRecord(state: SessionState): KeepaliveRecord | null {
+    const { lastRequestAt, requestedTtl, ttl } = state;
+    if (state.nextPingAt === null && state.inflight === null) return null;
+    if (lastRequestAt === null || requestedTtl === null || ttl === null) return null;
+    return {
+      contextTokens: state.contextTokens,
+      firstPrimaryContext: state.firstPrimaryContext,
+      lastCache: state.lastCache,
+      lastPing: state.lastPing,
+      lastRequestAt,
+      model: state.model,
+      originalExpiry: state.originalExpiry,
+      pingsUsed: state.pingsUsed,
+      prefix1hTokens: state.prefix1hTokens,
+      requestedTtl,
+      split: state.split,
+      stretchCharged: state.stretchCharged,
+      stretchHits: state.stretchHits,
+      ttl,
+      ttlSource: state.ttlSource,
+    };
+  }
+
+  private persist(sessionID: string, state: SessionState): void {
+    const { persist } = this.deps;
+    if (!persist) return;
+    const record = this.toRecord(state);
+    const serialized = record === null ? null : JSON.stringify(record);
+    if (serialized === state.lastPersisted) return;
+    state.lastPersisted = serialized;
+    try {
+      if (record === null) persist.remove(sessionID);
+      else persist.save(sessionID, record);
+    } catch {
+      // Losing the record only costs the schedule on the next reload.
+    }
+  }
+
   private commit(sessionID: string, state: SessionState): void {
+    this.persist(sessionID, state);
     const snapshot = this.toSnapshot(sessionID, state);
     const serialized = JSON.stringify(snapshot);
     if (serialized === state.lastEmitted) return;

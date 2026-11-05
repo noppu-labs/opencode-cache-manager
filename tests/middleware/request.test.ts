@@ -1351,4 +1351,33 @@ describe('createRequestHook rewrite failures', () => {
       spy.mockRestore();
     }
   });
+
+  test('a throwing rewrite is reported, since nothing else would show it', async () => {
+    const failure = new Error('boom');
+    const rewrite = spyOn(openaiProfile, 'rewrite').mockImplementation(() => {
+      throw failure;
+    });
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const h = harness();
+      await h.store.setSession('ses_a', { mode: '1h' });
+      await h.dispatch(
+        new Request('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          body: JSON.stringify({
+            model: 'openai/gpt-6-luna',
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        }),
+        { providerID: 'openrouter', modelID: 'openai/gpt-6-luna' }
+      );
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.join(' ')).toContain('opencode-cache-manager');
+      expect(warn.mock.calls[0]).toContain(failure);
+    } finally {
+      rewrite.mockRestore();
+      warn.mockRestore();
+    }
+  });
 });
