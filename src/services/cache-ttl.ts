@@ -1,4 +1,5 @@
 import { BETA_HEADER, EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../constants/anthropic.ts';
+import { DEBUG_FIELD_CHARS } from '../constants/debug.ts';
 import { isCacheTtlMode, type CacheTtlMode, type Ttl, type Wire } from '../models/cache.ts';
 import type { RequestKind } from '../models/keepalive.ts';
 import type { CacheProfile } from '../models/profile.ts';
@@ -136,9 +137,16 @@ function applyProfileHeaders(headers: Headers, extra: Record<string, string>): v
   }
 }
 
-/** A `cache_control` field for the trace. Only a primitive: an object could hold body text, or be too deep to serialize. */
+/** A `cache_control` field for the trace. An object or a long string logs as its type: either could hold body text, and an object can be too deep to serialize. */
 function describeCacheField(value: unknown): string {
+  if (typeof value === 'string' && value.length > DEBUG_FIELD_CHARS) return 'string';
   return typeof value === 'object' && value !== null ? 'object' : JSON.stringify(value);
+}
+
+/** A message's `role` for the trace. Only a string: a parsed object may have no string form, and this runs outside `dbg`'s try. */
+function describeRole(message: unknown): string {
+  if (!isRecord(message) || typeof message.role !== 'string') return '?';
+  return message.role.length > DEBUG_FIELD_CHARS ? 'string' : message.role;
 }
 
 /** A node's `cache_control` as `type` or `type/ttl`; undefined when it has none. */
@@ -152,7 +160,9 @@ function describeCacheControl(node: unknown): string | undefined {
 /**
  * Debug only: where `cache_control` sits in a body, so a request logged as
  * `inject=true, rewritten=false` can be told apart from one that was simply
- * already marked.
+ * already marked. Covers `tools`, `system`, `messages` and the top level. Empty
+ * `marks` does not mean no breakpoints: it stays empty on the Responses wire,
+ * whose `input` is not read, and `prompt_cache_breakpoint` is not read on any wire.
  */
 function breakpointSurvey(body: Record<string, unknown>): Record<string, unknown> {
   const marks: string[] = [];
@@ -161,10 +171,14 @@ function breakpointSurvey(body: Record<string, unknown>): Record<string, unknown
     const mark = describeCacheControl(tool);
     if (mark !== undefined) marks.push(`tool[${index}]=${mark}`);
   }
+  const system: unknown[] = Array.isArray(body.system) ? body.system : [];
+  for (const [index, block] of system.entries()) {
+    const mark = describeCacheControl(block);
+    if (mark !== undefined) marks.push(`system[${index}]=${mark}`);
+  }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   for (const [index, message] of messages.entries()) {
-    // `String` throws on a parsed object with no string form, and this runs outside `dbg`'s try.
-    const role = isRecord(message) && typeof message.role === 'string' ? message.role : '?';
+    const role = describeRole(message);
     const mark = describeCacheControl(message);
     if (mark !== undefined) marks.push(`msg[${index}:${role}]=${mark}`);
     const content = isRecord(message) ? message.content : undefined;

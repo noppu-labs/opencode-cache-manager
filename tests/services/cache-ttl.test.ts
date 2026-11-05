@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, expect, test } from 'bun:test';
+import { existsSync, rmSync } from 'node:fs';
 
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../../src/constants/anthropic.ts';
+import { DEBUG_FIELD_CHARS } from '../../src/constants/debug.ts';
 import type { CacheProfile } from '../../src/models/profile.ts';
 import { hasOneHourCacheControl } from '../../src/services/cache-control.ts';
 import {
@@ -17,6 +16,7 @@ import {
 import { implicitProfile } from '../../src/services/profiles/implicit.ts';
 import { openaiProfile } from '../../src/services/profiles/openai.ts';
 import { configureDebugLog } from '../../src/utils/debug-log.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import {
   collectCacheControls,
   makeRequest,
@@ -479,31 +479,12 @@ describe('debug log', () => {
   const injecting = transformOpts({ inject: true, wire: 'openai-chat' });
   const send = () =>
     transformHttpRequest(new Request(chatUrl, { method: 'POST', body: chatText }), '1h', injecting);
-  let dir: string;
-  let path: string;
-
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cache-manager-transform-debug-'));
-    path = join(dir, 'trace.jsonl');
-    configureDebugLog({ bodies: false, path });
-  });
-
-  afterEach(() => {
-    configureDebugLog(undefined);
-    rmSync(dir, { force: true, recursive: true });
-  });
-
-  function events(): Record<string, any>[] {
-    return readFileSync(path, 'utf8')
-      .trimEnd()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, any>);
-  }
+  const trace = useDebugTrace();
 
   test('transform.breakpoints records positions before and after', async () => {
     await send();
 
-    const [line] = events();
+    const [line] = trace.events();
     expect(line).toMatchObject({
       changed: true,
       ev: 'transform.breakpoints',
@@ -515,18 +496,20 @@ describe('debug log', () => {
       wire: 'openai-chat',
     });
     expect(line?.before).toEqual({ marks: [], messages: 1, tools: 1, topLevel: null });
-    expect(line?.after.marks).toContainEqual(expect.stringMatching(/^tool\[0\]=/u));
-    expect(readFileSync(path, 'utf8')).not.toContain(canary);
+    expect(line?.after).toMatchObject({
+      marks: expect.arrayContaining([expect.stringMatching(/^tool\[0\]=/u)]),
+    });
+    expect(trace.text()).not.toContain(canary);
   });
 
   test('logging off writes nothing and rewrites the same', async () => {
     const on = await (await send()).text();
-    rmSync(path);
+    rmSync(trace.path);
     configureDebugLog(undefined);
 
     const off = await (await send()).text();
 
-    expect(existsSync(path)).toBe(false);
+    expect(existsSync(trace.path)).toBe(false);
     expect(off).toBe(on);
   });
 
@@ -538,13 +521,13 @@ describe('debug log', () => {
 
     await transformHttpRequest(request, '1h', transformOpts());
 
-    expect(events()[0]).toMatchObject({
+    expect(trace.events()[0]).toMatchObject({
       ev: 'transform.bodyNotRecord',
       hadSentinel: false,
       mode: '1h',
       url: 'https://api.anthropic.com/v1/messages',
     });
-    expect(readFileSync(path, 'utf8')).not.toContain('SECRET');
+    expect(trace.text()).not.toContain('SECRET');
   });
 
   test('a query string never reaches transform.skipped5mNoBody', async () => {
@@ -554,11 +537,11 @@ describe('debug log', () => {
 
     await transformHttpRequest(request, '5m', transformOpts());
 
-    expect(events()[0]).toMatchObject({
+    expect(trace.events()[0]).toMatchObject({
       ev: 'transform.skipped5mNoBody',
       url: 'https://api.anthropic.com/v1/messages',
     });
-    expect(readFileSync(path, 'utf8')).not.toContain('SECRET');
+    expect(trace.text()).not.toContain('SECRET');
   });
 
   test('a cache_control value too deep to serialize is rewritten the same with logging on', async () => {
@@ -573,6 +556,7 @@ describe('debug log', () => {
     );
 
     expect(await out.text()).toBe(text);
+    expect(trace.events().map(({ ev }) => ev)).toContain('transform.breakpoints');
   });
 
   test('a cache_control value that is not a primitive never reaches the file', async () => {
@@ -586,8 +570,8 @@ describe('debug log', () => {
       transformOpts({ profile: implicitProfile })
     );
 
-    expect(events()[0]?.before.marks).toEqual(['msg[0:user]=object/object']);
-    expect(readFileSync(path, 'utf8')).not.toContain(canary);
+    expect(trace.events()[0]?.before).toMatchObject({ marks: ['msg[0:user]=object/object'] });
+    expect(trace.text()).not.toContain(canary);
   });
 
   test('a role with no string form is rewritten the same with logging on', async () => {
@@ -598,9 +582,74 @@ describe('debug log', () => {
     const rewrite = () => transformHttpRequest(makeRequest(text), '1h', transformOpts());
 
     const on = await (await rewrite()).text();
+    expect(trace.events().map(({ ev }) => ev)).toContain('transform.breakpoints');
     configureDebugLog(undefined);
     const off = await (await rewrite()).text();
 
     expect(on).toBe(off);
+  });
+
+  test('a long string in role or cache_control never reaches the file', async () => {
+    const long = `${canary}-${canary}`;
+    const text = JSON.stringify({
+      messages: [{ role: long, cache_control: { type: long, ttl: long } }],
+    });
+
+    await transformHttpRequest(
+      makeRequest(text),
+      '1h',
+      transformOpts({ profile: implicitProfile })
+    );
+
+    expect(trace.events()[0]?.before).toMatchObject({
+      marks: ['msg[0:string]=string/string'],
+    });
+    expect(trace.text()).not.toContain(canary);
+  });
+
+  test('a string of exactly the cap is logged, one character more is not', async () => {
+    const atCap = 'x'.repeat(DEBUG_FIELD_CHARS);
+    const text = JSON.stringify({
+      messages: [
+        { role: atCap, cache_control: { type: atCap } },
+        { role: `${atCap}x`, cache_control: { type: `${atCap}x` } },
+      ],
+    });
+
+    await transformHttpRequest(
+      makeRequest(text),
+      '1h',
+      transformOpts({ profile: implicitProfile })
+    );
+
+    expect(trace.events()[0]?.before).toMatchObject({
+      marks: [`msg[0:${atCap}]="${atCap}"`, 'msg[1:string]=string'],
+    });
+  });
+
+  test('a body marked only in system logs system marks', async () => {
+    const text = JSON.stringify({
+      messages: [{ role: 'user', content: 'hi' }],
+      system: [
+        { type: 'text', text: canary },
+        { type: 'text', text: canary, cache_control: { type: 'ephemeral' } },
+      ],
+    });
+
+    await transformHttpRequest(makeRequest(text), '1h', transformOpts());
+
+    const [line] = trace.events();
+    expect(line?.before).toMatchObject({ marks: ['system[1]="ephemeral"'] });
+    expect(line?.after).toMatchObject({ marks: ['system[1]="ephemeral"/"1h"'] });
+    expect(trace.text()).not.toContain(canary);
+  });
+
+  test('a system that is a string logs no system marks', async () => {
+    const text = JSON.stringify({ messages: [], system: canary });
+
+    await transformHttpRequest(makeRequest(text), '1h', transformOpts());
+
+    expect(trace.events()[0]?.before).toMatchObject({ marks: [] });
+    expect(trace.text()).not.toContain(canary);
   });
 });

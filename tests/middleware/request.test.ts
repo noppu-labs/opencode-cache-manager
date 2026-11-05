@@ -1,7 +1,5 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, expect, spyOn, test } from 'bun:test';
+import { existsSync, rmSync } from 'node:fs';
 
 import { parseCacheProfiles } from '../../src/config/model-patterns.ts';
 import { BUILTIN_DEFAULTS, type PluginOptions } from '../../src/config/settings.ts';
@@ -15,6 +13,7 @@ import { PingTracker } from '../../src/services/ping-tracker.ts';
 import { openaiProfile } from '../../src/services/profiles/openai.ts';
 import { SettingsStore } from '../../src/services/settings-store.ts';
 import { configureDebugLog } from '../../src/utils/debug-log.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import {
   collectCacheControls,
   ephemeral,
@@ -1388,28 +1387,9 @@ describe('createRequestHook rewrite failures', () => {
 
 describe('debug log', () => {
   const googleUrl = 'https://generativelanguage.googleapis.com/v1/models/gemini:generate';
-  let dir: string;
-  let path: string;
+  const trace = useDebugTrace();
 
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cache-manager-request-debug-'));
-    path = join(dir, 'trace.jsonl');
-    configureDebugLog({ bodies: false, path });
-  });
-
-  afterEach(() => {
-    configureDebugLog(undefined);
-    rmSync(dir, { force: true, recursive: true });
-  });
-
-  function events(): Record<string, unknown>[] {
-    return readFileSync(path, 'utf8')
-      .trimEnd()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-  }
-
-  test('a request no profile applies logs request.unhandled', async () => {
+  test('a request no profile applies to logs request.unhandled', async () => {
     const h = harness();
     const request = new Request(googleUrl, { method: 'POST', body: '{}' });
 
@@ -1420,8 +1400,8 @@ describe('debug log', () => {
     });
 
     expect(evt.request).toBe(request);
-    expect(events()).toHaveLength(1);
-    expect(events()[0]).toMatchObject({
+    expect(trace.events()).toHaveLength(1);
+    expect(trace.events()[0]).toMatchObject({
       anthropicProvider: false,
       classified: null,
       ev: 'request.unhandled',
@@ -1446,7 +1426,7 @@ describe('debug log', () => {
       { modelID: 'openai/gpt-6-luna', providerID: 'openrouter' }
     );
 
-    expect(events()[0]).toMatchObject({
+    expect(trace.events()[0]).toMatchObject({
       classified: 'openai',
       ev: 'request.unhandled',
       wire: 'openai-chat',
@@ -1459,7 +1439,7 @@ describe('debug log', () => {
 
     await h.dispatch(body());
 
-    const hook = events().find(({ ev }) => ev === 'request.hook');
+    const hook = trace.events().find(({ ev }) => ev === 'request.hook');
     expect(hook).toMatchObject({
       beta: EXTENDED_CACHE_BETA,
       inject: false,
@@ -1475,7 +1455,7 @@ describe('debug log', () => {
       sessionID: 'ses_a',
       url: 'https://api.anthropic.com/v1/messages',
     });
-    expect(events().some(({ ev }) => ev === 'request.unhandled')).toBe(false);
+    expect(trace.events().some(({ ev }) => ev === 'request.unhandled')).toBe(false);
   });
 
   test('a query string never reaches the file', async () => {
@@ -1485,16 +1465,16 @@ describe('debug log', () => {
     await h.dispatch(new Request(url, { method: 'POST', body: JSON.stringify(sampleBody()) }));
     await h.dispatch(new Request(url), { modelID: 'gemini-3', providerID: 'google' });
 
-    const logged = events().map(({ ev }) => ev);
+    const logged = trace.events().map(({ ev }) => ev);
     expect(logged).toContain('request.hook');
     expect(logged).toContain('request.unhandled');
-    const text = readFileSync(path, 'utf8');
+    const text = trace.text();
     expect(text).not.toContain('SECRET');
     expect(text).toContain('/v1/messages');
   });
 
   test('a request body never reaches the file', async () => {
-    configureDebugLog({ bodies: true, path });
+    configureDebugLog({ bodies: true, path: trace.path });
     const canary = 'CANARY-request-body';
     const h = harness();
 
@@ -1506,7 +1486,7 @@ describe('debug log', () => {
       })
     );
 
-    const text = readFileSync(path, 'utf8');
+    const text = trace.text();
     expect(text).toContain('request.hook');
     expect(text).not.toContain(canary);
   });
@@ -1523,12 +1503,12 @@ describe('debug log', () => {
     };
 
     const on = await send();
-    expect(existsSync(path)).toBe(true);
-    rmSync(path);
+    expect(existsSync(trace.path)).toBe(true);
+    rmSync(trace.path);
     configureDebugLog(undefined);
     const off = await send();
 
-    expect(existsSync(path)).toBe(false);
+    expect(existsSync(trace.path)).toBe(false);
     expect(off).toEqual(on);
   });
 });
