@@ -77,12 +77,21 @@ interface PluginOptions {
   debug?: DebugOptions;
 }
 
+/** `file` in the home folder. `homedir` throws for a user with no passwd entry and no `HOME`, so that is `undefined`. */
+function homeFile(file: string): string | undefined {
+  try {
+    return join(homedir(), file);
+  } catch {
+    return undefined;
+  }
+}
+
 /** An absolute path, or a file under `~/` expanded; anything else is `undefined`. */
 function parseDebugPath(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   if (value.startsWith(DEBUG_HOME_PATH_PREFIX)) {
     const file = value.slice(DEBUG_HOME_PATH_PREFIX.length);
-    return isNonEmptyString(file) ? join(homedir(), file) : undefined;
+    return isNonEmptyString(file) ? homeFile(file) : undefined;
   }
   return isAbsolute(value) ? value : undefined;
 }
@@ -93,7 +102,7 @@ function parseDebugOption(value: unknown): DebugOptions | undefined {
   const record = isRecord(value) ? value : {};
   if (record.enabled === false) return undefined;
   const path =
-    record.path === undefined ? join(homedir(), DEBUG_LOG_FILENAME) : parseDebugPath(record.path);
+    record.path === undefined ? homeFile(DEBUG_LOG_FILENAME) : parseDebugPath(record.path);
   return path === undefined ? undefined : { bodies: record.bodies === true, path };
 }
 
