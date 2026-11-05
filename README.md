@@ -46,7 +46,6 @@ opencode plugin add @noppu-labs/opencode-cache-manager
 - [Settings](#settings)
 - [Sidebar](#sidebar)
   - [Savings](#savings)
-- [Debug log](#debug-log)
 - [Contributing](#contributing)
 
 ## Why
@@ -227,7 +226,7 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 | `modelsDevPrices`            | `false` | Price models the OpenCode catalog has no price for from models.dev (see [Savings](#savings)). Off means no network calls of the plugin's own. Read at startup; not in the picker |
 | `openaiCompatible`           | `true`  | Handle OpenAI Chat Completions and Responses requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped           |
 | `cacheProfiles`              | `{}`    | Which cache profile manages a model, by pattern (see below)                                                                                                                      |
-| `debug`                      | `false` | Write a trace of what the plugin does to a file (see [Debug log](#debug-log)). Applies to the whole OpenCode process. Not in the picker                                          |
+| `debug`                      | `false` | Write a debugging trace to a file (see [Debug log](docs/CONTRIBUTING.md#debug-log)). Not in the picker                                                                           |
 
 `cacheProfiles` maps a pattern to a profile. Patterns are matched against `<providerID>/<modelID>`, in order, and the first match wins:
 
@@ -317,37 +316,6 @@ Dollars need a price for every model the session used. OpenCode's catalog prices
 If any event in a session has no price, the whole session shows the unit-free form, since a partial dollar figure would mislead. Each event is priced with the model that served it, so a session that switches models still adds up. Dollar amounts round to the cent, with `<$0.01` for a non-zero amount below a cent and a minus sign (`-$0.02`) for a negative net.
 
 Turn the rows off with `savings` in the plugin options, in the picker, or with `/cache-manager savings off` for one session. The ledger keeps counting while they are hidden. Totals are kept when a session becomes implicit. Totals of deleted sessions are removed at the next startup.
-
-## Debug log
-
-The `debug` plugin option writes a trace of what the plugin does to a JSONL file, one event per line. It's off by default, and off writes nothing.
-
-To turn it on, set it in the plugin options:
-
-```jsonc
-"debug": true
-```
-
-That writes to `~/opencode-cache-manager-debug.jsonl`. Give an object to set either of these, or both:
-
-- `path` chooses the file.
-- `bodies: true` adds response excerpts and error messages. Without it, no part of a response body or error message is written, except the model name and stop reason a response reports, capped at 128 characters.
-
-```jsonc
-"debug": { "path": "~/trace.jsonl", "bodies": true }
-```
-
-The option applies to the whole OpenCode process, and the instance that started last decides. On a service with several projects, set it in the global config, not a project's.
-
-Saving a changed `debug` option in `opencode.jsonc` takes effect straight away, with no restart. If it doesn't, run `opencode service restart`.
-
-To trace a local build, keep only one copy of the plugin configured. OpenCode runs one plugin per ID, so options on a second copy are ignored.
-
-`path` must be absolute or start with `~/`. Anything else leaves logging off. The file's folder must already exist. If the path can't be written to, such as a missing folder or a path that is itself a folder, nothing is written and the plugin carries on as normal.
-
-The file holds metadata such as status, sizes, token counts, model, session IDs, the project directory, and URLs without their query string. A proxy with a key in its URL path will have that key in the file, so check the file before sharing it. `bodies: true` adds up to 600 characters from each end of a response when no usage could be read from it, the first 600 characters of a failed response, and error messages capped at 600 characters. That can include conversation text. Request bodies are never written. A new file is created readable only by you. An existing file keeps its permissions.
-
-The file grows until you delete it, so turn the option off when you're done.
 
 ## Contributing
 

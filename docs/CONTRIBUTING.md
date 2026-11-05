@@ -21,6 +21,37 @@ ln -s "$(pwd)/src" ~/.config/opencode/plugins/opencode-cache-manager
 
 A checkout loads `src/ui/sidebar.tsx` directly, so no build is needed. Don't keep the npm package in `plugins` at the same time. OpenCode runs one plugin per ID, so the second copy doesn't run.
 
+## Debug log
+
+The `debug` plugin option writes a trace of what the plugin does to a JSONL file, one event per line. It's off by default, and off writes nothing.
+
+```jsonc
+"debug": true
+```
+
+That writes to `~/opencode-cache-manager-debug.jsonl`. Give an object to set either of these, or both:
+
+- `path` chooses the file. It must be absolute or start with `~/`, and anything else leaves logging off. The file's folder must already exist. If the path can't be written to, nothing is written and the plugin carries on as normal.
+- `bodies: true` adds response excerpts and error messages. Without it, no part of a response body or error message is written, except the model name and stop reason a response reports, capped at 128 characters.
+
+```jsonc
+"debug": { "path": "~/trace.jsonl", "bodies": true }
+```
+
+To trace a local build, replace the plugin's entry with a path entry, because a symlinked checkout has no entry to hold options:
+
+```jsonc
+{ "package": "/path/to/opencode-cache-manager/src", "options": { "debug": true } }
+```
+
+The option applies to the whole OpenCode process, and the instance that started last decides. On a service with several projects, set it in the global config, not a project's. Saving a changed option takes effect straight away, with no restart. If it doesn't, run `opencode service restart`.
+
+The file holds metadata such as status, sizes, token counts, model, session IDs, the project directory, and URLs without their query string. Request bodies are never written, apart from `role` and `cache_control` values of up to 16 characters in the breakpoint survey. A proxy with a key in its URL path will have that key in the file, so check the file before sharing it.
+
+`bodies: true` adds up to 600 characters from each end of a response when no usage could be read from it, the first 600 characters of a failed response, and error messages capped at 600 characters. That can include conversation text.
+
+A new file is created readable only by you, and an existing file keeps its permissions. The file grows until you delete it, so turn the option off when you're done.
+
 ## Before opening a pull request
 
 Run the same checks CI runs (`.github/workflows/ci.yml`):
