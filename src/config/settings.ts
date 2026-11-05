@@ -87,10 +87,11 @@ function parseDebugPath(value: unknown): string | undefined {
   return isAbsolute(value) ? value : undefined;
 }
 
-/** Off unless `value` is `true` or an object. An invalid path means off, not the default file. */
+/** Off unless `value` is `true` or an object without `enabled: false`. An invalid path means off, not the default file. */
 function parseDebugOption(value: unknown): DebugOptions | undefined {
   if (value !== true && !isRecord(value)) return undefined;
   const record = isRecord(value) ? value : {};
+  if (record.enabled === false) return undefined;
   const path =
     record.path === undefined ? join(homedir(), DEBUG_LOG_FILENAME) : parseDebugPath(record.path);
   return path === undefined ? undefined : { bodies: record.bodies === true, path };

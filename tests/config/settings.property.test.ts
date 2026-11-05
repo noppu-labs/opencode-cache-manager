@@ -190,6 +190,14 @@ describe('settings properties', () => {
     );
   });
 
+  test('debug.enabled false is off whatever else the object sets', () => {
+    fc.assert(
+      fc.property(fc.anything(), fc.anything(), (bodies, path) => {
+        expect(pluginOptions({ debug: { bodies, enabled: false, path } }).debug).toBeUndefined();
+      })
+    );
+  });
+
   test('debug.bodies is true only for literal true', () => {
     const bodies = fc.oneof(
       fc.constantFrom(true, 'true', 1, {}, []),

@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
+import * as nodeOs from 'node:os';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -161,6 +162,21 @@ describe('debug option', () => {
     expect(pluginOptions({ debug: false }).debug).toBeUndefined();
     expect(pluginOptions({ debug: 'yes' }).debug).toBeUndefined();
     expect(pluginOptions({ debug: 1 }).debug).toBeUndefined();
+  });
+
+  test('enabled: false means off, whatever else the object sets', () => {
+    expect(pluginOptions({ debug: { enabled: false } }).debug).toBeUndefined();
+    expect(
+      pluginOptions({ debug: { bodies: true, enabled: false, path: '/tmp/t.jsonl' } }).debug
+    ).toBeUndefined();
+  });
+
+  test('enabled: true, or any other value, leaves logging on', () => {
+    expect(pluginOptions({ debug: { enabled: true } }).debug).toEqual({
+      bodies: false,
+      path: defaultPath,
+    });
+    expect(pluginOptions({ debug: { enabled: 'no' } }).debug?.path).toBe(defaultPath);
   });
 
   test('true or an empty object writes metadata to the default file', () => {
