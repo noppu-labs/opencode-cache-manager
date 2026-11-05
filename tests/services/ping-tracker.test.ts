@@ -183,6 +183,35 @@ describe('debug log', () => {
     ]);
   });
 
+  test('generate settling with no response reported logs hasReported false', async () => {
+    const pings = new PingTracker();
+    await pings.send('ses_a', async () => ({}));
+
+    expect(trace.events()).toMatchObject([
+      { ev: 'pingTracker.send.start', sessionID: 'ses_a' },
+      { ev: 'pingTracker.generate.settled', hasReported: false, sessionID: 'ses_a' },
+      { ev: 'pingTracker.reported.settled', sessionID: 'ses_a' },
+    ]);
+  });
+
+  test('a rejected reported promise logs pingTracker.send.threw and still rethrows', async () => {
+    const pings = new PingTracker();
+    const error = new TypeError('boom');
+
+    await expect(
+      pings.send('ses_a', async () => {
+        pings.responded('ses_a', Promise.reject(error));
+      })
+    ).rejects.toBe(error);
+
+    expect(trace.events()).toMatchObject([
+      { ev: 'pingTracker.send.start', sessionID: 'ses_a' },
+      { ev: 'pingTracker.responded', sessionID: 'ses_a' },
+      { ev: 'pingTracker.generate.settled', hasReported: true, sessionID: 'ses_a' },
+      { err: 'TypeError', ev: 'pingTracker.send.threw', sessionID: 'ses_a' },
+    ]);
+  });
+
   test('a failed send logs pingTracker.send.threw and still rethrows', async () => {
     const pings = new PingTracker();
     const error = new TypeError('boom');
