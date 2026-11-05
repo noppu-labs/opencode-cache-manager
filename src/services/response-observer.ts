@@ -76,8 +76,8 @@ export function observeResponseUsage(
        */
       if (!response.ok) {
         dbg('observer.discarded', {
-          bytes: text.length,
           cancelled,
+          chars: text.length,
           head: dbgExcerpt(text, 'head'),
           ok: response.ok,
         });
@@ -87,8 +87,8 @@ export function observeResponseUsage(
         ? parsers.fromSse(text)
         : parsers.fromJson(JSON.parse(text));
       dbg('observer.parsed', {
-        bytes: text.length,
         cancelled,
+        chars: text.length,
         contentType,
         hasUsage: result.usage !== undefined,
         // The raw body is only worth keeping when nothing could be read from it.

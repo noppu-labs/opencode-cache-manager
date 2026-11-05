@@ -221,7 +221,7 @@ describe('debug log', () => {
 
     const [event] = trace.events();
     expect(event).toMatchObject({
-      bytes: noUsageSse.length,
+      chars: noUsageSse.length,
       cancelled: false,
       contentType: 'text/event-stream',
       ev: 'observer.parsed',
@@ -240,7 +240,7 @@ describe('debug log', () => {
 
     const [event] = trace.events();
     expect(event).toMatchObject({
-      bytes: body.length,
+      chars: body.length,
       ev: 'observer.parsed',
       hasUsage: false,
       head: body.slice(0, 600),
@@ -279,7 +279,7 @@ describe('debug log', () => {
 
     const [event] = trace.events();
     expect(event).toMatchObject({
-      bytes: body.length,
+      chars: body.length,
       cancelled: false,
       ev: 'observer.discarded',
       ok: false,
