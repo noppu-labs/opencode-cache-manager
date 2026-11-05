@@ -6,6 +6,7 @@ import { SAVINGS_EXPIRY_MARGIN_MS } from '../../src/constants/savings.ts';
 import type { CacheUsage, ModelRef } from '../../src/models/cache.ts';
 import type { KeepaliveRecord } from '../../src/models/keepalive.ts';
 import { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 
 const MODEL: ModelRef = { id: 'claude-sonnet-5-5', providerID: 'anthropic' };
 const CONTEXT = 80_000;
@@ -374,5 +375,29 @@ describe('keepalive engine: what it stores', () => {
     timer?.();
 
     expect(pings).toEqual(['s1']);
+  });
+});
+
+describe('debug log', () => {
+  const trace = useDebugTrace();
+
+  test('engine.restore logs the record and what the engine already knew', async () => {
+    const w = world();
+    const first = w.boot();
+    await first.request('s1');
+    const record = w.records.get('s1')!;
+    const second = w.boot();
+
+    await second.engine.restore('s1', record);
+    await second.engine.restore('s1', record);
+    second.engine.dispose();
+    await second.engine.restore('s2', record);
+
+    const { lastRequestAt, pingsUsed } = record;
+    expect(trace.events().filter(({ ev }) => ev === 'engine.restore')).toMatchObject([
+      { disposed: false, known: false, lastRequestAt, pingsUsed, sessionID: 's1' },
+      { disposed: false, known: true, lastRequestAt, pingsUsed, sessionID: 's1' },
+      { disposed: true, known: false, lastRequestAt, pingsUsed, sessionID: 's2' },
+    ]);
   });
 });
