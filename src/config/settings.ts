@@ -1,4 +1,9 @@
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+
+import { DEBUG_HOME_PATH_PREFIX, DEBUG_LOG_FILENAME } from '../constants/debug.ts';
 import { isCacheTtlMode, type CacheTtlMode, type ProfilePattern } from '../models/cache.ts';
+import { isNonEmptyString } from '../utils/is-non-empty-string.ts';
 import { isRecord } from '../utils/is-record.ts';
 import { parseCacheProfiles } from './model-patterns.ts';
 
@@ -58,18 +63,58 @@ function settingsFromOptions(options: unknown): SettingsPatch {
   });
 }
 
+/** Where the debug trace goes, and whether it may hold response content. */
+interface DebugOptions {
+  path: string;
+  bodies: boolean;
+}
+
 /** Server-only plugin options for OpenAI-compatible endpoints; not part of the layered settings. */
 interface PluginOptions {
   openaiCompatible: boolean;
   cacheProfiles: ProfilePattern[];
   modelsDevPrices: boolean;
+  debug?: DebugOptions;
 }
 
-/** Reads `openaiCompatible` (default `true`), `modelsDevPrices` (default `false`) and `cacheProfiles`; invalid values fall back to the defaults. */
+/** `file` in the home folder. `homedir` throws for a user with no passwd entry and no `HOME`, so that is `undefined`. */
+function homeFile(file: string): string | undefined {
+  try {
+    return join(homedir(), file);
+  } catch {
+    return undefined;
+  }
+}
+
+/** An absolute path, or a file under `~/` expanded; anything else is `undefined`. */
+function parseDebugPath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value.startsWith(DEBUG_HOME_PATH_PREFIX)) {
+    const file = value.slice(DEBUG_HOME_PATH_PREFIX.length);
+    return isNonEmptyString(file) ? homeFile(file) : undefined;
+  }
+  return isAbsolute(value) ? value : undefined;
+}
+
+/** Off unless `value` is `true` or an object without `enabled: false`. An invalid path means off, not the default file. */
+function parseDebugOption(value: unknown): DebugOptions | undefined {
+  if (value !== true && !isRecord(value)) return undefined;
+  const record = isRecord(value) ? value : {};
+  if (record.enabled === false) return undefined;
+  const path =
+    record.path === undefined ? homeFile(DEBUG_LOG_FILENAME) : parseDebugPath(record.path);
+  return path === undefined ? undefined : { bodies: record.bodies === true, path };
+}
+
+/**
+ * Reads `openaiCompatible` (default `true`), `modelsDevPrices` (default `false`),
+ * `cacheProfiles` and `debug` (default off); invalid values fall back to the defaults.
+ */
 function pluginOptions(options: unknown): PluginOptions {
   const record = isRecord(options) ? options : {};
   return {
     cacheProfiles: parseCacheProfiles(record.cacheProfiles),
+    debug: parseDebugOption(record.debug),
     modelsDevPrices: typeof record.modelsDevPrices === 'boolean' ? record.modelsDevPrices : false,
     openaiCompatible: typeof record.openaiCompatible === 'boolean' ? record.openaiCompatible : true,
   };
@@ -88,7 +133,7 @@ function mergeSettings(...layers: SettingsPatch[]): Settings {
   return merged;
 }
 
-export type { Settings, SettingsPatch, PluginOptions };
+export type { DebugOptions, Settings, SettingsPatch, PluginOptions };
 export {
   BUILTIN_DEFAULTS,
   MAX_PINGS_LIMIT,

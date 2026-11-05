@@ -6,6 +6,7 @@ import type { ModelRef, ResponseIdentity } from '../../src/models/cache.ts';
 import type { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
 import { PingTracker } from '../../src/services/ping-tracker.ts';
 import { ProfileStore } from '../../src/services/profile-store.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import {
   makeRequest,
   openaiSse,
@@ -700,5 +701,151 @@ describe('createResponseHook on the Messages wire for a non-Anthropic provider',
     await hook(messagesEvent({ request, response: withModel('best-route') }));
     await flush();
     expect(observed[0]?.info.unmanaged).toBe(false);
+  });
+});
+
+describe('debug log', () => {
+  const trace = useDebugTrace();
+  const eventsNamed = (name: string) => trace.events().filter(({ ev }) => ev === name);
+
+  test('logs response.hook with the wire or null', async () => {
+    const { hook } = harness();
+    const url = 'https://api.openai.com/v1/embeddings';
+    await hook(
+      event({
+        model: { providerID: 'openai', id: 'gpt-6' },
+        request: new Request(url, { method: 'POST', body: '{}' }),
+      })
+    );
+    await flush();
+
+    // The only line: a wire-less response stops at the hook, and no observer runs on it.
+    expect(trace.events()).toHaveLength(1);
+    expect(trace.events()[0]).toMatchObject({
+      ev: 'response.hook',
+      provider: 'openai',
+      requestWire: null,
+      url,
+      wire: null,
+    });
+
+    await hook(event());
+    await flush();
+
+    expect(eventsNamed('response.hook')[1]).toMatchObject({
+      kind: 'primary',
+      model: 'claude-sonnet-5-5',
+      provider: 'anthropic',
+      requestWire: 'anthropic-messages',
+      sessionID: 'ses_a',
+      status: 200,
+      url: 'https://api.anthropic.com/v1/messages',
+      wire: 'anthropic-messages',
+    });
+  });
+
+  test('logs response.classified and response.parsed', async () => {
+    const { hook } = harness();
+    const text = [
+      `data: ${JSON.stringify({
+        type: 'message_start',
+        message: { model: 'claude-sonnet-5-5-20261001', usage: WRITE_1H },
+      })}`,
+      `data: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } })}`,
+      '',
+    ].join('\n');
+
+    await hook(
+      event({ response: new Response(text, { headers: { 'content-type': 'text/event-stream' } }) })
+    );
+    await flush();
+
+    expect(eventsNamed('response.classified')[0]).toMatchObject({
+      ct: 'text/event-stream',
+      isPing: false,
+      kind: 'primary',
+      ok: true,
+      sessionID: 'ses_a',
+    });
+    expect(eventsNamed('response.parsed')[0]).toMatchObject({
+      cacheRead: 0,
+      cacheWrite: 60_000,
+      hasUsage: true,
+      inputTokens: 10,
+      isPing: false,
+      kind: 'primary',
+      ok: true,
+      reportedModel: 'claude-sonnet-5-5-20261001',
+      sessionID: 'ses_a',
+      stopReason: 'end_turn',
+      unmanaged: false,
+    });
+  });
+
+  test('a response with no usage logs nulls in response.parsed', async () => {
+    const { hook } = harness();
+    await hook(event({ response: jsonResponse({}, 529) }));
+    await flush();
+
+    expect(eventsNamed('response.parsed')[0]).toMatchObject({
+      cacheRead: null,
+      cacheWrite: null,
+      hasUsage: false,
+      inputTokens: null,
+      ok: false,
+      reportedModel: null,
+      stopReason: null,
+    });
+  });
+
+  test('caps the model and stop reason a response reports', async () => {
+    const { hook, observed } = harness();
+    const model = `MODEL-CANARY${'m'.repeat(700)}`;
+    const stopReason = `STOP-CANARY${'s'.repeat(700)}`;
+
+    await hook(event({ response: jsonResponse({ model, stop_reason: stopReason }) }));
+    await flush();
+
+    expect(eventsNamed('response.parsed')[0]).toMatchObject({
+      reportedModel: model.slice(0, 128),
+      stopReason: stopReason.slice(0, 128),
+    });
+    expect(trace.text()).not.toContain('m'.repeat(129));
+    expect(trace.text()).not.toContain('s'.repeat(129));
+    // The cap is only on the log line: the engine still hears the whole values.
+    expect(observed[0]?.info).toMatchObject({ reportedModel: model, stopReason });
+  });
+
+  test('a finish reason that names an Object member still reaches the engine', async () => {
+    const { hook, observed } = harness();
+    await hook(
+      event({
+        model: { providerID: 'omniroute', id: 'auto/opus-5' },
+        request: new Request('https://omni.example/v1/chat/completions', {
+          method: 'POST',
+          body: '{}',
+        }),
+        response: jsonResponse({ choices: [{ finish_reason: 'constructor' }] }),
+      })
+    );
+    await flush();
+
+    expect(observed).toHaveLength(1);
+  });
+
+  test('a query string never reaches the file', async () => {
+    const { hook } = harness();
+    await hook(
+      event({
+        request: new Request('https://api.anthropic.com/v1/messages?key=SECRET', {
+          method: 'POST',
+          body: '{}',
+        }),
+      })
+    );
+    await flush();
+
+    expect(eventsNamed('response.hook')[0]?.url).toBe('https://api.anthropic.com/v1/messages');
+    expect(trace.text()).not.toContain('SECRET');
   });
 });

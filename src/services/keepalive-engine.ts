@@ -18,6 +18,7 @@ import type {
   SkipReason,
 } from '../models/keepalive.ts';
 import type { SavingsReadout } from '../models/savings.ts';
+import { dbg } from '../utils/debug-log.ts';
 import type { KeepaliveStore } from './keepalive-store.ts';
 import type { SavingsLedger } from './savings-ledger.ts';
 import { contextTokens, grantedTtl, hasCacheActivity } from './usage.ts';
@@ -238,6 +239,13 @@ class KeepaliveEngine {
 
   /** Resumes a session from its stored record after a reload; one that has already made a request here keeps its live state. */
   public async restore(sessionID: string, record: KeepaliveRecord): Promise<void> {
+    dbg('engine.restore', {
+      disposed: this.disposed,
+      known: this.sessions.has(sessionID),
+      lastRequestAt: record.lastRequestAt,
+      pingsUsed: record.pingsUsed,
+      sessionID,
+    });
     if (this.disposed || this.sessions.has(sessionID)) return;
     const state = this.state(sessionID);
     Object.assign(state, record, {
@@ -271,11 +279,26 @@ class KeepaliveEngine {
     info: ResponseInfo
   ): Promise<void> {
     const { inflight } = state;
+    dbg('engine.pingObserved', {
+      cacheRead: info.usage?.cacheReadTokens ?? null,
+      hasInflight: inflight !== null,
+      hasUsage: info.usage !== undefined,
+      ok: info.ok,
+      sessionID,
+    });
     // Charged even when a real request already ended the ping's stretch: it was still billed.
     if (info.usage) this.chargePing(sessionID, state, info.usage, info);
-    if (!inflight) return;
+    if (!inflight) {
+      dbg('engine.pingObserved.noInflight', { sessionID });
+      return;
+    }
     state.inflight = null;
     if (!info.ok || !info.usage) {
+      dbg('engine.pingObserved.failing', {
+        hasUsage: info.usage !== undefined,
+        ok: info.ok,
+        sessionID,
+      });
       await this.failPing(sessionID, state);
       return;
     }
@@ -641,6 +664,18 @@ class KeepaliveEngine {
      * rather than leave the session with no next ping and no reason for it.
      */
     if (state.skipReason === null && state.nextPingAt === null) state.skipReason = 'too-late';
+    dbg('engine.schedule', {
+      cacheSeen: state.cacheSeen,
+      contextTokens: state.contextTokens,
+      inMs: state.nextPingAt === null ? null : state.nextPingAt - this.deps.now(),
+      lastPing: state.lastPing,
+      nextPingAt: state.nextPingAt,
+      pingsUsed: state.pingsUsed,
+      requestedTtl: state.requestedTtl,
+      sessionID,
+      skipReason: state.skipReason,
+      ttl: state.ttl,
+    });
 
     if (state.nextPingAt !== null) {
       const delay = Math.max(0, state.nextPingAt - this.deps.now());
@@ -714,9 +749,19 @@ class KeepaliveEngine {
     state.inflight = inflight;
     state.pingPending = true;
     this.commit(sessionID, state);
+    dbg('engine.fire', {
+      contextBefore: state.contextTokens,
+      pingsUsed: state.pingsUsed,
+      sessionID,
+      ttl: state.ttl,
+    });
 
     const settled = (): void => {
       state.pingPending = false;
+      dbg('engine.ping.settled', {
+        sessionID,
+        stillInflight: state.inflight === inflight,
+      });
       if (this.disposed) return;
       /*
        * Resolved without a response seen, or rejected: unless a response (or a
@@ -735,6 +780,7 @@ class KeepaliveEngine {
   }
 
   private async failPing(sessionID: string, state: SessionState): Promise<void> {
+    dbg('engine.failPing', { pingsUsed: state.pingsUsed, sessionID, ttl: state.ttl });
     state.lastPing = 'failed';
     state.retryAt = this.deps.now() + RETRY_DELAY_MS;
     this.commit(sessionID, state);

@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from 'bun:test';
+import { existsSync, rmSync } from 'node:fs';
 
 import { parseCacheProfiles } from '../../src/config/model-patterns.ts';
 import { BUILTIN_DEFAULTS, type PluginOptions } from '../../src/config/settings.ts';
@@ -11,6 +12,8 @@ import { KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
 import { PingTracker } from '../../src/services/ping-tracker.ts';
 import { openaiProfile } from '../../src/services/profiles/openai.ts';
 import { SettingsStore } from '../../src/services/settings-store.ts';
+import { configureDebugLog } from '../../src/utils/debug-log.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import {
   collectCacheControls,
   ephemeral,
@@ -1379,5 +1382,133 @@ describe('createRequestHook rewrite failures', () => {
       rewrite.mockRestore();
       warn.mockRestore();
     }
+  });
+});
+
+describe('debug log', () => {
+  const googleUrl = 'https://generativelanguage.googleapis.com/v1/models/gemini:generate';
+  const trace = useDebugTrace();
+
+  test('a request no profile applies to logs request.unhandled', async () => {
+    const h = harness();
+    const request = new Request(googleUrl, { method: 'POST', body: '{}' });
+
+    const evt = await h.dispatch(request, {
+      kind: 'generate',
+      modelID: 'gemini-3',
+      providerID: 'google',
+    });
+
+    expect(evt.request).toBe(request);
+    expect(trace.events()).toHaveLength(1);
+    expect(trace.events()[0]).toMatchObject({
+      anthropicProvider: false,
+      classified: null,
+      ev: 'request.unhandled',
+      hasSentinel: false,
+      kind: 'generate',
+      model: 'gemini-3',
+      provider: 'google',
+      sessionID: 'ses_a',
+      url: googleUrl,
+      wire: null,
+    });
+  });
+
+  test('request.unhandled names the wire and profile of a known wire with the option off', async () => {
+    const h = harness({ options: { openaiCompatible: false } });
+
+    await h.dispatch(
+      new Request('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        body: '{}',
+      }),
+      { modelID: 'openai/gpt-6-luna', providerID: 'openrouter' }
+    );
+
+    expect(trace.events()[0]).toMatchObject({
+      classified: 'openai',
+      ev: 'request.unhandled',
+      wire: 'openai-chat',
+    });
+  });
+
+  test('a handled request logs request.hook', async () => {
+    const h = harness();
+    await h.store.setSession('ses_a', { mode: '1h' });
+
+    await h.dispatch(body());
+
+    const hook = trace.events().find(({ ev }) => ev === 'request.hook');
+    expect(hook).toMatchObject({
+      beta: EXTENDED_CACHE_BETA,
+      inject: false,
+      isPing: false,
+      kind: 'primary',
+      mode: '1h',
+      model: 'claude-sonnet-5-5',
+      observed: true,
+      profile: 'anthropic',
+      provider: 'anthropic',
+      rewrites: true,
+      rewritten: true,
+      sessionID: 'ses_a',
+      url: 'https://api.anthropic.com/v1/messages',
+    });
+    expect(trace.events().some(({ ev }) => ev === 'request.unhandled')).toBe(false);
+  });
+
+  test('a query string never reaches the file', async () => {
+    const url = 'https://api.anthropic.com/v1/messages?key=SECRET';
+    const h = harness();
+
+    await h.dispatch(new Request(url, { method: 'POST', body: JSON.stringify(sampleBody()) }));
+    await h.dispatch(new Request(url), { modelID: 'gemini-3', providerID: 'google' });
+
+    const logged = trace.events().map(({ ev }) => ev);
+    expect(logged).toContain('request.hook');
+    expect(logged).toContain('request.unhandled');
+    const text = trace.text();
+    expect(text).not.toContain('SECRET');
+    expect(text).toContain('/v1/messages');
+  });
+
+  test('a request body never reaches the file', async () => {
+    configureDebugLog({ bodies: true, path: trace.path });
+    const canary = 'CANARY-request-body';
+    const h = harness();
+
+    await h.dispatch(
+      body({
+        ...sampleBody(),
+        messages: [userText(canary)],
+        system: [{ type: 'text', text: canary }],
+      })
+    );
+
+    const text = trace.text();
+    expect(text).toContain('request.hook');
+    expect(text).not.toContain(canary);
+  });
+
+  test('a request is rewritten the same with logging on and off', async () => {
+    const send = async () => {
+      const h = harness();
+      await h.store.setSession('ses_a', { mode: 'hybrid' });
+      const evt = await h.dispatch(body());
+      return {
+        headers: [...evt.request.headers.entries()],
+        text: await evt.request.clone().text(),
+      };
+    };
+
+    const on = await send();
+    expect(existsSync(trace.path)).toBe(true);
+    rmSync(trace.path);
+    configureDebugLog(undefined);
+    const off = await send();
+
+    expect(existsSync(trace.path)).toBe(false);
+    expect(off).toEqual(on);
   });
 });

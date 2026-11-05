@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { dirname, join } from 'node:path';
 
 import { observeResponseUsage } from '../../src/services/response-observer.ts';
 import { OPENAI_PARSERS } from '../../src/services/usage-openai.ts';
 import { ANTHROPIC_PARSERS } from '../../src/services/usage.ts';
+import { configureDebugLog } from '../../src/utils/debug-log.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import { fullParsed, fullUsage, openaiSse, openaiUsage, sse } from '../helpers/fixtures.ts';
 
 describe('observeResponseUsage', () => {
@@ -197,5 +200,123 @@ describe('observeResponseUsage', () => {
     const pulledAfterCancel = pulled;
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(pulled).toBe(pulledAfterCancel);
+  });
+});
+
+describe('debug log', () => {
+  const trace = useDebugTrace();
+  const SSE_HEADERS = { 'content-type': 'text/event-stream' };
+  const noUsageSse = 'data: {"type":"ping","note":"CANARY"}\n\n';
+
+  /** Runs a response through the observer and waits for the observer's own log line. */
+  async function observe(text: string, init: ResponseInit) {
+    const observed = observeResponseUsage(new Response(text, init), ANTHROPIC_PARSERS);
+    const delivered = await observed.response.text();
+    await observed.usage;
+    return delivered;
+  }
+
+  test('observer.parsed has no excerpt with bodies off', async () => {
+    await observe(noUsageSse, { headers: SSE_HEADERS });
+
+    const [event] = trace.events();
+    expect(event).toMatchObject({
+      chars: noUsageSse.length,
+      cancelled: false,
+      contentType: 'text/event-stream',
+      ev: 'observer.parsed',
+      hasUsage: false,
+    });
+    expect(event).not.toContainAnyKeys(['head', 'tail']);
+    expect(trace.text()).not.toContain('CANARY');
+  });
+
+  test('observer.parsed has capped excerpts with bodies on', async () => {
+    configureDebugLog({ bodies: true, path: trace.path });
+    const body = `data: {"type":"ping","note":"${'CANARY '.repeat(300)}"}\n\n`;
+    expect(body.length).toBeGreaterThan(1200);
+
+    await observe(body, { headers: SSE_HEADERS });
+
+    const [event] = trace.events();
+    expect(event).toMatchObject({
+      chars: body.length,
+      ev: 'observer.parsed',
+      hasUsage: false,
+      head: body.slice(0, 600),
+      tail: body.slice(-600),
+    });
+    expect(event?.head).toHaveLength(600);
+    expect(event?.tail).toHaveLength(600);
+  });
+
+  test('observer.parsed has no excerpt when usage was read', async () => {
+    configureDebugLog({ bodies: true, path: trace.path });
+
+    await observe(`${sse(fullUsage)}${noUsageSse}`, { headers: SSE_HEADERS });
+
+    const [event] = trace.events();
+    expect(event).toMatchObject({ ev: 'observer.parsed', hasUsage: true });
+    expect(event).not.toContainAnyKeys(['head', 'tail']);
+    expect(trace.text()).not.toContain('CANARY');
+  });
+
+  test('observer.parsed says when the caller cancelled the stream', async () => {
+    const observed = observeResponseUsage(
+      new Response(noUsageSse, { headers: SSE_HEADERS }),
+      ANTHROPIC_PARSERS
+    );
+
+    await observed.response.body?.cancel('consumer done');
+    await observed.usage;
+
+    expect(trace.events()[0]).toMatchObject({ cancelled: true, ev: 'observer.parsed' });
+  });
+
+  test('observer.discarded has no excerpt with bodies off', async () => {
+    const body = 'CANARY upstream failure';
+
+    await observe(body, { status: 500 });
+
+    const [event] = trace.events();
+    expect(event).toMatchObject({
+      chars: body.length,
+      cancelled: false,
+      ev: 'observer.discarded',
+      ok: false,
+    });
+    expect(event).not.toContainKey('head');
+    expect(trace.text()).not.toContain('CANARY');
+  });
+
+  test('observer.discarded has an excerpt with bodies on', async () => {
+    configureDebugLog({ bodies: true, path: trace.path });
+
+    await observe('CANARY upstream failure', { status: 500 });
+
+    const [event] = trace.events();
+    expect(event).toMatchObject({ ev: 'observer.discarded', ok: false });
+    expect(event?.head).toContain('CANARY');
+  });
+
+  test('observer.threw does not quote the body with bodies off', async () => {
+    await observe('CANARY not json', { headers: { 'content-type': 'application/json' } });
+
+    expect(trace.events()).toHaveLength(1);
+    expect(trace.events()[0]).toMatchObject({ err: 'SyntaxError', ev: 'observer.threw' });
+    expect(trace.text()).not.toContain('CANARY');
+  });
+
+  test('the caller gets the same bytes with logging on', async () => {
+    const body = sse(fullUsage);
+    const init = { headers: SSE_HEADERS };
+
+    expect(await observe(body, init)).toBe(body);
+    expect(trace.events()[0]?.ev).toBe('observer.parsed');
+
+    configureDebugLog({ bodies: true, path: join(dirname(trace.path), 'missing', 'trace.jsonl') });
+    const unwritable = observeResponseUsage(new Response(body, init), ANTHROPIC_PARSERS);
+    expect(await unwritable.response.text()).toBe(body);
+    expect((await unwritable.usage)?.cacheReadTokens).toBe(61_000);
   });
 });

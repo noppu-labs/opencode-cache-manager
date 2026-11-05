@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, jest, mock, spyOn, test } from 'bun:test';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { EXTENDED_CACHE_BETA, SENTINEL_HEADER } from '../src/constants/anthropic.ts';
 import { PING_PROMPT } from '../src/constants/keepalive.ts';
 import type { SavingsReadout } from '../src/models/savings.ts';
 import { CacheTtlRpc } from '../src/rpc.ts';
 import plugin from '../src/server.ts';
+import { configureDebugLog, dbg, dbgEnabled } from '../src/utils/debug-log.ts';
 import {
   collectCacheControls,
   makeRequest,
@@ -1377,6 +1381,86 @@ describe('keepalive wiring', () => {
       open.push(host);
       await flush();
       expect(typeof host.cleanup).toBe('function');
+    });
+  });
+});
+
+describe('debug option', () => {
+  let dir: string;
+  let path: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'cache-manager-server-debug-'));
+    path = join(dir, 'trace.jsonl');
+  });
+
+  afterEach(() => {
+    configureDebugLog(undefined);
+    rmSync(dir, { force: true, recursive: true });
+  });
+
+  function events(): Record<string, unknown>[] {
+    return readFileSync(path, 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  test('debug on writes plugin.setup', async () => {
+    await setup({ debug: { path } }, { directory: '/project' });
+
+    const line = events().find(({ ev }) => ev === 'plugin.setup');
+    expect(line).toMatchObject({ directory: '/project' });
+    expect(typeof line?.instance).toBe('string');
+  });
+
+  test('no debug option leaves logging off', async () => {
+    await setup({});
+    expect(dbgEnabled()).toBe(false);
+  });
+
+  test('a later setup without debug turns logging off', async () => {
+    await setup({ debug: { path } });
+    await setup({});
+
+    const before = events().length;
+    dbg('after');
+    expect(events()).toHaveLength(before);
+  });
+
+  test('disposing an instance writes plugin.dispose and leaves logging on', async () => {
+    const host = await setup({ debug: { path } });
+    await host.cleanup!();
+
+    expect(events().map(({ ev }) => ev)).toContain('plugin.dispose');
+    expect(dbgEnabled()).toBe(true);
+  });
+
+  test('each instance logs its own ID', async () => {
+    const first = await setup({ debug: { path } });
+    const second = await setup({ debug: { path } });
+    await first.cleanup!();
+    await second.cleanup!();
+
+    const instances = events()
+      .filter(({ ev }) => ev === 'plugin.setup')
+      .map(({ instance }) => instance);
+    expect(new Set(instances).size).toBe(2);
+    const disposed = events()
+      .filter(({ ev }) => ev === 'plugin.dispose')
+      .map(({ instance }) => instance);
+    expect(disposed).toEqual(instances);
+  });
+
+  test('debug on writes plugin.restorable once the stored sessions are read', async () => {
+    await setup({ debug: { path } }, { directory: '/project' });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(events().find(({ ev }) => ev === 'plugin.restorable')).toMatchObject({
+      directory: '/project',
+      sessions: [],
     });
   });
 });

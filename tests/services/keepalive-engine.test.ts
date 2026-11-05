@@ -14,6 +14,7 @@ import type { SavingsReadout } from '../../src/models/savings.ts';
 import { type EngineDeps, KeepaliveEngine } from '../../src/services/keepalive-engine.ts';
 import { LedgerStore } from '../../src/services/ledger-store.ts';
 import { SavingsLedger } from '../../src/services/savings-ledger.ts';
+import { useDebugTrace } from '../helpers/debug-log.ts';
 import { memoryKv } from '../helpers/memory-kv.ts';
 
 const MIN = 60_000;
@@ -1809,5 +1810,80 @@ describe('keepalive engine: savings', () => {
       expect(h.changes).toEqual([]);
       expect(h.ledger.readoutCalls).toEqual([]);
     });
+  });
+});
+
+describe('debug log', () => {
+  const trace = useDebugTrace();
+
+  test('a scheduled ping logs engine.schedule then engine.fire', async () => {
+    const h = harness();
+    await h.advance(MIN);
+    await h.request('s1', write1h);
+    await h.advance(50 * MIN);
+
+    const events = trace.events();
+    const fired = events.findIndex((event) => event.ev === 'engine.fire');
+    expect(events[fired]).toMatchObject({
+      contextBefore: 80_100,
+      pingsUsed: 1,
+      sessionID: 's1',
+      ttl: '1h',
+    });
+    expect(
+      events.slice(0, fired).findLast((event) => event.ev === 'engine.schedule')
+    ).toMatchObject({
+      inMs: 50 * MIN,
+      nextPingAt: 51 * MIN,
+      pingsUsed: 0,
+      sessionID: 's1',
+      skipReason: null,
+      ttl: '1h',
+    });
+    expect(
+      events.slice(fired + 1).find((event) => event.ev === 'engine.pingObserved')
+    ).toMatchObject({
+      cacheRead: 80_100,
+      hasInflight: true,
+      hasUsage: true,
+      ok: true,
+      sessionID: 's1',
+    });
+    expect(
+      events.slice(fired + 1).find((event) => event.ev === 'engine.ping.settled')
+    ).toMatchObject({ sessionID: 's1', stillInflight: false });
+  });
+
+  test('a failed ping logs engine.failPing', async () => {
+    const h = harness();
+    await h.request('s1', write1h);
+    h.queue.push({ kind: 'notok-then-reject' });
+    await h.advance(50 * MIN);
+
+    const events = trace.events();
+    const failing = events.findIndex((event) => event.ev === 'engine.pingObserved.failing');
+    expect(events[failing]).toMatchObject({ hasUsage: false, ok: false, sessionID: 's1' });
+    expect(events[failing + 1]).toMatchObject({
+      ev: 'engine.failPing',
+      pingsUsed: 1,
+      sessionID: 's1',
+      ttl: '1h',
+    });
+  });
+
+  test('a late ping response logs engine.pingObserved.noInflight', async () => {
+    const h = harness();
+    await h.request('s1', write1h);
+    h.queue.push({ kind: 'hold' });
+    await h.advance(50 * MIN);
+    await h.request('s1', hit);
+    h.held[0]();
+    await h.flush();
+
+    const observed = trace.events().filter((event) => event.ev.startsWith('engine.pingObserved'));
+    expect(observed).toMatchObject([
+      { ev: 'engine.pingObserved', hasInflight: false, sessionID: 's1' },
+      { ev: 'engine.pingObserved.noInflight', sessionID: 's1' },
+    ]);
   });
 });

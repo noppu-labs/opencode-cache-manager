@@ -209,6 +209,7 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
         "modelsDevPrices": false, // default false
         "openaiCompatible": true, // default true
         "cacheProfiles": { "opus": "anthropic", "gpt": "implicit" },
+        "debug": false, // default false
       },
     },
   ],
@@ -225,6 +226,7 @@ Plugin options set the defaults. They live in the plugin entry in `~/.config/ope
 | `modelsDevPrices`            | `false` | Price models the OpenCode catalog has no price for from models.dev (see [Savings](#savings)). Off means no network calls of the plugin's own. Read at startup; not in the picker |
 | `openaiCompatible`           | `true`  | Handle OpenAI Chat Completions and Responses requests. `false` leaves them untouched, except that a model variant's `x-cache-ttl` header is still applied and stripped           |
 | `cacheProfiles`              | `{}`    | Which cache profile manages a model, by pattern (see below)                                                                                                                      |
+| `debug`                      | `false` | Write a debugging trace to a file (see [Debug log](docs/CONTRIBUTING.md#debug-log)). Not in the picker                                                                           |
 
 `cacheProfiles` maps a pattern to a profile. Patterns are matched against `<providerID>/<modelID>`, in order, and the first match wins:
 
