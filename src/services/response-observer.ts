@@ -35,11 +35,9 @@ export function observeResponseUsage(
   const [callerBranch, observerBranch] = response.body.tee();
   const callerReader = callerBranch.getReader();
   const observerReader = observerBranch.getReader();
-  let cancelled = false;
   const forCaller = new ReadableStream<Uint8Array>(
     {
       async cancel(reason) {
-        cancelled = true;
         await Promise.all([callerReader.cancel(reason), observerReader.cancel(reason)]);
       },
       async pull(controller) {
@@ -67,7 +65,13 @@ export function observeResponseUsage(
         text += decoder.decode(value, { stream: true });
       }
       text += decoder.decode();
-      if (cancelled || !response.ok) return {};
+      /*
+       * A cancelled stream is still worth reading. Consumers routinely stop
+       * reading once they have the reply, and the provider has usually sent
+       * the usage block by then; discarding it made a finished call look like
+       * a failure. Whatever is missing simply parses to undefined.
+       */
+      if (!response.ok) return {};
       if (contentType.includes('text/event-stream')) return parsers.fromSse(text);
       return parsers.fromJson(JSON.parse(text));
     } catch {

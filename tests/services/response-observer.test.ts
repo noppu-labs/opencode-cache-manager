@@ -135,6 +135,40 @@ describe('observeResponseUsage', () => {
     expect(await observed.usage).toMatchObject({ inputTokens: 10 });
   });
 
+  test('a cancelled stream still reports the usage it already delivered', async () => {
+    const encoder = new TextEncoder();
+    let sent = 0;
+    const source = new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          /*
+           * The usage arrives first, as it does when a provider finishes its
+           * reply and the consumer stops reading before the stream closes.
+           */
+          if (sent === 0) {
+            sent++;
+            controller.enqueue(encoder.encode(sse(fullUsage)));
+            return;
+          }
+          // The stream then stays open, waiting to be cancelled.
+          await new Promise(() => {});
+        },
+      },
+      { highWaterMark: 0 }
+    );
+    const { response, usage } = observeResponseUsage(
+      new Response(source, { headers: { 'content-type': 'text/event-stream' } }),
+      ANTHROPIC_PARSERS
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    // Let the observer branch drain what the source already produced.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await reader.cancel('consumer done');
+
+    expect((await usage)?.cacheReadTokens).toBe(61_000);
+  });
+
   test('cancelling the returned body cancels the source stream', async () => {
     let pulled = 0;
     let cancelled = false;
