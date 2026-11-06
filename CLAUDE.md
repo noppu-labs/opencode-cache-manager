@@ -154,6 +154,7 @@ Where new code goes:
 - `files` ships `src/` and `tsconfig.json` includes `src/`, so new files under `src/` need no packaging changes. A new public entry point needs an `exports` entry pointing into `src/`; the smoke test checks the tarball resolves it.
 - Releases go through `.github/workflows/release.yml` with npm OIDC trusted publishing. A push to `main` whose `package.json` version has no `v*` tag yet is pre-checked, tagged, and published from a run dispatched at the tag. Do not tag or publish by hand.
 - The release workflow and the package smoke test pack with `--ignore-scripts`, so they run `bun run build` explicitly. Keep that if the pack command changes.
+- A change to features, install steps or requirements also updates `docs/toolkit-page.yaml`, the plugin's page on toolkit.noppu.com.
 - Run `bun run fmt:check`, `bun run lint`, `bun test` and `bun run typecheck` before calling work done.
 
 <!-- prettier-ignore-start -->
