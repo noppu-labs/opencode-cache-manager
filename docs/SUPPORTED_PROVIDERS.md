@@ -60,6 +60,12 @@ Example provider configs with `-1h` variants:
 - [examples/opencode.openai-compatible.jsonc](examples/opencode.openai-compatible.jsonc): a generic OpenAI-compatible proxy
 - [examples/opencode.openai.jsonc](examples/opencode.openai.jsonc): GPT-5.6+ through OpenCode's native `openai` provider (Responses)
 
+## Claude Agent
+
+The `claude-agent` provider runs the `claude` CLI as a subprocess, so its requests skip OpenCode's HTTP layer and the plugin's hooks never fire. The plugin can't rewrite these requests, change their TTL or ping them, and `/cache-manager` has no effect on them.
+
+The sidebar reads the session's model and token counts from OpenCode instead. Those counts have no TTL split, so the `ttl` row is a fixed `1h (detected)`: it comes from the CLI's own usage, which reported only 1h cache writes when this was checked, and isn't read per session. If the CLI changes its TTL, the row won't follow.
+
 ## How each provider caches
 
 Providers change their caching often. This table reflects their documentation as of October 2026; check the sources below for the current rules.
