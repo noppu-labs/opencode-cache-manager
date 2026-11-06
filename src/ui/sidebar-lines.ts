@@ -1,5 +1,6 @@
+import { CLAUDE_AGENT_TTL } from '../constants/anthropic.ts';
 import { PERCENT, THOUSAND } from '../constants/units.ts';
-import type { KeepaliveSnapshot } from '../models/keepalive.ts';
+import type { CacheReadout, KeepaliveSnapshot } from '../models/keepalive.ts';
 import {
   formatCompactTokens,
   formatMultiple,
@@ -37,7 +38,7 @@ const defaultClock = (ms: number): string =>
 
 const thousands = (tokens: number): string => `${Math.round(tokens / THOUSAND)}k`;
 
-function cachedLine(cache: NonNullable<KeepaliveSnapshot['lastCache']>): SidebarLine {
+function cachedLine(cache: CacheReadout): SidebarLine {
   const ratio = (cache.read / cache.total) * PERCENT;
   const percent = cache.read < cache.total ? Math.floor(ratio) : Math.round(ratio);
   return {
@@ -211,5 +212,15 @@ function sidebarLines(
   ];
 }
 
+/** Lines for a Claude Agent session: the CLI owns its cache, so there's no expiry or keepalive to show. */
+function claudeAgentLines(cache: CacheReadout | null): SidebarLine[] {
+  return [
+    HEADER,
+    { bullet: 'muted', right: 'managed by Claude Code', text: 'status', tone: 'base' },
+    ...(cache === null ? [] : [cachedLine(cache)]),
+    { right: `${CLAUDE_AGENT_TTL} (detected)`, text: 'ttl', tone: 'base' },
+  ];
+}
+
 export type { Tone, SidebarLine };
-export { LABEL_WIDTH, SECTION_HEADER, sidebarLines };
+export { LABEL_WIDTH, SECTION_HEADER, claudeAgentLines, sidebarLines };

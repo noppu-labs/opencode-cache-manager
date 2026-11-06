@@ -294,6 +294,15 @@ Cache
   keepalive   n/a · implicit cache
 ```
 
+A Claude Agent session (the `claude-agent` provider) runs through the `claude` CLI, which manages its own cache, so the plugin can't change the TTL or send pings. The section shows what it can read:
+
+```text
+Cache
+• status      managed by Claude Code
+  cached      84% · 27.7k / 32.8k
+  ttl         1h (detected)
+```
+
 The section is hidden for subagent sessions and for sessions with no cache activity.
 
 ### Savings

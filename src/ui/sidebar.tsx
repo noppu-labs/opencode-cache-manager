@@ -6,7 +6,14 @@ import { createEffect, createSignal, Index, type JSX, onCleanup, Show } from 'so
 import { SIDEBAR_REFRESH_MS } from '../constants/keepalive.ts';
 import { MS_PER_SECOND } from '../constants/units.ts';
 import type { KeepaliveSnapshot } from '../models/keepalive.ts';
-import { LABEL_WIDTH, type SidebarLine, sidebarLines, type Tone } from './sidebar-lines.ts';
+import { type ClaudeAgentSidebar, claudeAgentSidebar } from './claude-agent.ts';
+import {
+  claudeAgentLines,
+  LABEL_WIDTH,
+  type SidebarLine,
+  sidebarLines,
+  type Tone,
+} from './sidebar-lines.ts';
 
 /** The colour of each tone; the TUI takes these from the host theme, the docs capture from a fixed palette. */
 type SidebarPalette = Readonly<Record<Tone, RGBA>>;
@@ -24,6 +31,7 @@ function paletteFromTheme(theme: Plugin.Context['theme']): SidebarPalette {
 function CacheLines(props: {
   palette: () => SidebarPalette;
   snapshot: () => KeepaliveSnapshot | undefined;
+  claudeAgent?: () => ClaudeAgentSidebar | null;
 }): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   const timer = setInterval(() => {
@@ -33,7 +41,10 @@ function CacheLines(props: {
     clearInterval(timer);
   });
 
-  const lines = (): SidebarLine[] => sidebarLines(props.snapshot(), now());
+  const lines = (): SidebarLine[] => {
+    const agent = props.claudeAgent?.();
+    return agent ? claudeAgentLines(agent.cache) : sidebarLines(props.snapshot(), now());
+  };
 
   const toneColor = (tone: Tone): RGBA => props.palette()[tone];
 
@@ -78,6 +89,11 @@ function CacheSection(props: {
   const palette = (): SidebarPalette => paletteFromTheme(props.ctx.theme);
   // Child sessions are never pinged; before a snapshot exists only the TUI's session data can tell.
   const child = (): boolean => Boolean(props.ctx.data.session.get(props.sessionID)?.parentID);
+  const claudeAgent = (): ClaudeAgentSidebar | null =>
+    claudeAgentSidebar(
+      props.ctx.data.session.get(props.sessionID),
+      props.ctx.data.session.message.list(props.sessionID)
+    );
 
   createEffect(() => {
     const { sessionID } = props;
@@ -90,11 +106,12 @@ function CacheSection(props: {
     });
   });
   // Whether there is anything to show never depends on the clock, so the ticking child only exists while visible.
-  const visible = (): boolean => !child() && sidebarLines(snapshot(), 0).length > 0;
+  const visible = (): boolean =>
+    !child() && (claudeAgent() !== null || sidebarLines(snapshot(), 0).length > 0);
 
   return (
     <Show when={visible()}>
-      <CacheLines palette={palette} snapshot={snapshot} />
+      <CacheLines palette={palette} snapshot={snapshot} claudeAgent={claudeAgent} />
     </Show>
   );
 }
