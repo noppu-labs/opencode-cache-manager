@@ -96,6 +96,7 @@ src/
 │   ├── picker.ts              # Session/Global picker
 │   ├── snapshot-feed.ts       # keepalive snapshots for the sidebar, fed by RPC events
 │   ├── located-rpc.ts         # withLocation: RPC client wrapper that targets the session's plugin instance
+│   ├── claude-agent.ts        # claudeAgentSidebar: a Claude Agent session's cache readout, from the host's session data
 │   ├── sidebar.tsx            # Solid sidebar component; the only JSX file
 │   ├── sidebar.compiled.js    # build output of sidebar.tsx (gitignored, shipped)
 │   ├── sidebar.compiled.d.ts  # types for the compiled output

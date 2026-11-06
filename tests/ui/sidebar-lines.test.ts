@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { KeepaliveSnapshot } from '../../src/models/keepalive.ts';
 import type { SavingsReadout } from '../../src/models/savings.ts';
-import { sidebarLines, type SidebarLine } from '../../src/ui/sidebar-lines.ts';
+import { claudeAgentLines, sidebarLines, type SidebarLine } from '../../src/ui/sidebar-lines.ts';
 
 const NOW = 1_000_000_000;
 const MIN = 60_000;
@@ -398,5 +398,28 @@ describe('sidebarLines: savings rows', () => {
     expect(ls.find((l) => l.text === 'keepalive')?.right).toBe(right);
     expect(rows(ls)).toEqual(['saved $0.42 · 2 rewrites', 'return 9× ping cost']);
     expect(ls.at(-3)?.text).toBe('keepalive');
+  });
+});
+
+describe('claudeAgentLines', () => {
+  const STATUS: SidebarLine = {
+    text: 'status',
+    tone: 'base',
+    bullet: 'muted',
+    right: 'managed by Claude Code',
+  };
+  const AGENT_TTL: SidebarLine = { text: 'ttl', tone: 'base', right: '1h (detected)' };
+
+  test('before a response there are only the status and ttl rows', () => {
+    expect(claudeAgentLines(null)).toEqual([TITLE, STATUS, AGENT_TTL]);
+  });
+
+  test('the cached row sits between them, as in a managed session', () => {
+    expect(claudeAgentLines({ read: 92_000, total: 100_000 })).toEqual([
+      TITLE,
+      STATUS,
+      { text: 'cached', tone: 'base', right: '92% · 92k / 100k' },
+      AGENT_TTL,
+    ]);
   });
 });

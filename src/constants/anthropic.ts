@@ -1,3 +1,5 @@
+import type { Ttl } from '../models/cache.ts';
+
 /** Anthropic beta flag that unlocks the 1-hour cache TTL. */
 const EXTENDED_CACHE_BETA = 'extended-cache-ttl-2025-04-11';
 
@@ -6,6 +8,12 @@ const SENTINEL_HEADER = 'x-cache-ttl';
 
 /** Provider IDs whose requests are always rewritten and observed. */
 const ANTHROPIC_PROVIDER_IDS: readonly string[] = ['anthropic', 'omniroute-anthropic'];
+
+/** Runs through the `claude` CLI rather than OpenCode's HTTP layer, so the plugin's hooks never see it. */
+const CLAUDE_AGENT_PROVIDER_ID = 'claude-agent';
+
+/** What the CLI's own usage reports for its cache writes; the plugin can't read this per session. */
+const CLAUDE_AGENT_TTL: Ttl = '1h';
 
 /** Path suffix of the Anthropic Messages endpoint. */
 const MESSAGES_SUFFIX = '/messages';
@@ -23,6 +31,8 @@ export {
   EXTENDED_CACHE_BETA,
   SENTINEL_HEADER,
   ANTHROPIC_PROVIDER_IDS,
+  CLAUDE_AGENT_PROVIDER_ID,
+  CLAUDE_AGENT_TTL,
   MESSAGES_SUFFIX,
   BETA_HEADER,
   REJECTED_REQUEST_STATUSES,
