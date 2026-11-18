@@ -1302,6 +1302,29 @@ describe('createRequestHook with the openai profile', () => {
     expect(h.primaryMessages.get('ses_a')).toEqual(expected);
   });
 
+  test('on the Responses wire hybrid marks the leading developer system prompt', async () => {
+    const h = harness();
+    await h.store.setSession('ses_a', { mode: 'hybrid' });
+    const input = () => [
+      { type: 'message', role: 'developer', content: 'Be brief.' },
+      { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+    ];
+    const evt = await h.dispatch(
+      post(RESPONSES_URL, { model: 'openai/gpt-6.2-sol', input: input() }),
+      gpt
+    );
+    const expected = input();
+    expected[0].content = [
+      { type: 'input_text', text: 'Be brief.', prompt_cache_breakpoint: LONG },
+    ] as never;
+    expect(await parsedBodyOf(evt.request)).toEqual({
+      model: 'openai/gpt-6.2-sol',
+      input: expected,
+    });
+    expect(h.sent[0]?.info.requestedTtl).toBe('30m');
+    expect(h.primaryMessages.get('ses_a')).toEqual(expected);
+  });
+
   test("a -1h variant's sentinel gives the 12h breakpoint and is stripped", async () => {
     const h = harness();
     const evt = await h.dispatch(post(CHAT_URL, chatBody(), { [SENTINEL_HEADER]: '1h' }), gpt);
