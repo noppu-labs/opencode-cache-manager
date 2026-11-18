@@ -434,7 +434,7 @@ describe('openai profile', () => {
       });
     });
 
-    test('hybrid uses the first input item only', () => {
+    test('hybrid without a leading developer message uses the first input item only', () => {
       const body = responsesBody();
       (body.input as Rec[])[0] = {
         type: 'function_call',
@@ -444,6 +444,56 @@ describe('openai profile', () => {
       };
       expect(openaiProfile.rewrite(body, ctx('openai-responses', 'hybrid'))).toBe(false);
       expect(JSON.stringify(body)).not.toContain('prompt_cache_breakpoint');
+    });
+
+    const developer = { type: 'message', role: 'developer', content: 'You are helpful.' };
+    const additionalTools = {
+      type: 'additional_tools',
+      role: 'developer',
+      tools: [{ type: 'function', name: 'f' }],
+    };
+    const userHi = (extra: Rec = {}): Rec => ({
+      type: 'message',
+      role: 'user',
+      content: [inputText('hi', extra)],
+    });
+
+    test('hybrid marks the leading developer system prompt (OpenCode 2.3.2 shape)', () => {
+      const body: Rec = { model: 'openai/gpt-6.2-sol', input: [{ ...developer }, userHi()] };
+      expect(openaiProfile.rewrite(body, ctx('openai-responses', 'hybrid'))).toBe(true);
+      const input = body.input as Rec[];
+      expect(input[0]?.content).toEqual([
+        inputText('You are helpful.', { prompt_cache_breakpoint: BP }),
+      ]);
+      expect(input[1]).toEqual(userHi());
+      expect(JSON.stringify(body).match(/prompt_cache_breakpoint/gu)).toHaveLength(1);
+    });
+
+    test('hybrid skips a leading additional_tools item', () => {
+      const body: Rec = {
+        model: 'openai/gpt-6.2-sol',
+        input: [structuredClone(additionalTools), { ...developer }, userHi()],
+      };
+      expect(openaiProfile.rewrite(body, ctx('openai-responses', 'hybrid'))).toBe(true);
+      const input = body.input as Rec[];
+      expect(input[0]).toEqual(additionalTools);
+      expect(input[1]?.content).toEqual([
+        inputText('You are helpful.', { prompt_cache_breakpoint: BP }),
+      ]);
+      expect(JSON.stringify(body).match(/prompt_cache_breakpoint/gu)).toHaveLength(1);
+    });
+
+    test('hybrid moves an old first-user breakpoint to the developer message', () => {
+      const body: Rec = {
+        model: 'openai/gpt-6.2-sol',
+        input: [{ ...developer }, userHi({ prompt_cache_breakpoint: BP })],
+      };
+      expect(openaiProfile.rewrite(body, ctx('openai-responses', 'hybrid'))).toBe(true);
+      const input = body.input as Rec[];
+      expect(input[1]).toEqual(userHi());
+      expect(input[0]?.content).toEqual([
+        inputText('You are helpful.', { prompt_cache_breakpoint: BP }),
+      ]);
     });
 
     test('bodies without input are left alone', () => {

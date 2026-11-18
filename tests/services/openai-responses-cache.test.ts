@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  firstInputItem,
   lastInputText,
   lastInputTextPart,
+  responsesPrefixText,
   toolOutputTextPart,
 } from '../../src/services/openai-responses-cache.ts';
 
@@ -139,16 +139,78 @@ describe('toolOutputTextPart', () => {
   });
 });
 
-describe('firstInputItem', () => {
-  test('returns the first input item', () => {
-    const first = message('developer', 'sys');
-    expect(firstInputItem({ input: [first, message('user', 'u')] })).toBe(first);
+describe('responsesPrefixText', () => {
+  const tools = {
+    type: 'additional_tools',
+    role: 'developer',
+    tools: [{ type: 'function', name: 'f' }],
+  };
+
+  test('marks the leading developer message', () => {
+    const input = [message('developer', 'sys'), message('user', 'hi')];
+    const result = responsesPrefixText({ input });
+    expect(result).toEqual({ type: 'input_text', text: 'sys' });
+    const [developer] = input;
+    expect(developer?.content).toEqual([result]);
+    expect(Array.isArray(developer?.content) && developer.content[0]).toBe(result);
+    expect(input[1]).toEqual(message('user', 'hi'));
   });
 
-  test('is undefined without an input array, when empty, or when the first entry is not a record', () => {
-    expect(firstInputItem({})).toBeUndefined();
-    expect(firstInputItem({ input: 'plain' })).toBeUndefined();
-    expect(firstInputItem({ input: [] })).toBeUndefined();
-    expect(firstInputItem({ input: ['x'] })).toBeUndefined();
+  test('skips leading additional_tools items', () => {
+    expect(
+      responsesPrefixText({ input: [tools, message('developer', 'sys'), message('user', 'hi')] })
+    ).toEqual(inputText('sys'));
+    expect(responsesPrefixText({ input: [tools, message('user', 'hi')] })).toEqual(inputText('hi'));
+  });
+
+  test('walks back within the leading developer/system run', () => {
+    const a = inputText('a');
+    const input = [message('system', [a]), message('developer', ''), message('user', 'u')];
+    expect(responsesPrefixText({ input })).toBe(a);
+    expect(input[1]?.content).toBe('');
+  });
+
+  test('uses the last part of the last prefix message', () => {
+    const input = [
+      message('developer', [inputText('d1'), inputText('d2')]),
+      message('system', 's'),
+      message('user', 'u'),
+    ];
+    expect(responsesPrefixText({ input })).toEqual(inputText('s'));
+  });
+
+  test('returns undefined when the leading run has no text', () => {
+    const input = [message('developer', ''), message('user', 'u')];
+    expect(responsesPrefixText({ input })).toBeUndefined();
+    expect(input[1]?.content).toBe('u');
+  });
+
+  test('ignores developer messages after the first non-prefix item', () => {
+    expect(
+      responsesPrefixText({ input: [message('user', 'u'), message('developer', 'later')] })
+    ).toEqual(inputText('u'));
+  });
+
+  test('keeps the first item when input does not lead with developer/system messages', () => {
+    const b = inputText('b');
+    expect(
+      responsesPrefixText({
+        instructions: 'x',
+        input: [message('user', [inputText('a'), b]), message('user', 'c')],
+      })
+    ).toBe(b);
+    expect(
+      responsesPrefixText({ input: [{ type: 'function_call', call_id: 'c', name: 'f' }] })
+    ).toBeUndefined();
+  });
+
+  test('is undefined without an input array, when empty, only additional_tools, or a non-record first entry', () => {
+    expect(responsesPrefixText({})).toBeUndefined();
+    expect(responsesPrefixText({ input: 'plain' })).toBeUndefined();
+    expect(responsesPrefixText({ input: [] })).toBeUndefined();
+    expect(
+      responsesPrefixText({ input: [{ type: 'additional_tools', tools: [] }] })
+    ).toBeUndefined();
+    expect(responsesPrefixText({ input: ['x'] })).toBeUndefined();
   });
 });

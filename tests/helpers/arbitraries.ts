@@ -100,7 +100,14 @@ const responsesItem: fc.Arbitrary<Rec> = fc.oneof(
     arguments: text,
     call_id: text,
     type: fc.constantFrom('function_call', 'custom_tool_call'),
-  })
+  }),
+  decorate(
+    fc.record({
+      role: fc.constant('developer'),
+      tools: fc.array(fc.record({ name: text }), { maxLength: 2 }),
+      type: fc.constant('additional_tools'),
+    })
+  )
 );
 
 /** OpenAI Responses bodies: `input` as a string or a list of items. */

@@ -3,7 +3,7 @@ import type { CacheProfile, RewriteContext } from '../../models/profile.ts';
 import { isRecord } from '../../utils/is-record.ts';
 import { stripBreakpoints } from '../openai-breakpoints.ts';
 import { lastTextPart, leadingPrefixEnd } from '../openai-cache-ttl.ts';
-import { firstInputItem, lastInputText, lastInputTextPart } from '../openai-responses-cache.ts';
+import { lastInputText, responsesPrefixText } from '../openai-responses-cache.ts';
 
 type Rec = Record<string, unknown>;
 
@@ -41,9 +41,9 @@ function breakpointTarget(body: Rec, { wire, mode }: RewriteContext): Rec | unde
   if (wire === 'openai-chat') return mode === '1h' ? lastChatText(body) : lastChatPrefixText(body);
   if (wire !== 'openai-responses') return undefined;
   // Probe: only input_text parts of user/system messages and tool outputs carry a breakpoint; assistant and tool-call items are skipped.
+  // A leading developer message is OpenCode >= 2.3.2's system prompt; a breakpoint on it has not been probed.
   if (mode === '1h') return lastInputText(body);
-  const first = firstInputItem(body);
-  return first ? lastInputTextPart(first) : undefined;
+  return responsesPrefixText(body);
 }
 
 const hasLongBreakpoint = (part: Rec): boolean => {
