@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -93,6 +93,11 @@ const SHIP_FILES = [
   COMPILED_SIDEBAR,
   ...sourceFiles(),
 ].toSorted();
+
+// Building and packing can take over 5s on a CI runner, the default timeout of whichever test would pack first.
+beforeAll(() => {
+  packOnce();
+}, 60_000);
 
 afterAll(() => {
   if (tmpDir !== undefined) rmSync(tmpDir, { recursive: true, force: true });
