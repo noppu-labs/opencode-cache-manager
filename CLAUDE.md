@@ -28,10 +28,10 @@ GitNexus and CodeGraph indexes live in `.gitnexus/` and `.codegraph/` (both giti
 
 ```sh
 codegraph sync
-gitnexus analyze --no-stats --skip-skills
+gitnexus analyze --no-stats --index-only
 ```
 
-Always pass `--skip-skills` to `gitnexus analyze`. Without it, GitNexus writes skill files to `.claude/skills/gitnexus/` and adds a table pointing at them to this file and `AGENTS.md`. The same skills are already installed at user level and the MCP server is available, so these copies aren't wanted here.
+Always pass `--index-only` to `gitnexus analyze`. Without it, GitNexus writes skill files to `.claude/skills/gitnexus/` and rewrites its section of this file and `AGENTS.md`; as of GitNexus 1.6.12, `--skip-skills` alone no longer stops the rewrite. The same skills are already installed at user level and the MCP server is available, so these copies aren't wanted here.
 
 ## Layout
 
@@ -163,7 +163,7 @@ Where new code goes:
 
 This project is indexed by GitNexus as **opencode-cache-manager**. Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
 ## Always Do
 
