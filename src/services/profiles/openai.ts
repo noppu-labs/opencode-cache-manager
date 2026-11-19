@@ -41,7 +41,6 @@ function breakpointTarget(body: Rec, { wire, mode }: RewriteContext): Rec | unde
   if (wire === 'openai-chat') return mode === '1h' ? lastChatText(body) : lastChatPrefixText(body);
   if (wire !== 'openai-responses') return undefined;
   // Probe: only input_text parts of user/system/developer messages and tool outputs carry a breakpoint; assistant and tool-call items are skipped.
-  // A leading developer message is OpenCode >= 2.3.2's system prompt.
   if (mode === '1h') return lastInputText(body);
   return responsesPrefixText(body);
 }
