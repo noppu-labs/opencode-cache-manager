@@ -24,11 +24,32 @@ function lastInputTextPart(item: Rec): Rec | undefined {
   return Array.isArray(content) ? findLastInputText(content) : undefined;
 }
 
-/** The first `input` item of a Responses body. */
-function firstInputItem(body: Rec): Rec | undefined {
-  if (!Array.isArray(body.input)) return undefined;
-  const first: unknown = body.input[0];
-  return isRecord(first) ? first : undefined;
+const isPrefixMessage = (item: unknown): item is Rec =>
+  isRecord(item) && isMessageItem(item) && (item.role === 'developer' || item.role === 'system');
+
+/**
+ * The `input_text` part that carries the hybrid breakpoint, at the end of the system prompt.
+ * OpenCode >= 2.3.2 sends the system prompt as a leading developer message, possibly after
+ * `additional_tools` items; older bodies use `instructions`, which can't carry a breakpoint,
+ * so their first item stands in.
+ */
+function responsesPrefixText(body: Rec): Rec | undefined {
+  const { input } = body;
+  if (!Array.isArray(input)) return undefined;
+  const start = input.findIndex(
+    (item: unknown) => !(isRecord(item) && item.type === 'additional_tools')
+  );
+  if (start === -1) return undefined;
+  const first: unknown = input[start];
+  if (!isPrefixMessage(first)) return isRecord(first) ? lastInputTextPart(first) : undefined;
+  let end = start;
+  while (end < input.length && isPrefixMessage(input[end])) end++;
+  for (let index = end - 1; index >= start; index--) {
+    const item: unknown = input[index];
+    const part = isRecord(item) ? lastInputTextPart(item) : undefined;
+    if (part) return part;
+  }
+  return undefined;
 }
 
 /**
@@ -58,4 +79,4 @@ function lastInputText(body: Rec): Rec | undefined {
   return undefined;
 }
 
-export { lastInputTextPart, firstInputItem, toolOutputTextPart, lastInputText };
+export { lastInputTextPart, responsesPrefixText, toolOutputTextPart, lastInputText };

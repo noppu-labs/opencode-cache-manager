@@ -100,9 +100,22 @@ function expectedTarget(body: Rec, ctx: RewriteContext): Target | undefined {
   }
   const input = items(body.input);
   if (ctx.mode === 'hybrid') {
-    const item: unknown = input[0];
-    const target = responsesTarget(item, 0);
-    return target?.field === 'content' ? target : undefined;
+    const start = input.findIndex((item) => !(isRecord(item) && item.type === 'additional_tools'));
+    if (start === -1) return undefined;
+    const isPrefix = (item: unknown): boolean =>
+      isRecord(item) &&
+      isResponsesMessage(item) &&
+      (item.role === 'developer' || item.role === 'system');
+    let end = start + 1;
+    if (isPrefix(input[start])) {
+      while (end < input.length && isPrefix(input[end])) end++;
+    }
+    const lowest = isPrefix(input[start]) ? start : end - 1;
+    for (let index = end - 1; index >= lowest; index--) {
+      const target = responsesTarget(input[index], index);
+      if (target?.field === 'content') return target;
+    }
+    return undefined;
   }
   for (let index = input.length - 1; index >= 0; index--) {
     const target = responsesTarget(input[index], index);
