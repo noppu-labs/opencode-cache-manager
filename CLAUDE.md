@@ -31,7 +31,7 @@ codegraph sync
 gitnexus analyze --no-stats --index-only
 ```
 
-Always pass `--index-only` to `gitnexus analyze`. Without it, GitNexus writes skill files to `.claude/skills/gitnexus/` and rewrites its section of this file and `AGENTS.md`; as of GitNexus 1.6.12, `--skip-skills` alone no longer stops the rewrite. The same skills are already installed at user level and the MCP server is available, so these copies aren't wanted here.
+Always pass `--index-only` to `gitnexus analyze`. Without it, GitNexus writes skill files to `.claude/skills/gitnexus/` and rewrites its section of this file and `AGENTS.md`. The same skills are already installed at user level and the MCP server is available, so these copies aren't wanted here.
 
 ## Layout
 
