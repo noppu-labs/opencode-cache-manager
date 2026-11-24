@@ -2,6 +2,12 @@
 
 opencode-cache-manager is an OpenCode V2 plugin. The product is the code under `src/`; `tests/` mirrors it and `scripts/` holds the one build step.
 
+## Reporting bugs and proposing changes
+
+Report bugs and request features in the [issue tracker](https://github.com/noppu-labs/opencode-cache-manager/issues). For a bug, include the plugin version, the OpenCode version, the provider and model, and what you expected to happen; a [debug log](#debug-log) helps. Security problems go through private reporting instead, as [SECURITY.md](../SECURITY.md) describes.
+
+Changes come in as pull requests against `main`. Each one needs a review and a passing CI run before it merges.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) 1.4.2 or newer. CI pins 1.4.2, the version OpenCode V2 embeds. On Bun 1.3.x the keepalive tests, which advance fake timers by 50 minutes, can freeze the event loop on a freshly booted machine.

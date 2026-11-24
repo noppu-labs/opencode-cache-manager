@@ -5,6 +5,8 @@
 [![ci](https://github.com/noppu-labs/opencode-cache-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/noppu-labs/opencode-cache-manager/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/@noppu-labs/opencode-cache-manager)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/noppu-labs/opencode-cache-manager/badge)](https://scorecard.dev/viewer/?uri=github.com/noppu-labs/opencode-cache-manager)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16186/badge)](https://www.bestpractices.dev/projects/16186)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/16186/baseline)](https://www.bestpractices.dev/projects/16186/baseline-1)
 
 <p align="center">
   <img src="docs/images/social-preview.png" alt="Cache Manager, an OpenCode plugin: take control of your prompt cache. Pick a 5m, 1h or hybrid TTL per session, and keep idle caches warm with pings. A chart: after stepping away for 15 minutes, the default 5m cache has expired and the next prompt rewrites it at 1.25x; with keepalive, three pings keep it warm and the next prompt reads it at about 0.1x." width="800">
@@ -329,6 +331,8 @@ If any event in a session has no price, the whole session shows the unit-free fo
 Turn the rows off with `savings` in the plugin options, in the picker, or with `/cache-manager savings off` for one session. The ledger keeps counting while they are hidden. Totals are kept when a session becomes implicit. Totals of deleted sessions are removed at the next startup.
 
 ## Contributing
+
+Found a bug or want a feature? Open an issue in the [issue tracker](https://github.com/noppu-labs/opencode-cache-manager/issues). Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Changes come in as pull requests.
 
 See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the local setup, the checks CI runs and how releases are cut.
 
