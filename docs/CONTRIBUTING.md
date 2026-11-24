@@ -8,6 +8,8 @@ Report bugs and request features in the [issue tracker](https://github.com/noppu
 
 Changes come in as pull requests against `main`. Each one needs a review and a passing CI run before it merges.
 
+Contributions are licensed under the repository's [MIT license](../LICENSE). By opening a pull request you state that you have the right to submit the change under that license, as GitHub's Terms of Service require of every contribution to a repository with a license ([section D.6](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#6-contributions-under-repository-license)).
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) 1.4.2 or newer. CI pins 1.4.2, the version OpenCode V2 embeds. On Bun 1.3.x the keepalive tests, which advance fake timers by 50 minutes, can freeze the event loop on a freshly booted machine.
@@ -78,6 +80,16 @@ The request rewrites, response parsers and user-input parsing also have [fast-ch
 `bun test` runs every property 100 times. `bun run fuzz` runs only the property tests, 1,000 times each (`FC_NUM_RUNS` overrides the count; `tests/helpers/fc-setup.ts` applies it, preloaded through `bunfig.toml`). The `fuzz` workflow runs 1,000 on every pull request and push to `main`, and 10,000 every Monday.
 
 A failure prints a seed, a path and the smallest failing input. Reproduce it by passing `{ seed, path }` as the second argument to that `fc.assert`. If it is a real bug, fix it and add the input as an example-based test in the module's normal test file.
+
+## Dependencies
+
+The package has no runtime dependencies of its own. What it imports at runtime (`@opencode/plugin`, `@opentui/core`, `@opentui/solid`, `solid-js`) is declared under `peerDependencies` and provided by OpenCode. Everything under `devDependencies` is tooling: the type checker, linter, formatter, test libraries, and pinned copies of the peers to build and test against.
+
+A dependency is added or changed only in a pull request, where it is reviewed like any other change.
+
+Dependencies come from the npm registry through `bun install`. `package.json` declares them and `bun.lock` pins the exact versions and integrity hashes of the whole tree; both are committed. CI installs with `--frozen-lockfile --ignore-scripts`, so it uses exactly the locked versions and runs no package's install script. GitHub Actions are pinned to a commit SHA.
+
+Dependabot tracks updates: it opens weekly pull requests for npm packages and GitHub Actions (`.github/dependabot.yml`) and raises security updates as advisories appear. `overrides` in `package.json` holds a transitive dependency at a patched version when its parent hasn't moved yet.
 
 ## Layout
 
