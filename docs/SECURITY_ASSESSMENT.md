@@ -1,16 +1,16 @@
 # Security assessment
 
-This is the project's own assessment of what could go wrong in opencode-cache-manager, which problems are most likely or most costly, and what the code does about each. It was last reviewed for version 0.8.3. A change to a hook, a parser, the keepalive rules, storage or the release pipeline should update it. [ARCHITECTURE.md](ARCHITECTURE.md) describes the actors and interfaces named here.
+This page lists what could go wrong in opencode-cache-manager, how likely and how costly each problem is, and what the code does about it. It was last reviewed for version 0.8.3. A change to a hook, a parser, the keepalive rules, storage or the release pipeline should update it. [ARCHITECTURE.md](ARCHITECTURE.md) describes the actors and interfaces named here.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## What is worth protecting
 
-- **Credentials in transit.** Every model request carries the user's API key in a header. The plugin handles the request object before OpenCode sends it.
-- **Prompt and response content.** The request body is the conversation; the response body is the model's reply.
-- **The user's money.** A keepalive ping is a paid provider request, and a rewrite decides what the provider charges for a cache write.
-- **The user's turn.** A request the provider rejects fails the user's prompt.
-- **The published package.** A tampered release would run inside every user's OpenCode.
+- The user's API key. Every model request carries it in a header, and the plugin handles the request object before OpenCode sends it.
+- The conversation in each request body and the model's reply in each response body.
+- The user's money. A keepalive ping is a paid provider request, and a rewrite decides what the provider charges for a cache write.
+- The user's turn, because a request the provider rejects fails their prompt.
+- The published package, because a tampered release would run inside every user's OpenCode.
 
 ## Trust boundaries
 
@@ -72,7 +72,7 @@ What remains: a proxy that puts a key in the URL path will have it in the log, a
 
 Impact: low. Likelihood: low.
 
-Prices only affect the dollar figures in the sidebar, never a request. A price must be a finite number with a positive input cost, and a model whose listings disagree is not priced.
+A price is used only for the dollar figures in the sidebar and has no effect on any request. A price must be a finite number with a positive input cost, and a model whose listings disagree is not priced.
 
 ### 8. The release is tampered with
 

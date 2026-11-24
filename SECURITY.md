@@ -9,7 +9,11 @@ provider and endpoint involved, and the impact. You can expect an initial respon
 
 ## Disclosure policy
 
-The project follows coordinated disclosure. A report stays private while it is assessed and fixed. Once a fixed version is released, the vulnerability is published as a [GitHub security advisory](https://github.com/noppu-labs/opencode-cache-manager/security/advisories) on this repository, with the affected versions, how to tell whether you are affected, and the version that fixes it.
+The project follows coordinated disclosure. A report stays private while it is assessed and fixed.
+Once a fixed version is released, the project publishes the vulnerability as a
+[GitHub security advisory](https://github.com/noppu-labs/opencode-cache-manager/security/advisories)
+on this repository, with the affected versions, how to tell whether you are affected, and the
+version that fixes it.
 
 ## Scope
 

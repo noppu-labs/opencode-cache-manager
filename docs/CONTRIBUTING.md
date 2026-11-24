@@ -85,9 +85,11 @@ A failure prints a seed, a path and the smallest failing input. Reproduce it by 
 
 The package has no runtime dependencies of its own. What it imports at runtime (`@opencode/plugin`, `@opentui/core`, `@opentui/solid`, `solid-js`) is declared under `peerDependencies` and provided by OpenCode. Everything under `devDependencies` is tooling: the type checker, linter, formatter, test libraries, and pinned copies of the peers to build and test against.
 
-- **Selecting.** A dependency is added or changed only in a pull request, where it is reviewed like any other change.
-- **Obtaining.** Dependencies come from the npm registry through `bun install`. `package.json` declares them and `bun.lock` pins the exact versions and integrity hashes of the whole tree; both are committed. CI installs with `--frozen-lockfile --ignore-scripts`, so it uses exactly the locked versions and runs no package's install script. GitHub Actions are pinned to a commit SHA.
-- **Tracking.** Dependabot opens weekly pull requests for npm packages and GitHub Actions (`.github/dependabot.yml`) and raises security updates as advisories appear. `overrides` in `package.json` holds a transitive dependency at a patched version when its parent hasn't moved yet.
+A dependency is added or changed only in a pull request, where it is reviewed like any other change.
+
+Dependencies come from the npm registry through `bun install`. `package.json` declares them and `bun.lock` pins the exact versions and integrity hashes of the whole tree; both are committed. CI installs with `--frozen-lockfile --ignore-scripts`, so it uses exactly the locked versions and runs no package's install script. GitHub Actions are pinned to a commit SHA.
+
+Dependabot tracks updates: it opens weekly pull requests for npm packages and GitHub Actions (`.github/dependabot.yml`) and raises security updates as advisories appear. `overrides` in `package.json` holds a transitive dependency at a patched version when its parent hasn't moved yet.
 
 ## Layout
 

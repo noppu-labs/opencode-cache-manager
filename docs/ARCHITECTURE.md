@@ -1,6 +1,6 @@
 # Architecture
 
-opencode-cache-manager is an OpenCode V2 plugin. It has no process of its own and opens no listening socket: OpenCode loads its two entry points, calls its hooks, and sends every model request itself. This page describes who takes part (the actors), what each part does (the actions), and every interface the released package exposes. [SECURITY_ASSESSMENT.md](SECURITY_ASSESSMENT.md) covers what can go wrong.
+opencode-cache-manager is an OpenCode V2 plugin. It has no process of its own and opens no listening socket: OpenCode loads its two entry points, calls its hooks, and sends every model request itself. This page covers the actors, what each of them does, and every interface the released package exposes. [SECURITY_ASSESSMENT.md](SECURITY_ASSESSMENT.md) covers what can go wrong.
 
 The file-by-file layout is in [CONTRIBUTING.md](CONTRIBUTING.md#layout).
 
@@ -40,7 +40,7 @@ OpenCode calls the `http.response` hook (`src/middleware/response.ts`) with the 
 - drops a learned profile when a non-Anthropic provider answers a Messages request with 400 or 422;
 - reports the usage to the keepalive engine.
 
-A failure anywhere in this path is swallowed. The response OpenCode sees is never altered.
+A failure anywhere in this path is swallowed.
 
 ### Keeping a cache warm
 
@@ -73,8 +73,6 @@ At setup the server part loads settings and learned profiles, registers the RPC 
 
 ## External interfaces
 
-These are all the ways anything outside the plugin interacts with the released package.
-
 ### Package entry points
 
 | Export             | Resolves to     | What it is                                                                                                                       |
@@ -86,7 +84,7 @@ These are all the ways anything outside the plugin interacts with the released p
 
 ### Plugin options
 
-Read once at startup from the plugin's entry in `opencode.jsonc`: `defaultMode`, `keepalive.enabled`, `keepalive.maxPings`, `keepalive.minContextTokens`, `savings`, `modelsDevPrices`, `openaiCompatible`, `cacheProfiles`, `debug`. [The README](../README.md#settings) documents each one. An invalid value is ignored and the default applies.
+The plugin reads its options once at startup from its entry in `opencode.jsonc`: `defaultMode`, `keepalive.enabled`, `keepalive.maxPings`, `keepalive.minContextTokens`, `savings`, `modelsDevPrices`, `openaiCompatible`, `cacheProfiles`, `debug`. [The README](../README.md#settings) documents each one. An invalid value is ignored and the default applies.
 
 ### The `/cache-manager` command
 
@@ -117,9 +115,9 @@ A `patch` may hold `mode` (`5m`, `1h`, `hybrid`), `keepalive`, `maxPings` (0 to 
 
 ### Requests to model providers
 
-The plugin sends nothing to a provider itself. It changes requests OpenCode is about to send, and only for a model a profile manages: `cache_control` TTLs and breakpoints and the `anthropic-beta` header for Claude, `prompt_cache_breakpoint` and `prompt_cache_options` for GPT-5.6+. [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md) lists what is sent on each endpoint. A keepalive ping is a request OpenCode builds from the session's context and the prompt `Do not perform any work and do not use tools. Reply with exactly: OK`.
+OpenCode sends every provider request. The plugin changes a request before it leaves, and only for a model a profile manages: `cache_control` TTLs and breakpoints and the `anthropic-beta` header for Claude, `prompt_cache_breakpoint` and `prompt_cache_options` for GPT-5.6+. [SUPPORTED_PROVIDERS.md](SUPPORTED_PROVIDERS.md) lists what is sent on each endpoint. A keepalive ping is a request OpenCode builds from the session's context and the prompt `Do not perform any work and do not use tools. Reply with exactly: OK`.
 
-From a response it reads the usage block, the stop or finish reason, and the model and provider names. It writes nothing back into the response.
+From a response it reads the usage block, the stop or finish reason, and the model and provider names, and it leaves the response as it was.
 
 ### Plugin storage
 
@@ -136,7 +134,7 @@ From a response it reads the usage block, the stop or finish reason, and the mod
 
 ### models.dev
 
-With `modelsDevPrices` on, one `GET https://models.dev/api.json` at most once a day, with a 10 second timeout. The request carries no data about the user. Only prices are kept from the response.
+With `modelsDevPrices` on, the plugin sends one `GET https://models.dev/api.json` at most once a day, with a 10-second timeout. The request carries no data about the user. Only prices are kept from the response.
 
 ### The debug log
 
@@ -144,4 +142,4 @@ With `debug` on, the plugin appends one JSON object per line to a local file cre
 
 ### Console
 
-One warning line, `[opencode-cache-manager] cache rewrite failed, request sent unchanged:`, when a rewrite throws.
+The plugin writes one warning line, `[opencode-cache-manager] cache rewrite failed, request sent unchanged:`, when a rewrite throws.
