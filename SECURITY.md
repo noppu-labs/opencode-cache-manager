@@ -7,6 +7,10 @@ Report suspected vulnerabilities privately via
 please don't open a public issue. Include enough detail to reproduce: the plugin version, the
 provider and endpoint involved, and the impact. You can expect an initial response within a week.
 
+## Disclosure policy
+
+The project follows coordinated disclosure. A report stays private while it is assessed and fixed. Once a fixed version is released, the vulnerability is published as a [GitHub security advisory](https://github.com/noppu-labs/opencode-cache-manager/security/advisories) on this repository, with the affected versions, how to tell whether you are affected, and the version that fixes it.
+
 ## Scope
 
 This repository ships an OpenCode plugin that rewrites outgoing model requests and sends hidden
