@@ -334,7 +334,7 @@ Turn the rows off with `savings` in the plugin options, in the picker, or with `
 
 Found a bug or want a feature? Open an issue in the [issue tracker](https://github.com/noppu-labs/opencode-cache-manager/issues). Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Changes come in as pull requests.
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the local setup, the checks CI runs and how releases are cut.
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the local setup, the checks CI runs and how releases are cut. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes how the plugin works and its interfaces, [docs/SECURITY_ASSESSMENT.md](docs/SECURITY_ASSESSMENT.md) the risks it guards against, and [docs/GOVERNANCE.md](docs/GOVERNANCE.md) who maintains it.
 
 ---
 
