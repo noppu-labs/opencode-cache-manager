@@ -57,10 +57,10 @@
     "fuzz": "FC_NUM_RUNS=${FC_NUM_RUNS:-1000} bun test --timeout 600000 .property.test"
   },
   "devDependencies": {
-    "@opencode/plugin": "2.4.1",
-    "@opencode/theme": "2.4.1",
-    "@opentui/core": "0.9.4",
-    "@opentui/solid": "0.9.4",
+    "@opencode/plugin": "2.4.2",
+    "@opencode/theme": "2.4.2",
+    "@opentui/core": "0.9.9",
+    "@opentui/solid": "0.9.9",
     "@types/bun": "^1.4.5",
     "eslint": "^10.13.0",
     "eslint-plugin-solid": "^0.20.1",
