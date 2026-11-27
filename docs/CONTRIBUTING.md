@@ -91,6 +91,8 @@ Dependencies come from the npm registry through `bun install`. `package.json` de
 
 Dependabot tracks updates: it opens weekly pull requests for npm packages and GitHub Actions (`.github/dependabot.yml`) and raises security updates as advisories appear. `overrides` in `package.json` holds a transitive dependency at a patched version when its parent hasn't moved yet.
 
+`@opencode/theme` pins `@opentui/core` to an exact version, so `@opencode/*` and `@opentui/*` are bumped together, to the `@opentui/*` version that `@opencode/theme` names. Bumping one without the other installs two copies of `@opentui/core` and `bun run lint` fails on `src/ui/sidebar.tsx`. Dependabot skips `solid-js` major updates until `@opentui/solid` supports Solid 2 ([#60](https://github.com/noppu-labs/opencode-cache-manager/issues/60)).
+
 ## Layout
 
 ```

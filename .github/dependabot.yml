@@ -8,14 +8,21 @@ updates:
       prefix: chore
       include: scope
     groups:
-      opentui:
+      # @opencode/theme pins @opentui/core to an exact version. Bumping one without the other installs two copies and fails the type-aware lint.
+      opencode-host:
         patterns:
+          - '@opencode/*'
           - '@opentui/*'
       dev-dependencies:
         dependency-type: development
         update-types:
           - minor
           - patch
+    ignore:
+      # @opentui/solid still requires solid-js 1.x (#60).
+      - dependency-name: solid-js
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
